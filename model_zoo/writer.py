@@ -5,12 +5,13 @@ import os
 import datetime
 import json
 import sys
+import typing as th
 
 import numpy as np
 import torch
 
 from tensorboardX import SummaryWriter
-
+import wandb
 
 class Tee:
     """This class allows for redirecting of stdout and stderr"""
@@ -39,21 +40,35 @@ class Tee:
         self.primary_file.flush()
         self.secondary_file.flush()
 
-
 class Writer:
     _STDOUT = sys.stdout
     _STDERR = sys.stderr
 
-    def __init__(self, logdir, make_subdir, tag_group):
+    def __init__(
+        self, 
+        logdir, 
+        make_subdir, 
+        tag_group, 
+        type: th.Literal['tensorboard', 'wandb'] = 'tensorboard',
+        **kwargs
+    ):
         if make_subdir:
             os.makedirs(logdir, exist_ok=True)
 
             timestamp = datetime.datetime.now().strftime('%b%d_%H-%M-%S')
             logdir = os.path.join(logdir, timestamp)
 
-        self._writer = SummaryWriter(logdir=logdir)
+        self.type = type
+        if type == 'tensorboard':
+            self._writer = SummaryWriter(logdir=logdir, **kwargs)
 
-        assert logdir == self._writer.logdir
+            assert logdir == self._writer.logdir
+        else:
+            # make all the directories in the logdir
+            os.makedirs(logdir, exist_ok=True)
+            
+            self._writer = wandb.init(**kwargs)
+            
         self.logdir = logdir
 
         self._tag_group = tag_group
@@ -69,24 +84,37 @@ class Writer:
         )
 
     def write_scalar(self, tag, scalar_value, global_step=None):
-        self._writer.add_scalar(self._tag(tag), scalar_value, global_step=global_step)
-
+        if self.type == 'tensorboard':
+            self._writer.add_scalar(self._tag(tag), scalar_value, global_step=global_step)
+        else:
+            self._writer.log({self._tag(tag): scalar_value}, step=global_step)
+    
     def write_image(self, tag, img_tensor, global_step=None):
-        self._writer.add_image(self._tag(tag), img_tensor, global_step=global_step)
-
+        if self.type == 'tensorboard':
+            self._writer.add_image(self._tag(tag), img_tensor, global_step=global_step)
+        else:
+            self._writer.log({self._tag(tag): [wandb.Image(img_tensor)]}, step=global_step)
+            
     def write_figure(self, tag, figure, global_step=None):
-        self._writer.add_figure(self._tag(tag), figure, global_step=global_step)
-
+        if self.type == 'tensorboard':
+            self._writer.add_figure(self._tag(tag), figure, global_step=global_step)
+        else:
+            self._writer.log({self._tag(tag): [wandb.Image(figure)]}, step=global_step)
+            
     def write_hparams(self, hparam_dict=None, metric_dict=None):
-        self._writer.add_hparams(hparam_dict=hparam_dict, metric_dict=metric_dict)
-
+        if self.type == 'tensorboard':
+            self._writer.add_hparams(hparam_dict=hparam_dict, metric_dict=metric_dict)
+        else:
+            self._writer.config.update(hparam_dict, allow_val_change=True)
+            
     def write_json(self, tag, data):
         text = json.dumps(data, indent=4)
 
-        self._writer.add_text(
-            self._tag(tag),
-            4*" " + text.replace("\n", "\n" + 4*" ") # Indent by 4 to ensure codeblock formatting
-        )
+        if self.type == 'tensorboard':
+            self._writer.add_text(
+                self._tag(tag),
+                4*" " + text.replace("\n", "\n" + 4*" ") # Indent by 4 to ensure codeblock formatting
+            )
 
         json_path = os.path.join(self.logdir, f"{tag}.json")
 
@@ -128,7 +156,7 @@ class Writer:
 
     def _tag(self, tag):
         return f"{self._tag_group}/{tag}"
-
+        
 
 def get_writer(cmd_line_args, **kwargs):
     two_step = ("shared_cfg" in kwargs)
@@ -139,6 +167,7 @@ def get_writer(cmd_line_args, **kwargs):
             logdir=cmd_line_args.load_dir,
             make_subdir=False,
             tag_group=cmd_line_args.dataset
+            **kwargs['additional_writer_args'],
         )
     else:
         cfg = kwargs["shared_cfg"] if two_step else kwargs["cfg"]
@@ -146,6 +175,7 @@ def get_writer(cmd_line_args, **kwargs):
             logdir=cfg["logdir_root"],
             make_subdir=True,
             tag_group=cmd_line_args.dataset,
+            **kwargs['additional_writer_args'],
         )
 
     if two_step:

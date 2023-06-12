@@ -12,6 +12,7 @@ def get_single_trainer(
         test_loader,
         evaluator,
         only_test=False,
+        **kwargs,
 ):
     return SingleTrainer(
         module=module,
@@ -25,7 +26,8 @@ def get_single_trainer(
         max_bad_valid_epochs=cfg["max_bad_valid_epochs"],
         max_grad_norm=cfg["max_grad_norm"],
         evaluator=evaluator,
-        only_test=only_test
+        only_test=only_test,
+        **kwargs,
     )
 
 

@@ -10,7 +10,7 @@ import dypy as dy
 from config import get_single_config, load_config, parse_config_arg
 from model_zoo import (
     get_single_module, get_single_trainer, get_loaders_from_config,
-    get_writer, get_evaluator, get_ood_evaluator
+    get_writer, get_evaluator, get_ood_evaluator, Writer
 )
 
 from dataclasses import dataclass
@@ -38,6 +38,13 @@ class LegacyConfig:
 
 @dataclass
 class TrainerConfig:
+    writer: th.Optional[dict] = None
+    
+    # The frequency of sampling happening in the training loop.
+    # if set to a number, then every `sample_freq` epochs, the model will be evaluated
+    # visually by sampling a set of samples from the model.
+    sample_freq: th.Optional[int] = None
+    
     optimizer: th.Optional[dict] = None
     max_epochs: int = 100
     batch_size: int = 128
@@ -94,7 +101,9 @@ train_loader, valid_loader, test_loader = get_loaders_from_config(cfg, device)
 
 
 if args.legacy is not None:
-    writer = get_writer(args.legacy, cfg=cfg)
+    if args.trainer is not None and args.trainer.writer is not None:
+        additional_args = args.trainer.writer
+    writer = get_writer(args.legacy, cfg=cfg, additional_writer_args=additional_args)
 
 if args.model is not None:
     
@@ -113,8 +122,6 @@ else:
         train_dataset_size=cfg["train_dataset_size"]
     ).to(device)
     
-
-
 if args.legacy.test_ood or "likelihood_ood_acc" in cfg["test_metrics"]:
     evaluator = get_ood_evaluator(
         module,
@@ -139,6 +146,10 @@ else:
     )
 
 
+additional_args = {}
+if args.trainer is not None:
+    additional_args['sample_freq'] = args.trainer.sample_freq
+    
 trainer = get_single_trainer(
     module=module,
     ckpt_prefix="gae" if cfg["gae"] else "de",
@@ -148,7 +159,8 @@ trainer = get_single_trainer(
     valid_loader=valid_loader,
     test_loader=test_loader,
     evaluator=evaluator,
-    only_test=args.legacy.only_test
+    only_test=args.legacy.only_test,
+    **additional_args
 )
 
 checkpoint_load_list = ["latest", "best_valid"]

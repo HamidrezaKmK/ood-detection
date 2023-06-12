@@ -3,6 +3,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import torch
 import torchvision.utils
+import typing as th
 
 from model_zoo.evaluators import NullEvaluator
 
@@ -32,6 +33,9 @@ class BaseTrainer:
             evaluator=None,
 
             only_test=False,
+            
+            sample_freq: th.Optional[int] = None,
+            progress_bar: th.Optional[bool] = True,
     ):
         self.module = module
         self.ckpt_prefix = ckpt_prefix
@@ -64,6 +68,9 @@ class BaseTrainer:
             self.evaluator = evaluator
 
         self.only_test = only_test
+        
+        self.sample_freq = sample_freq
+        self.progress_bar = progress_bar
 
     def train(self):
         if self.only_test:
@@ -100,18 +107,28 @@ class BaseTrainer:
                         return
 
             self.write_checkpoint("latest")
+            
+            if self.sample_freq is not None and (self.epoch + 1) % self.sample_freq == 0:
+                self.sample_and_record()
+                
+            # write the epoch itself
+            self.write_scalar("epoch", self.epoch, None)
 
         if self.bad_valid_epochs < self.max_bad_valid_epochs:
             self._test()
             print(f"Maximum epochs reached. Training of {self.module.model_type} complete.")
 
     def train_for_epoch(self):
-        pbar = self._tqdm_progress_bar(
-            iterable=enumerate(self.train_loader),
-            desc="Training",
-            length=len(self.train_loader),
-            leave=True
-        )
+        if self.progress_bar:
+            pbar = self._tqdm_progress_bar(
+                iterable=enumerate(self.train_loader),
+                desc="Training",
+                length=len(self.train_loader),
+                leave=True
+            )
+        else:
+            pbar = enumerate(self.train_loader)
+            
         for j, (batch, _, idx) in pbar:
             loss_dict = self.train_single_batch(batch)
 
@@ -151,7 +168,7 @@ class BaseTrainer:
             leave=leave
         )
 
-    def write_scalar(self, tag, value, step):
+    def write_scalar(self, tag, value, step: th.Optional[int] = None):
         self.writer.write_scalar(f"{self.module.model_type}/{tag}", value, step)
 
     def sample_and_record(self):

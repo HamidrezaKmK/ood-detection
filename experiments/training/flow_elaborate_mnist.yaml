@@ -2,7 +2,13 @@
 legacy:
   dataset: mnist
   cfg:
-    max_epochs: 1
+    max_epochs: 100
+trainer:
+  sample_freq: 2 # logs the samples after every two epochs
+  writer:
+    type: wandb
+    entity: dgm-l6
+    project: training-dgms
 # Settings from the new configurations
 model:
   class_path: model_zoo.density_estimator.flow.NormalizingFlow
