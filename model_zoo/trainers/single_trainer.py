@@ -108,11 +108,11 @@ class BaseTrainer:
 
             self.write_checkpoint("latest")
             
-            if self.sample_freq is not None and (self.epoch + 1) % self.sample_freq == 0:
+            if self.sample_freq is not None and self.epoch % self.sample_freq == 0:
                 self.sample_and_record()
                 
             # write the epoch itself
-            self.write_scalar("epoch", self.epoch, None)
+            self.write_scalar("epoch", self.epoch - 1, None)
 
         if self.bad_valid_epochs < self.max_bad_valid_epochs:
             self._test()

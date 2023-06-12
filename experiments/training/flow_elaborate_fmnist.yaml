@@ -1,6 +1,6 @@
 # Settings from the legacy config
 legacy:
-  dataset: mnist
+  dataset: fashion-mnist
   cfg:
     max_epochs: 100
 trainer:

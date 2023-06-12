@@ -20,7 +20,14 @@ class DensityEstimator(TwoStepComponent):
         self._mid_level_representations = []
         self._representation_modules = []
         self._rank_to_index = {}
-        
+        self._save_representation = True
+    
+    def get_all_ranks(self):
+        return list(self._rank_to_index.keys())
+    
+    def toggle_save_representation(self, save: bool):
+        self._save_representation = save
+          
     def add_representation_module(self, module, rank: int = 0):
         # keep a list of sorted modules according to rank in self._representation_modules
         # and register forward hooks on them
@@ -47,7 +54,8 @@ class DensityEstimator(TwoStepComponent):
         # define the following forward hook
         def forward_hook(module, args, output, rank):
             repr_output = self.representation_hook(module, args, output, rank)
-            self._mid_level_representations.append(repr_output)
+            if self._save_representation:
+                self._mid_level_representations.append(repr_output)
             return output
         self.handles = []
         # When registering the modules in order of their increasing
@@ -55,6 +63,7 @@ class DensityEstimator(TwoStepComponent):
         # in the same order as the modules are registered
         for module in self._representation_modules:
             self.handles.append(module[1].register_forward_hook(functools.partial(forward_hook, rank=rank)))
+    
     
     def representation_hook(self, module, args, output, module_rank):
         """
@@ -72,6 +81,15 @@ class DensityEstimator(TwoStepComponent):
         Clears the buffer of representations.
         """
         self._mid_level_representations.clear()
+    
+    def get_representation_module(self, rank: int):
+        """
+        Returns the exact module that was registered with the given rank.
+        """
+        if rank not in self._rank_to_index:
+            raise ValueError(f"Rank {rank} not found.")
+        ind = self._rank_to_index[rank]
+        return self._representation_modules[ind][1]
     
     def get_representation(self, rank: th.Optional[int] = None):
         """
@@ -107,5 +125,11 @@ class DensityEstimator(TwoStepComponent):
     def log_prob(self, x, **kwargs):
         raise NotImplementedError("log_prob not implemented")
 
-    def loss(self, x, **kwargs):
-        return -self.log_prob(x, **kwargs).mean()
+    def loss(self, x, **kwargs): 
+        # This is used when training
+        # for training purposes, we don't want to save the representations
+        # therefore, we toggle the save_representation flag to False
+        self.toggle_save_representation(False)
+        ret = -self.log_prob(x, **kwargs).mean()
+        self.toggle_save_representation(True)
+        return ret

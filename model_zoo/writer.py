@@ -87,19 +87,19 @@ class Writer:
         if self.type == 'tensorboard':
             self._writer.add_scalar(self._tag(tag), scalar_value, global_step=global_step)
         else:
-            self._writer.log({self._tag(tag): scalar_value}, step=global_step)
+            self._writer.log({self._tag(tag): scalar_value})
     
     def write_image(self, tag, img_tensor, global_step=None):
         if self.type == 'tensorboard':
             self._writer.add_image(self._tag(tag), img_tensor, global_step=global_step)
         else:
-            self._writer.log({self._tag(tag): [wandb.Image(img_tensor)]}, step=global_step)
+            self._writer.log({self._tag(tag): [wandb.Image(img_tensor)]})
             
     def write_figure(self, tag, figure, global_step=None):
         if self.type == 'tensorboard':
             self._writer.add_figure(self._tag(tag), figure, global_step=global_step)
         else:
-            self._writer.log({self._tag(tag): [wandb.Image(figure)]}, step=global_step)
+            self._writer.log({self._tag(tag): [wandb.Image(figure)]})
             
     def write_hparams(self, hparam_dict=None, metric_dict=None):
         if self.type == 'tensorboard':
