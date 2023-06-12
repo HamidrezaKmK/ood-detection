@@ -23,6 +23,7 @@ class OODLocalOptimization(OODBaseMethod):
         likelihood_model: torch.nn.Module,
         optimization_steps: int,
         optimizer: th.Union[torch.optim.Optimizer, str],
+        representation_rank: th.Optional[int] = None,
         x: th.Optional[torch.Tensor] = None,
         x_batch: th.Optional[torch.Tensor] = None,
         logger: th.Optional[th.Any] = None,
@@ -39,6 +40,7 @@ class OODLocalOptimization(OODBaseMethod):
         self.optimization_objective = optimization_objective
         self.intermediate_image_log_frequency = intermediate_image_log_frequency
         self.pick_best = pick_best
+        self.representation_rank = representation_rank
 
     def run(self):
         """
@@ -75,7 +77,7 @@ class OODLocalOptimization(OODBaseMethod):
                 the smallest objective.
                 Defaults to True.
         Returns:
-            x0: Manipulates x so that x0 is the point that is peaked in terms of the model likelihood.
+            self.repr_point: Manipulates x so that self.repr_point is the point that is peaked in terms of the model likelihood.
         """
         # TODO: a bit of refactoring is needed here
         likelihood_model = self.likelihood_model
@@ -97,20 +99,40 @@ class OODLocalOptimization(OODBaseMethod):
         for param in self.likelihood_model.parameters():
             param.requires_grad_(False)
 
+        if self.representation_rank is not None:
+            # run the likelihood model on x once to get the representation
+            likelihood_model(x)
+            self.repr_point = likelihood_model.get_representation(self.representation_rank).clone().detach()
+            self.repr_point.requires_grad = True
+            
+            def hook_fn(module, args, output):
+                return self.repr_point
+            
+            repr_module = likelihood_model.get_representation_module(self.representation_rank)
+            repr_module.register_forward_hook(hook_fn)
+        else:    
+            self.repr_point = x.clone().detach()
+            self.repr_point.requires_grad = True
+            
+            likelihood_model = torch.nn.Sequential(torch.nn.Identity(), likelihood_model)
+            # get the first part of the likelihood model and register a hook to get the representation
+            def hook_fn(module, args, output):
+                return self.repr_point
+            
+            likelihood_model[0].register_forward_hook(hook_fn)
+        
+            
         def forward_func(x):
             x_ = x.unsqueeze(0).to(likelihood_model.device)
             return -likelihood_model.log_prob(x_).squeeze(0)
 
-        x0 = x.clone().detach()
-        x0.requires_grad = True
-        
         optimizer_args = optimizer_args or {}
 
-        # change x to x0 by optimizing the input according to the objective
+        # change x to self.repr_point by optimizing the input according to the objective
         optimizer = (
-            optimizer([x0], **optimizer_args)
+            optimizer([self.repr_point], **optimizer_args)
             if isinstance(optimizer, torch.optim.Optimizer)
-            else dy.eval(optimizer)([x0], **optimizer_args)
+            else dy.eval(optimizer)([self.repr_point], **optimizer_args)
         )
 
         # the objective is either the negative log likelihood or the gradient norm
@@ -125,7 +147,7 @@ class OODLocalOptimization(OODBaseMethod):
 
         # do the optimization and keep the place where the gradient
         # is the smallest for the point to be a peak
-        best_x0 = None
+        best_repr_point = None
         best_obj = None
 
         for _ in range(optimization_steps):
@@ -133,7 +155,7 @@ class OODLocalOptimization(OODBaseMethod):
                 # Do a second-order optimization with closure
                 def closure():
                     optimizer.zero_grad()
-                    loss = obj_func(x0)
+                    loss = obj_func(x)
                     loss.backward()
                     return loss
 
@@ -141,23 +163,22 @@ class OODLocalOptimization(OODBaseMethod):
             else:
                 # Do a simple first order optimization
                 optimizer.zero_grad()
-                loss = obj_func(x0)
+                loss = obj_func(x)
                 loss.backward()
                 optimizer.step()
             
-            x1 = x0.clone().detach()
-            x1.requires_grad = True
-            
-            nll = forward_func(x1)
+            nll = forward_func(x)
             nll.backward()
-            nll_grad_norm = torch.norm(x1.grad)
+            nll_grad_norm = torch.norm(self.repr_point.grad)
+            # clear the gradient
+            self.repr_point.grad.zero_()
             
             if pick_best:
                 with torch.no_grad():
-                    t = obj_func(x0)
+                    t = obj_func(x)
                     if best_obj is None or t < best_obj:
                         best_obj = t
-                        best_x0 = x0.clone()
+                        best_repr_point = self.repr_point.clone()
 
             if self.logger is not None:
                 with torch.no_grad():
@@ -165,27 +186,41 @@ class OODLocalOptimization(OODBaseMethod):
                         {
                             "nll_grad_norm": nll_grad_norm,
                             "nll": nll,
-                            "||x - x0||": torch.norm(x0 - x),
-                            "objective": obj_func(x0),
+                            "||x - self.repr_point||": torch.norm(self.repr_point - x),
+                            "objective": obj_func(x),
                         }
                     )
                 if intermediate_image_log_frequency is not None and (_ + 1) % intermediate_image_log_frequency == 0:
+                    # if self.repr_point has a representation [c, h, w], then split the channels
+                    # into three almost equal parts and average each of the parts to get a [3, h, w] image
+                    # that we can log to tensorboard
+                    img = self.repr_point.detach().cpu()
+                    if len(img.shape) == 3:
+                        img = img.unsqueeze(0)
+                    if img.shape[1] > 3:
+                        first_third = img[:, : img.shape[1] // 3, :, :].mean(dim=1, keepdim=True)
+                        second_third = img[:, img.shape[1] // 3 : 2 * img.shape[1] // 3, :, :].mean(
+                            dim=1, keepdim=True
+                        )
+                        third_third = img[:, 2 * img.shape[1] // 3 :, :, :].mean(dim=1, keepdim=True)
+                        img = torch.cat([first_third, second_third, third_third], dim=1)
+                    
                     self.logger.log(
                         {
                             "optimization/intermediate_image": [
-                                wandb.Image(x0, caption="The image in the optimization process")
+                                wandb.Image(img[i], caption=f"The image {i} in the optimization process") for i in range(img.shape[0])
                             ]
                         }
                     )
 
         if pick_best:
-            x0 = best_x0
+            self.repr_point = best_repr_point
 
         if self.logger is not None:
-            # add x and x0 images to the tensorboard writer
+            # add x and self.repr_point images to the tensorboard writer
             self.logger.log(
                 {
-                    "optimization/final_image": [wandb.Image(x0, caption="The image we end up with")],
+                    "optimization/final_image": [wandb.Image(self.repr_point, caption="The image we end up with")],
                 }
             )
-        return x0.detach().cpu()
+        return self.repr_point.detach().cpu()
