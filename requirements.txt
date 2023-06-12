@@ -1,0 +1,17 @@
+torch
+numpy
+tensorboard
+pytest
+scipy
+pandas
+tensorboardx
+nflows
+pytorch_fid
+prdc
+
+# ood detection
+random-word
+dysweep
+dypy
+wandb
+jsonargparse

@@ -1,0 +1,25 @@
+base_model:
+  run_dir: single_flow_fmnist
+data:
+  # override the dataloader args that is obtained from the run_dir
+  in_distribution:
+    dataloader_args:
+      dataset: fashion-mnist
+  out_of_distribution:
+    dataloader_args:
+      dataset: mnist
+  # for reproducibility
+  seed: 10
+ood:
+  pick_single: True
+  seed: 10
+  method: methods.local_optimization.OODLocalOptimization
+  method_args:
+    optimization_steps: 1000
+    optimizer: torch.optim.LBFGS
+    optimization_objective: nll
+    intermediate_image_log_frequency: 20
+    
+logger:
+  project: ood-detection-single-runs
+  entity: deep-generative-modeling

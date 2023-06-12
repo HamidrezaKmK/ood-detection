@@ -1,0 +1,22 @@
+# Settings from the legacy config
+legacy:
+  dataset: mnist
+  model: flow
+# Settings from the new configurations
+# model:
+#   class_path: model_zoo.density_estimator.flow.NormalizingFlow
+#   init_args:
+#     dim: 784
+#     # base_distribution:
+#     #   class_path: nflows.distributions.StandardNormal
+#     #   init_args:
+#     #     shape: [784]
+#     transform:
+#       class_path: model_zoo.networks.invertible_networks.SimpleFlowTransform
+#       init_args:
+#         features_for_mask: 784 # flat data: number of features; image data: number of channels
+#         hidden_features: 128
+#         num_layers: 4
+#         num_blocks_per_layer: 3
+    
+
