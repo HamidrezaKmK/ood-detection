@@ -3,7 +3,7 @@ import torch
 import typing as th
 import dypy as dy
 import wandb
-
+from tqdm import tqdm
 
 class OODLocalOptimization(OODBaseMethod):
     """
@@ -81,7 +81,15 @@ class OODLocalOptimization(OODBaseMethod):
         """
         # TODO: a bit of refactoring is needed here
         likelihood_model = self.likelihood_model
-        x = self.x
+        device = likelihood_model.device
+
+        # unsqueeze x and prepare it for giving it as input
+        if self.x is None:
+            raise ValueError("x is None. Please provide a value for x.")
+        x = self.x.unsqueeze(0).to(device)
+        if self.x_batch is not None:
+            raise NotImplementedError("x_batch is not implemented yet.")
+        
         optimization_steps = self.optimization_steps
         optimizer = self.optimizer
         optimizer_args = self.optimizer_args
@@ -98,7 +106,7 @@ class OODLocalOptimization(OODBaseMethod):
         # turn off all the gradients for likelihood_model
         for param in self.likelihood_model.parameters():
             param.requires_grad_(False)
-
+        
         if self.representation_rank is not None:
             # run the likelihood model on x once to get the representation
             likelihood_model(x)
@@ -115,6 +123,10 @@ class OODLocalOptimization(OODBaseMethod):
             self.repr_point.requires_grad = True
             
             likelihood_model = torch.nn.Sequential(torch.nn.Identity(), likelihood_model)
+            interim = likelihood_model[0](x)
+            # add a method log_prob to the likelihood model which is equal to the log_prob of the second part
+            likelihood_model.log_prob = lambda x: likelihood_model[1].log_prob(likelihood_model[0](x))
+            
             # get the first part of the likelihood model and register a hook to get the representation
             def hook_fn(module, args, output):
                 return self.repr_point
@@ -123,8 +135,8 @@ class OODLocalOptimization(OODBaseMethod):
         
             
         def forward_func(x):
-            x_ = x.unsqueeze(0).to(likelihood_model.device)
-            return -likelihood_model.log_prob(x_).squeeze(0)
+            # get the device of the torch.nn.Module likelihood_model
+            return -likelihood_model.log_prob(x).squeeze(0)
 
         optimizer_args = optimizer_args or {}
 
@@ -150,7 +162,12 @@ class OODLocalOptimization(OODBaseMethod):
         best_repr_point = None
         best_obj = None
 
-        for _ in range(optimization_steps):
+        if self.progress_bar:
+            iterable = tqdm(range(optimization_steps))
+        else:
+            iterable = range(optimization_steps)
+            
+        for _ in iterable:
             if isinstance(optimizer, torch.optim.LBFGS):
                 # Do a second-order optimization with closure
                 def closure():

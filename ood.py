@@ -18,7 +18,7 @@ from model_zoo.evaluators.ood_helpers import plot_ood_histogram_from_run_dir
 from config import load_config_from_run_dir
 from model_zoo.datasets import get_loaders
 from load_run import load_run
-
+import yaml
 
 
 @dataclass
@@ -78,11 +78,19 @@ def run_ood(config: dict):
     # load all the dataset
     # NOTE: this is a janky way to do this and it is dependent on the place
     # where you run this script from
-    run_dir = f'../runs/{config["base_model"]["run_dir"]}'
-    load_dict = load_run(run_dir)
-
+    model_conf_dir = config["base_model"]["config_dir"]
+    # load the configuration file which is a yaml into a dictionary called model_conf
+    with open(model_conf_dir, "r") as f:
+        model_conf = yaml.load(f, Loader=yaml.FullLoader)
+    
+    if 'model' in model_conf:
+        model_conf = model_conf['model']
+    
+    model = dy.eval(model_conf['class_path'])(**model_conf['init_args'])
+    # load the checkpoint from the checkpoint_dir
+    run_dir = config["base_model"]["run_dir"]
+    load_dict = load_run(run_dir, module=model)
     model = load_dict["module"]
-
     # (1) Load all the datasets
 
     # load the original cfg that the model was trained with

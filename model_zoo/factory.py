@@ -37,21 +37,22 @@ def get_two_step_module(gae_cfg, de_cfg, shared_cfg):
     return two_step_module
 
 
-def get_single_module(cfg, **kwargs):
+def get_single_module(cfg, module=None, **kwargs):
     cfg["data_dim"] = kwargs.get("data_dim", None)
     cfg["data_shape"] = kwargs.get("data_shape", None)
 
-    model_to_module_map = {
-        "vae": get_vae_module,
-        "avb": get_avb_module,
-        "ae": get_ae_module,
-        "wae": get_wae_module,
-        "bigan": get_bigan_module,
-        "flow": get_flow_module,
-        "ebm": get_ebm_module,
-        "arm": get_arm_module,
-    }
-    module = model_to_module_map[cfg["model"]](cfg)
+    if module is None:
+        model_to_module_map = {
+            "vae": get_vae_module,
+            "avb": get_avb_module,
+            "ae": get_ae_module,
+            "wae": get_wae_module,
+            "bigan": get_bigan_module,
+            "flow": get_flow_module,
+            "ebm": get_ebm_module,
+            "arm": get_arm_module,
+        }
+        module = model_to_module_map[cfg["model"]](cfg)
 
     lr_scheduler_args = ["max_epochs", "train_dataset_size", "train_batch_size"]
     for arg in lr_scheduler_args:

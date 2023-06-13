@@ -21,9 +21,9 @@ from model_zoo import (
 from model_zoo.evaluators import Evaluator
 
 
-def load_run(run_dir):
+def load_run(run_dir, module=None):
     if os.path.exists(os.path.join(run_dir, "config.json")):
-        return load_single_module(run_dir)
+        return load_single_module(run_dir, module=module)
     elif os.path.exists(os.path.join(run_dir, "shared_config.json")):
         return load_twostep_module(run_dir)
     else:
@@ -38,7 +38,7 @@ def get_writer(run_dir, cfg):
     )
 
 
-def load_single_module(run_dir):
+def load_single_module(run_dir, module=None):
     cfg = load_config_from_run_dir(run_dir)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,12 +46,15 @@ def load_single_module(run_dir):
 
     data_dim = 784 if cfg["dataset"] in ["mnist", "fashion-mnist"] else 3072
     data_shape = (1, 28, 28) if cfg["dataset"] in ["mnist", "fashion-mnist"] else (3, 32, 32)
+    
     module = get_single_module(
         cfg,
+        module=module,
         train_dataset_size=cfg["train_dataset_size"],
         data_dim=data_dim,
         data_shape=data_shape
     ).to(device)
+    
 
     writer = get_writer(run_dir, cfg)
 

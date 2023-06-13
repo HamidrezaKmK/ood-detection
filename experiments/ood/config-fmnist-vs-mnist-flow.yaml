@@ -1,5 +1,7 @@
 base_model:
-  run_dir: single_flow_fmnist
+  run_dir: runs/flow_fmnist
+  config_dir: experiments/training/flow_elaborate_fmnist.yaml
+  checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
 data:
   # override the dataloader args that is obtained from the run_dir
   in_distribution:
@@ -13,13 +15,14 @@ data:
 ood:
   pick_single: True
   seed: 10
-  method: methods.local_optimization.OODLocalOptimization
+  method: ood.methods.local_optimization.OODLocalOptimization
   method_args:
     optimization_steps: 1000
     optimizer: torch.optim.LBFGS
     optimization_objective: nll
     intermediate_image_log_frequency: 20
+    progress_bar: True
     
 logger:
   project: ood-detection-single-runs
-  entity: deep-generative-modeling
+  entity: dgm-l6
