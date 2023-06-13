@@ -30,14 +30,14 @@ sweep_configuration:
             sweep_identifier: Z_optimizer
             sweep_alias:
               - LBFGS
-              - Adam
+              - SGD
             values:
-              - optimization_steps: 100
+              - optimization_steps: 50
                 optimizer: torch.optim.LBFGS
                 optimizer_args:
                   line_search_fn: strong_wolfe
               - optimization_steps: 500
-                optimizer: torch.optim.Adam
+                optimizer: torch.optim.SGD
                 optimizer_args:
                   lr: 0.01
 
@@ -46,16 +46,16 @@ sweep_configuration:
         sweep_identifier: B_dataset
         sweep_alias:
           - flow_fmnist
-          - flow_cifar10
-          - flow_svhn
+          # - flow_cifar10
+          # - flow_svhn
           - flow_mnist
         values:
           - base_model:
               run_dir: single_flow_fmnist
-          - base_model:
-              run_dir: single_flow_cifar10
-          - base_model:
-              run_dir: single_flow_svhn
+          # - base_model:
+          #     run_dir: single_flow_cifar10
+          # - base_model:
+          #     run_dir: single_flow_svhn
           - base_model:
               run_dir: single_flow_mnist
       - sweep: True

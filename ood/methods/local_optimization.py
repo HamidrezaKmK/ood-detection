@@ -123,7 +123,6 @@ class OODLocalOptimization(OODBaseMethod):
             self.repr_point.requires_grad = True
             
             likelihood_model = torch.nn.Sequential(torch.nn.Identity(), likelihood_model)
-            interim = likelihood_model[0](x)
             # add a method log_prob to the likelihood model which is equal to the log_prob of the second part
             likelihood_model.log_prob = lambda x: likelihood_model[1].log_prob(likelihood_model[0](x))
             
@@ -211,7 +210,7 @@ class OODLocalOptimization(OODBaseMethod):
                     # if self.repr_point has a representation [c, h, w], then split the channels
                     # into three almost equal parts and average each of the parts to get a [3, h, w] image
                     # that we can log to tensorboard
-                    img = self.repr_point.detach().cpu()
+                    img = self.repr_point.clone().detach().cpu()
                     if len(img.shape) == 3:
                         img = img.unsqueeze(0)
                     if img.shape[1] > 3:

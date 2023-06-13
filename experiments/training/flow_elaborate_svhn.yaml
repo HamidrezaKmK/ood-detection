@@ -1,0 +1,194 @@
+# Settings from the legacy config
+legacy:
+  dataset: svhn
+  cfg:
+    max_epochs: 100
+trainer:
+  sample_freq: 5 # logs the samples after every two epochs
+  writer:
+    type: wandb
+    entity: dgm-l6
+    project: training-dgms
+# Settings from the new configurations
+model:
+  class_path: model_zoo.density_estimator.flow.NormalizingFlow
+  init_args:
+    # Data args
+    flatten: False
+    data_shape: [3, 32, 32]
+    denoising_sigma: null
+    dequantize: True
+    scale_data: False
+    whitening_transform: False
+    logit_transform: False
+    clamp_samples: False
+    base_distribution:
+      class_path: nflows.distributions.StandardNormal
+      init_args:
+        shape: [3072]
+    transform:
+    ######################################################################### 
+    ###### First level
+    - class_path: nflows.transforms.reshape.SqueezeTransform
+      init_args:
+        factor: 2 # turns the image into [12, 16, 16]
+    - repeat_n: 3
+      content:
+      - class_path: nflows.transforms.normalization.ActNorm
+        init_args:
+          features: 12 # Apply activation normalization to all the channels
+      - class_path: nflows.transforms.conv.OneByOneConvolution
+        init_args: 
+          num_channels: 12
+      - class_path: model_zoo.density_estimator.flow.RQCouplingTransform
+        init_args: 
+          net:
+            class_path: nflows.nn.nets.resnet.ConvResidualNet
+            init_args:
+              hidden_channels: 64
+              num_blocks: 2
+              activation: torch.nn.functional.relu
+              dropout_probability: 0.2
+              use_batch_norm: False
+          mask:
+            dim: 12
+            flip: True
+          tails: linear
+          num_bins: 3
+          tail_bound: 1.0
+      - class_path: nflows.transforms.normalization.ActNorm
+        init_args:
+          features: 12 # Apply activation normalization to all the channels
+      - class_path: nflows.transforms.conv.OneByOneConvolution
+        init_args: 
+          num_channels: 12
+      - class_path: model_zoo.density_estimator.flow.RQCouplingTransform
+        init_args: 
+          net:
+            class_path: nflows.nn.nets.resnet.ConvResidualNet
+            init_args:
+              hidden_channels: 64
+              num_blocks: 2
+              activation: torch.nn.functional.relu
+              dropout_probability: 0.2
+              use_batch_norm: False
+          mask:
+            dim: 12
+            flip: False
+          tails: linear
+          num_bins: 3
+          tail_bound: 1.0
+    - class_path: nflows.transforms.conv.OneByOneConvolution
+      init_args: 
+        num_channels: 12
+      multiscale:
+        transform_output_shape: [12, 16, 16]
+    ###########################################################################
+    ##### Second Level
+    # squeeze
+    - class_path: nflows.transforms.reshape.SqueezeTransform
+      init_args:
+        factor: 2 # turns the image into [24, 8, 8]
+    - repeat_n: 3
+      content:
+      - class_path: nflows.transforms.normalization.ActNorm
+        init_args:
+          features: 24 # Apply activation normalization to all the channels
+      - class_path: nflows.transforms.conv.OneByOneConvolution
+        init_args: 
+          num_channels: 24
+      - class_path: model_zoo.density_estimator.flow.RQCouplingTransform
+        init_args: 
+          net:
+            class_path: nflows.nn.nets.resnet.ConvResidualNet
+            init_args:
+              hidden_channels: 64
+              num_blocks: 2
+              activation: torch.nn.functional.relu
+              dropout_probability: 0.2
+              use_batch_norm: False
+          mask:
+            dim: 24
+            flip: True
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
+      - class_path: nflows.transforms.normalization.ActNorm
+        init_args:
+          features: 24 # Apply activation normalization to all the channels
+      - class_path: nflows.transforms.conv.OneByOneConvolution
+        init_args: 
+          num_channels: 24
+      - class_path: model_zoo.density_estimator.flow.RQCouplingTransform
+        init_args: 
+          net:
+            class_path: nflows.nn.nets.resnet.ConvResidualNet
+            init_args:
+              hidden_channels: 64
+              num_blocks: 2
+              activation: torch.nn.functional.relu
+              dropout_probability: 0.2
+              use_batch_norm: False
+          mask:
+            dim: 24
+            flip: False
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
+    - class_path: nflows.transforms.conv.OneByOneConvolution
+      init_args: 
+        num_channels: 24
+      multiscale:
+        transform_output_shape: [24, 8, 8]
+    ###########################################################################
+    ##### Third Level
+    # squeeze
+    - class_path: nflows.transforms.reshape.SqueezeTransform
+      init_args:
+        factor: 8 # turns the image into [768, 1, 1]
+    - repeat_n: 2
+      content:
+      - class_path: nflows.transforms.normalization.ActNorm
+        init_args:
+          features: 768 # Apply activation normalization to all the channels
+      - class_path: model_zoo.density_estimator.flow.RQCouplingTransform
+        init_args: 
+          net:
+            class_path: nflows.nn.nets.resnet.ConvResidualNet
+            init_args:
+              hidden_channels: 1024
+              num_blocks: 2
+              activation: torch.nn.functional.relu
+              dropout_probability: 0.2
+              use_batch_norm: False
+          mask:
+            dim: 768
+            flip: True
+          tails: linear
+          num_bins: 3
+          tail_bound: 1.0
+      - class_path: nflows.transforms.normalization.ActNorm
+        init_args:
+          features: 768 # Apply activation normalization to all the channels
+      - class_path: model_zoo.density_estimator.flow.RQCouplingTransform
+        init_args: 
+          net:
+            class_path: nflows.nn.nets.resnet.ConvResidualNet
+            init_args:
+              hidden_channels: 1024
+              num_blocks: 2
+              activation: torch.nn.functional.relu
+              dropout_probability: 0.2
+              use_batch_norm: False
+          mask:
+            dim: 768
+            flip: False
+          tails: linear
+          num_bins: 3
+          tail_bound: 1.0
+    - class_path: nflows.transforms.conv.OneByOneConvolution
+      init_args: 
+        num_channels: 768
+      multiscale:
+        transform_output_shape: [768, 1, 1]
+    
