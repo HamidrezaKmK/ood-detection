@@ -10,6 +10,7 @@ base_config:
     method: methods.local_optimization.OODLocalOptimization
     method_args:
       intermediate_image_log_frequency: 20
+      optimization_objective: nll
 
 sweep_configuration:
   method: grid
@@ -19,12 +20,6 @@ sweep_configuration:
   parameters:
     ood:
       method_args:
-        optimization_objective:
-          sweep: True
-          sweep_identifier: Y_objective
-          values:
-            - nll
-            - grad_norm
         dy__upsert:
           - sweep: True
             sweep_identifier: Z_optimizer
@@ -51,13 +46,22 @@ sweep_configuration:
           - flow_mnist
         values:
           - base_model:
-              run_dir: single_flow_fmnist
+              run_dir: runs/flow_fmnist
+              config_dir: experiments/training/flow_elaborate_fmnist.yaml
+              checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
           # - base_model:
-          #     run_dir: single_flow_cifar10
+          #     run_dir: runs/flow_fmnist
+          #     config_dir: experiments/training/flow_elaborate_fmnist.yaml
+          #     checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
           # - base_model:
-          #     run_dir: single_flow_svhn
+          #     run_dir: runs/flow_fmnist
+          #     config_dir: experiments/training/flow_elaborate_fmnist.yaml
+          #     checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
           - base_model:
-              run_dir: single_flow_mnist
+              run_dir: runs/flow_mnist
+              config_dir: experiments/training/flow_elaborate_mnist.yaml
+              checkpoint_dir: runs/flow_mnist/checkpoints/de_nf_latest.pt
+          
       - sweep: True
         sweep_identifier: C_ood_or_not
         sweep_alias:
