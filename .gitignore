@@ -172,6 +172,7 @@ wandb
 .vscode/
 
 experiments/ood/sweeps/checkpoints-*
+experiments/sweeps/checkpoints-*
 
 # slurm logs
 *.log
