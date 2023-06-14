@@ -1,5 +1,5 @@
 project: local-optimization-dysweep
-entity: deep-generative-modeling
+entity: dgm-l6
 default_root_dir: experiments/sweeps
 count: 10000
 

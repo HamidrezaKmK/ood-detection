@@ -7,7 +7,7 @@ from pathlib import Path
 import traceback
 from dysweep import dysweep_run_resume, ResumableSweepConfig
 from pprint import pprint
-from ood import run_ood
+from main_ood import run_ood
 
 
 def build_args():
