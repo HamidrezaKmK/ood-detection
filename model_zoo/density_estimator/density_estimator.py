@@ -20,7 +20,7 @@ class DensityEstimator(TwoStepComponent):
         self._mid_level_representations = []
         self._representation_modules = []
         self._rank_to_index = {}
-        self._save_representation = True
+        self._save_representation = False
     
     def get_all_ranks(self):
         return list(self._rank_to_index.keys())

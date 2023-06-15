@@ -1,6 +1,6 @@
 project: local-optimization-dysweep
 entity: dgm-l6
-default_root_dir: experiments/sweeps
+default_root_dir: experiments/ood/sweeps
 count: 10000
 
 # BASE configuration which is being used
@@ -26,6 +26,7 @@ sweep_configuration:
             sweep_alias:
               - LBFGS
               - SGD
+              - Adam
             values:
               - optimization_steps: 50
                 optimizer: torch.optim.LBFGS
@@ -33,6 +34,10 @@ sweep_configuration:
                   line_search_fn: strong_wolfe
               - optimization_steps: 500
                 optimizer: torch.optim.SGD
+                optimizer_args:
+                  lr: 0.001
+              - optimization_steps: 500
+                optimizer: torch.optim.Adam
                 optimizer_args:
                   lr: 0.01
           - sweep: True
@@ -62,13 +67,13 @@ sweep_configuration:
               config_dir: experiments/training/flow_elaborate_fmnist.yaml
               checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
           - base_model:
-              run_dir: runs/flow_fmnist
-              config_dir: experiments/training/flow_elaborate_fmnist.yaml
-              checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
+              run_dir: runs/flow_cifar10
+              config_dir: experiments/training/flow_elaborate_cifar10.yaml
+              checkpoint_dir: runs/flow_cifar10/checkpoints/de_nf_latest.pt
           - base_model:
-              run_dir: runs/flow_fmnist
-              config_dir: experiments/training/flow_elaborate_fmnist.yaml
-              checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
+              run_dir: runs/flow_svhn
+              config_dir: experiments/training/flow_elaborate_svhn.yaml
+              checkpoint_dir: runs/flow_svhn/checkpoints/de_nf_latest.pt
           - base_model:
               run_dir: runs/flow_mnist
               config_dir: experiments/training/flow_elaborate_mnist.yaml

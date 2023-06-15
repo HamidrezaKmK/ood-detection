@@ -41,6 +41,8 @@ class OODLocalOptimization(OODBaseMethod):
         self.intermediate_image_log_frequency = intermediate_image_log_frequency
         self.pick_best = pick_best
         self.representation_rank = representation_rank
+        if self.x_batch is not None:
+            raise NotImplementedError("x_batch is not implemented yet.")
 
     def run(self):
         """
@@ -110,21 +112,27 @@ class OODLocalOptimization(OODBaseMethod):
         if self.representation_rank is not None:
             # run the likelihood model on x once to get the representation
             # likelihood_model.clear_representation()
-            likelihood_model.clear_representation()
+            
+            repr_module = likelihood_model.get_representation_module(self.representation_rank)
+            
+            def hook_fn1(module, args, output):
+                self.repr_point = output[0].clone().detach()
+            handle = repr_module.register_forward_hook(hook_fn1)
+            # call the log_prob function just to store the representation in self.repr_point
             likelihood_model.log_prob(x)
+            # remove the hook
+            handle.remove()
             
-            self.repr_point = likelihood_model.get_representation(self.representation_rank)[0]
-            
-            # print(self.repr_point)
-            
-            self.repr_point = self.repr_point.clone().detach()
             self.repr_point.requires_grad = True
             
             def hook_fn(module, args, output):
-                return self.repr_point, output[1]
+                # return a tuple where the first element is self.rep_point
+                # and the rest of the elements are output[1:] that are detached
+                # from the graph
+                return (self.repr_point,) + tuple([x.clone().detach() for x in output[1:]])
             
             repr_module = likelihood_model.get_representation_module(self.representation_rank)
-            repr_module.register_forward_hook(hook_fn)
+            handle = repr_module.register_forward_hook(hook_fn)
             
             origin = self.repr_point.clone()
         else:    
@@ -140,7 +148,7 @@ class OODLocalOptimization(OODBaseMethod):
             def hook_fn(module, args, output):
                 return self.repr_point
             
-            likelihood_model[0].register_forward_hook(hook_fn)
+            handle = likelihood_model[0].register_forward_hook(hook_fn)
 
             origin = x.clone()
             
@@ -215,57 +223,65 @@ class OODLocalOptimization(OODBaseMethod):
                     self.logger.log(
                         {
                             "nll_grad_norm": nll_grad_norm,
-                            "NLL": NLL_log,
+                            "nll": NLL_log,
                             "||x - origin||": torch.norm(self.repr_point - origin),
-                            "OBJ": objective,
+                            "objective": objective,
                         }
                     )
                 if intermediate_image_log_frequency is not None and (_ + 1) % intermediate_image_log_frequency == 0:
                     # if self.repr_point has a representation [c, h, w], then split the channels
                     # into three almost equal parts and average each of the parts to get a [3, h, w] image
                     # that we can log to tensorboard
-                    if len(self.repr_point.shape) in [3, 4]:
-                        img = self.repr_point.clone().detach().cpu()
-                        if len(img.shape) == 3:
-                            img = img.unsqueeze(0)
-                        
-                    else:
-                        img = self.repr_point.clone().detach().cpu()
-                        img = self.repr_point.unsqueeze(0)
-                        img = img.reshape(img.shape[0], -1)
-                        # by zero padding make img.shape[1] divisible by 32 * 32
-                        img = torch.nn.functional.pad(img, (0, 32 * 32 - img.shape[1] % (32 * 32)))
-                        img = img.reshape(img.shape[0], -1, 32, 32)
+                    repr_output = True
                     
-                    if img.shape[1] > 3:
-                        first_third = img[:, : img.shape[1] // 3, :, :].mean(dim=1, keepdim=True)
-                        second_third = img[:, img.shape[1] // 3 : 2 * img.shape[1] // 3, :, :].mean(
-                            dim=1, keepdim=True
+                    img = self.repr_point.clone().detach().cpu().squeeze(0)
+                    
+                    
+                    if len(img.shape) == 3:
+                        repr_output = False
+                        if img.shape[1] != img.shape[2] or img.shape[1] == 1:
+                            img = img.reshape(-1)
+                            repr_output = True
+                        
+                    if repr_output:
+                        img = img.reshape(-1)
+                        # by zero padding make img.shape[1] divisible by 32 * 32
+                        img = torch.nn.functional.pad(img, (0, 32 * 32 - img.shape[0] % (32 * 32)))
+                        img = img.reshape(-1, 32, 32)
+                    
+                    
+                    if img.shape[0] > 3:
+                        first_third = img[: img.shape[0] // 3, :, :].mean(dim=0, keepdim=True)
+                        second_third = img[img.shape[0] // 3 : 2 * img.shape[1] // 3, :, :].mean(
+                            dim=0, keepdim=True
                         )
-                        third_third = img[:, 2 * img.shape[1] // 3 :, :, :].mean(dim=1, keepdim=True)
-                        img = torch.cat([first_third, second_third, third_third], dim=1)
+                        third_third = img[2 * img.shape[0] // 3 :, :, :].mean(dim=0, keepdim=True)
+                        img = torch.cat([first_third, second_third, third_third], dim=0)
                     elif img.shape[1] == 1:
-                        img = img.repeat(1, 3, 1, 1)
+                        img = img.repeat(3, 1, 1)
                     elif img.shape[1] == 2:
-                        img = torch.cat([img, img[:, 0, :, :]], dim=1)
+                        img = torch.cat([img, img[0, :, :]], dim=0)
                         
-                        
-                    self.logger.log(
-                        {
-                            "optimization/intermediate_representation": [
-                                wandb.Image(img[i], caption=f"The image {i} in the optimization process") for i in range(img.shape[0])
-                            ]
-                        }
-                    )
+                    try:
+                        self.logger.log(
+                            {
+                                "optimization/intermediate_representation": [
+                                    wandb.Image(img, caption=f"The latent representation.")
+                                ]
+                            }
+                        )
+                    except Exception as e:
+                        print(e)
+                        print("Could not log intermediate image.")
 
         if pick_best:
             self.repr_point = best_repr_point
 
-        if self.logger is not None:
-            # add x and self.repr_point images to the tensorboard writer
-            self.logger.log(
-                {
-                    "optimization/final_image": [wandb.Image(self.repr_point, caption="The image we end up with")],
-                }
-            )
+        # turn off all the gradients for likelihood_model
+        for param in self.likelihood_model.parameters():
+            param.requires_grad_(True)
+        
+        # remove the hook that helped us get the representation
+        handle.remove()
+        
         return self.repr_point.detach().cpu()
