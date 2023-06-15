@@ -134,10 +134,10 @@ def run_ood(config: dict):
     np.random.seed(config["data"]["seed"])
 
     # get 9 random samples from the in distribution dataset
-    in_samples = in_train_loader.dataset.x[np.random.randint(
-        len(in_train_loader.dataset), size=9)]
-    out_samples = ood_train_loader.dataset.x[np.random.randint(
-        len(ood_train_loader.dataset), size=9)]
+    in_samples = in_test_loader.dataset.x[np.random.randint(
+        len(in_test_loader.dataset), size=9)]
+    out_samples = ood_test_loader.dataset.x[np.random.randint(
+        len(ood_test_loader.dataset), size=9)]
     in_samples = torchvision.utils.make_grid(in_samples, nrow=3)
     out_samples = torchvision.utils.make_grid(out_samples, nrow=3)
     wandb.log({"data/in_distribution_samples": [wandb.Image(
@@ -175,6 +175,8 @@ def run_ood(config: dict):
     if config["ood"]["pick_single"]:
         # pick a single image the selected batch
         method_args["x"] = x[np.random.randint(x.shape[0])]
+    elif "use_dataloader" in config["ood"] and config["ood"]["use_dataloader"]:
+        method_args["x_loader"] = ood_test_loader
     elif "pick_count" not in config["ood"]:
         raise ValueError("pick_count not in config when pick_single=False")
     else:
