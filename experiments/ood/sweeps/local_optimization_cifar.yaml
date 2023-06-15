@@ -35,28 +35,20 @@ sweep_configuration:
                 optimizer: torch.optim.SGD
                 optimizer_args:
                   lr: 0.01
-          - sweep: True
-            sweep_identifier: Z_representation_rank
-            sweep_alias:
-            - input
-            - shallow
-            - middle
-            - deep
-            values:
-            - representation_rank: null
-            - representation_rank: 10
-            - representation_rank: 25
-            - representation_rank: 43
 
     dy__upsert:
       - sweep: True
         sweep_identifier: B_dataset
         sweep_alias:
-          - flow_fmnist
+          # - flow_fmnist
           - flow_cifar10
           - flow_svhn
-          - flow_mnist
+          # - flow_mnist
         values:
+          # - base_model:
+          #     run_dir: runs/flow_fmnist
+          #     config_dir: experiments/training/flow_elaborate_fmnist.yaml
+          #     checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
           - base_model:
               run_dir: runs/flow_fmnist
               config_dir: experiments/training/flow_elaborate_fmnist.yaml
@@ -65,14 +57,10 @@ sweep_configuration:
               run_dir: runs/flow_fmnist
               config_dir: experiments/training/flow_elaborate_fmnist.yaml
               checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
-          - base_model:
-              run_dir: runs/flow_fmnist
-              config_dir: experiments/training/flow_elaborate_fmnist.yaml
-              checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
-          - base_model:
-              run_dir: runs/flow_mnist
-              config_dir: experiments/training/flow_elaborate_mnist.yaml
-              checkpoint_dir: runs/flow_mnist/checkpoints/de_nf_latest.pt
+          # - base_model:
+          #     run_dir: runs/flow_mnist
+          #     config_dir: experiments/training/flow_elaborate_mnist.yaml
+          #     checkpoint_dir: runs/flow_mnist/checkpoints/de_nf_latest.pt
           
       - sweep: True
         sweep_identifier: C_ood_or_not
