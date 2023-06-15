@@ -179,6 +179,35 @@ class NormalizingFlow(DensityEstimator):
             distribution=self.base_distribution
         )
 
+    # def representation_hook(self, module, args, output, module_rank):
+    #     """
+    #     This is a function that gets called on each of the hooked modules
+    #     When registering the hook for every single module, we pass it into
+    #     this function to get the representation output of the module.
+        
+    #     Here, this function simply returns the output of the module, in default.
+    #     However, this function can be overridden to return a different representation.
+    #     """
+    #     # if not hasattr(self, 'called_count'):
+    #     #     self.called_count = 0
+        
+    #     # # if self.called_count < 10:
+    #     # #     # if module_rank == 2:
+    #     # #     print("**************")
+    #     # #     print("Module rank: ", module_rank)
+    #     # #     print("args", len(args))
+    #     # #     print("args0", args[0].shape)
+    #     # #     print("args1", type(args[1]))
+    #     # #     print("outpus", len(output))
+    #     # #     print("output0", output[0].shape)
+    #     # #     print("output1", output[1].shape)
+    #     # #     # print("Module output: ", output)
+    #     # #     print("Module", module)
+    #     # #     print("**************")
+    #     # #     self.called_count += 1
+            
+    #     return output[0]
+    
     def sample(self, n_samples):
         # TODO: batch in parent class
         samples = self._nflow.sample(n_samples)

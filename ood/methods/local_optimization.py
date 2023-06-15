@@ -109,17 +109,27 @@ class OODLocalOptimization(OODBaseMethod):
         
         if self.representation_rank is not None:
             # run the likelihood model on x once to get the representation
-            likelihood_model(x)
-            self.repr_point = likelihood_model.get_representation(self.representation_rank).clone().detach()
+            # likelihood_model.clear_representation()
+            likelihood_model.clear_representation()
+            likelihood_model.log_prob(x)
+            
+            self.repr_point = likelihood_model.get_representation(self.representation_rank)[0]
+            
+            # print(self.repr_point)
+            
+            self.repr_point = self.repr_point.clone().detach()
             self.repr_point.requires_grad = True
             
             def hook_fn(module, args, output):
-                return self.repr_point
+                return self.repr_point, output[1]
             
             repr_module = likelihood_model.get_representation_module(self.representation_rank)
             repr_module.register_forward_hook(hook_fn)
+            
+            origin = self.repr_point.clone()
         else:    
-            self.repr_point = x.clone().detach()
+            # TODO: handle the issue here with LBFGS
+            self.repr_point = x.clone().detach().contiguous()
             self.repr_point.requires_grad = True
             
             likelihood_model = torch.nn.Sequential(torch.nn.Identity(), likelihood_model)
@@ -131,7 +141,8 @@ class OODLocalOptimization(OODBaseMethod):
                 return self.repr_point
             
             likelihood_model[0].register_forward_hook(hook_fn)
-        
+
+            origin = x.clone()
             
         def forward_func(x):
             # get the device of the torch.nn.Module likelihood_model
@@ -184,6 +195,7 @@ class OODLocalOptimization(OODBaseMethod):
                 optimizer.step()
             
             nll = forward_func(x)
+            
             nll.backward()
             nll_grad_norm = torch.norm(self.repr_point.grad)
             # clear the gradient
@@ -198,21 +210,33 @@ class OODLocalOptimization(OODBaseMethod):
 
             if self.logger is not None:
                 with torch.no_grad():
+                    NLL_log = nll.detach().cpu().item()
+                    objective = obj_func(x).detach().cpu().item()
                     self.logger.log(
                         {
                             "nll_grad_norm": nll_grad_norm,
-                            "nll": nll,
-                            "||x - self.repr_point||": torch.norm(self.repr_point - x),
-                            "objective": obj_func(x),
+                            "NLL": NLL_log,
+                            "||x - origin||": torch.norm(self.repr_point - origin),
+                            "OBJ": objective,
                         }
                     )
                 if intermediate_image_log_frequency is not None and (_ + 1) % intermediate_image_log_frequency == 0:
                     # if self.repr_point has a representation [c, h, w], then split the channels
                     # into three almost equal parts and average each of the parts to get a [3, h, w] image
                     # that we can log to tensorboard
-                    img = self.repr_point.clone().detach().cpu()
-                    if len(img.shape) == 3:
-                        img = img.unsqueeze(0)
+                    if len(self.repr_point.shape) in [3, 4]:
+                        img = self.repr_point.clone().detach().cpu()
+                        if len(img.shape) == 3:
+                            img = img.unsqueeze(0)
+                        
+                    else:
+                        img = self.repr_point.clone().detach().cpu()
+                        img = self.repr_point.unsqueeze(0)
+                        img = img.reshape(img.shape[0], -1)
+                        # by zero padding make img.shape[1] divisible by 32 * 32
+                        img = torch.nn.functional.pad(img, (0, 32 * 32 - img.shape[1] % (32 * 32)))
+                        img = img.reshape(img.shape[0], -1, 32, 32)
+                    
                     if img.shape[1] > 3:
                         first_third = img[:, : img.shape[1] // 3, :, :].mean(dim=1, keepdim=True)
                         second_third = img[:, img.shape[1] // 3 : 2 * img.shape[1] // 3, :, :].mean(
@@ -220,10 +244,15 @@ class OODLocalOptimization(OODBaseMethod):
                         )
                         third_third = img[:, 2 * img.shape[1] // 3 :, :, :].mean(dim=1, keepdim=True)
                         img = torch.cat([first_third, second_third, third_third], dim=1)
-                    
+                    elif img.shape[1] == 1:
+                        img = img.repeat(1, 3, 1, 1)
+                    elif img.shape[1] == 2:
+                        img = torch.cat([img, img[:, 0, :, :]], dim=1)
+                        
+                        
                     self.logger.log(
                         {
-                            "optimization/intermediate_image": [
+                            "optimization/intermediate_representation": [
                                 wandb.Image(img[i], caption=f"The image {i} in the optimization process") for i in range(img.shape[0])
                             ]
                         }

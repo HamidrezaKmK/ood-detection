@@ -32,10 +32,8 @@ class DensityEstimator(TwoStepComponent):
         # keep a list of sorted modules according to rank in self._representation_modules
         # and register forward hooks on them
         
-        if not hasattr(self, '_representation_modules'):
-            self._representation_modules = []
-        
         self._representation_modules.append((rank, module))
+        
         self._representation_modules = sorted(self._representation_modules, key=lambda x: x[0])
         
         # find the index of the module in the sorted list
@@ -62,7 +60,7 @@ class DensityEstimator(TwoStepComponent):
         # rank, we can be sure that the forward hooks will be called
         # in the same order as the modules are registered
         for module in self._representation_modules:
-            self.handles.append(module[1].register_forward_hook(functools.partial(forward_hook, rank=rank)))
+            self.handles.append(module[1].register_forward_hook(functools.partial(forward_hook, rank=module[0])))
     
     
     def representation_hook(self, module, args, output, module_rank):
