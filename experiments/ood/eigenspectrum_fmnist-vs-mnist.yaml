@@ -19,7 +19,7 @@ ood:
   method: ood.methods.second_order.HessianSpectrumMonitor
   method_args:
     progress_bar: True
-    data_limit: 10
+    data_limit: 5
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6

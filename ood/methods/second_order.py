@@ -39,58 +39,73 @@ class HessianSpectrumMonitor(OODBaseMethod):
             raise NotImplementedError("representation_rank is not implemented yet.")
 
     def run(self):
-        if self.progress_bar:
-            iterable = tqdm(self.x_loader)
-        else:
-            iterable = self.x_loader
             
         def nll_func(x):
             return -self.likelihood_model.log_prob(x.unsqueeze(0)).squeeze(0)
         
         eigval_history = None
         device = self.likelihood_model.device
-        cnt = 0
-        for x_batch, _, _ in iterable:
-            for i in range(x_batch.shape[0]):
-                if cnt >= self.data_limit:
-                   break 
-                cnt += 1
-                x = x_batch[i].to(device)
-                # calculate the Hessian w.r.t x0
-                hess = torch.func.hessian(nll_func)(x)
-
-                # Hess has weired dimensions now, we turn it into a 2D matrix
-                # by reshaping only the first half.
-                # For example, if the shape of hess is (2, 2, 2, 2), then we reshape it to (4, 4)
-                # For images of size (1, 28, 28), the shape of hess is (1, 28, 28, 1, 28, 28)
-                # and we reshape it to (784, 784)
-                hess = hess.squeeze()
-                first_half = 1
-                for i, dim in enumerate(hess.shape):
-                    if i < len(hess.shape) // 2:
-                        first_half *= dim
-                hess = hess.reshape(first_half, -1).detach().cpu().numpy() 
-                
-                # get all the eigenvalues of the hessian
-                eigvals, eigvectors = torch.linalg.eigh(hess)
-
-                # sort all the eigenvalues
-                eigvals = eigvals.sort(descending=True).values
-                
-                # detach and put it on cpu and add it to the list
-                if eigval_history is None:
-                    eigval_history = eigvals.detach().cpu()
-                else:
-                    eigval_history = torch.cat([eigval_history, eigvals.detach().cpu()], dim=0)
         
-        
+        if self.progress_bar:
+            iterable = tqdm(range(self.data_limit))
+        else: 
+            iterable = range(self.data_limit)
             
+        # for any index i find the corresponding element in the corresponding batch
+        lm = 0
+        real_ind = 0
+        tt = iter(self.x_loader)
+        
+        for ind in iterable:
+            if ind < lm:
+                x = current_batch[real_ind]
+            else:
+                current_batch, _, _ = next(tt)
+                real_ind = ind - lm
+                lm += len(current_batch)
+                x = current_batch[real_ind]
+            real_ind += 1
+            
+            x = x.to(device)
+            # calculate the Hessian w.r.t x0
+            
+            # TODO: make this compatible with functorch
+            hess = torch.autograd.functional.hessian(nll_func, x)
+
+            # Hess has weired dimensions now, we turn it into a 2D matrix
+            # by reshaping only the first half.
+            # For example, if the shape of hess is (2, 2, 2, 2), then we reshape it to (4, 4)
+            # For images of size (1, 28, 28), the shape of hess is (1, 28, 28, 1, 28, 28)
+            # and we reshape it to (784, 784)
+            hess = hess.squeeze()
+            first_half = 1
+            for i, dim in enumerate(hess.shape):
+                if i < len(hess.shape) // 2:
+                    first_half *= dim
+            hess = hess.reshape(first_half, -1).detach()
+            
+            # get all the eigenvalues of the hessian
+            eigvals, eigvectors = torch.linalg.eigh(hess)
+
+            # sort all the eigenvalues
+            eigvals = eigvals.sort(descending=True).values
+            
+            
+            # detach and put it on cpu and add it to the list
+            if eigval_history is None:
+                eigval_history = eigvals.detach().cpu().unsqueeze(0)
+            else:
+                eigval_history = torch.cat([eigval_history, eigvals.detach().cpu().unsqueeze(0)], dim=0)
+        
+        
         # calculate the mean and std of the k'th largest eigenvalue
         # for all the datapoints using the eigval_history
-        eig_mean = torch.mean(eigval_history, dim=1)
-        eig_std = torch.std(eigval_history, dim=1)
+        eig_mean = torch.mean(eigval_history, dim=0)
+        eig_std = torch.std(eigval_history, dim=0)
         
-        data = [[s] for s in eig_mean]
-        table = wandb.Table(data=data, columns=["eig_mean"])
-        wandb.log({'my_histogram': wandb.plot.histogram(table, "eigenvalue mean",
+        data = [[mean, std] for mean, std in zip(eig_mean, eig_std)]
+        table = wandb.Table(data=data, columns=["eig_mean", "eig_std"])
+        wandb.log({'spectrum first order statistics': wandb.plot.histogram(table, "eig_mean",
             title="Mean of the eigenvalues")})
+        wandb.log({'spectrum second order statistics': wandb.plot.histogram(table, "eig_std",
+            title="STD of the eigenvalues")})
