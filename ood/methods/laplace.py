@@ -145,9 +145,16 @@ class Laplace(OODBaseMethod):
                 if self.score_type == 'ignore_negative':
                     correction = torch.sum(torch.log(eigvals[eigvals > 0]))
                 elif self.score_type == 'ignore_tails':
-                    t_l = int(self.score_args['factor_left'] * len(eigvals))
-                    t_r = int(self.score_args['factor_right'] * len(eigvals))
-                    correction = torch.sum(torch.log(eigvals[t_l:-t_r]))
+                    t_l = 0
+                    if 'factor_left' in self.score_args:
+                        t_l = int(self.score_args['factor_left'] * len(eigvals))
+                    t_r = 1
+                    if 'factor_right' in self.score_args:
+                        t_r = max(1, int(self.score_args['factor_right'] * len(eigvals)))
+                    
+                    new_eigvals = eigvals[t_l:-t_r]
+                    
+                    correction = torch.sum(torch.log(new_eigvals[new_eigvals > 0]))
                 else:
                     raise ValueError(f'Unknown score type: {self.score_type}')
 
