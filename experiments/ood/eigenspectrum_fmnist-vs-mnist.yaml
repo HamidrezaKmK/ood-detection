@@ -20,6 +20,17 @@ ood:
   method_args:
     progress_bar: True
     data_limit: 5
+    use_functorch: False
+    use_local_optimization: False
+    plot_std: False
+    representation_rank: 10
+    use_local_optimization: True
+    local_optimization_args:
+      optimization_steps: 2
+      optimizer: torch.optim.LBFGS
+      optimizer_args:
+        line_search_fn: strong_wolfe
+
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6

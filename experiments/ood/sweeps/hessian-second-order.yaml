@@ -15,9 +15,7 @@ base_config:
       data_limit: 5
       # TODO: this should be fixed!
       use_functorch: False
-      plot_std: False
-  data:
-    seed: 10
+      plot_std: True
 
 sweep_configuration:
   method: grid
@@ -29,7 +27,7 @@ sweep_configuration:
       method_args:
         dy__upsert:
           - sweep: True
-            sweep_identifier: Z_optimize_or_not
+            sweep_identifier: Z_optimizer
             sweep_alias:
               - NoOptim
               - LBFGS

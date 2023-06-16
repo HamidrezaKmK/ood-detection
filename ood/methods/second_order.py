@@ -32,6 +32,7 @@ class HessianSpectrumMonitor(OODBaseMethod):
         use_functorch: bool = False,
         use_local_optimization: bool = False,
         local_optimization_args: th.Optional[th.Dict[str, th.Any]] = None,
+        plot_std: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(x_loader=x_loader, likelihood_model=likelihood_model, logger=logger, **kwargs)
@@ -42,18 +43,34 @@ class HessianSpectrumMonitor(OODBaseMethod):
         self.data_limit = inf if data_limit is None else data_limit
         
         # TODO: implement representation_rank
-        if representation_rank is not None:
-            raise NotImplementedError("representation_rank is not implemented yet.")
+        # if representation_rank is not None:
+        #     raise NotImplementedError("representation_rank is not implemented yet.")
 
         self.use_functorch = use_functorch
         self.local_optimization_args = local_optimization_args
         self.use_local_optimization = use_local_optimization
+        self.plot_std = plot_std
         
     def run(self):
             
-        def nll_func(x):
-            return -self.likelihood_model.log_prob(x.unsqueeze(0)).squeeze(0)
-        
+        def nll_func(repr_point):
+            if self.representation_rank is None:
+                return -self.likelihood_model.log_prob(repr_point.unsqueeze(0)).squeeze(0)
+            else:
+            
+                def hook_fn(module, args, output):
+                    # return a tuple where the first element is self.rep_point
+                    # and the rest of the elements are output[1:] that are detached
+                    # from the graph
+                    return (repr_point.unsqueeze(0),) + tuple([x.clone().detach() for x in output[1:]])
+                
+                repr_module = self.likelihood_model.get_representation_module(self.representation_rank)
+                handle = repr_module.register_forward_hook(hook_fn)
+                dummy = torch.zeros(self.input_shape).to(device).unsqueeze(0)
+                ret = -self.likelihood_model.log_prob(dummy).squeeze(0)
+                handle.remove()
+                return ret
+             
         eigval_history = None
         device = self.likelihood_model.device
         
@@ -78,17 +95,35 @@ class HessianSpectrumMonitor(OODBaseMethod):
             real_ind += 1
             
             x = x.to(device)
-            
+            self.input_shape = x.shape
             if self.use_local_optimization:
-                x = OODLocalOptimization(self.likelihood_model, x, representation_rank=self.representation_rank, logger=self.logger, **self.local_optimization_args).run()
-            
+                # instantiate a local optimization module
+                local_optimization_module = OODLocalOptimization(likelihood_model=self.likelihood_model, x=x, representation_rank=self.representation_rank, logger=self.logger, **self.local_optimization_args)
+                # run the local optimization module
+                
+                repr_point = local_optimization_module.run().squeeze(0).to(device)
+            else:
+                if self.representation_rank is None:
+                    repr_point = x.clone()
+                else:
+                    repr_module = self.likelihood_model.get_representation_module(self.representation_rank)
+                
+                    def hook_fn1(module, args, output):
+                        self.repr_point = output[0].clone().detach()
+                    handle = repr_module.register_forward_hook(hook_fn1)
+                    # call the log_prob function just to store the representation in self.repr_point
+                    self.likelihood_model.log_prob(x.unsqueeze(0))
+                    # remove the hook
+                    handle.remove()
+                    repr_point = self.repr_point.squeeze(0)
+                
             # calculate the Hessian w.r.t x0
             
             # TODO: make this compatible with functorch
             if self.use_functorch:
-                hess = torch.func.hessian(nll_func)(x)
+                hess = torch.func.hessian(nll_func)(repr_point)
             else:
-                hess = torch.autograd.functional.hessian(nll_func, x)
+                hess = torch.autograd.functional.hessian(nll_func, repr_point)
 
             # Hess has weired dimensions now, we turn it into a 2D matrix
             # by reshaping only the first half.
@@ -106,7 +141,7 @@ class HessianSpectrumMonitor(OODBaseMethod):
             eigvals, eigvectors = torch.linalg.eigh(hess)
 
             # sort all the eigenvalues
-            eigvals = eigvals.sort(descending=True).values
+            eigvals = eigvals.sort(descending=False).values
             
             
             # detach and put it on cpu and add it to the list
@@ -119,21 +154,29 @@ class HessianSpectrumMonitor(OODBaseMethod):
         # calculate the mean and std of the k'th largest eigenvalue
         # for all the datapoints using the eigval_history
         eig_mean = torch.mean(eigval_history, dim=0)
-        eig_std = torch.std(eigval_history, dim=0)
+        if self.plot_std:
+            eig_std = torch.std(eigval_history, dim=0)
         x_axis = torch.arange(len(eig_mean))
         
         # create three lists, one with eig_mean, one with eig_mean + eig_std and one with eig_mean - eig_std
         # and log them to wandb
-        eig_mean_list = eig_mean.tolist()
-        eig_plus_std_list = (eig_mean + eig_std).tolist()
-        eig_minus_std_list = (eig_mean - eig_std).tolist()
-        x_axis_list = x_axis.tolist()
-        
-        wandb.log({
-            'hessian_eigen_spectrum': wandb.plot.line_series(
-                xs = [x_axis_list, x_axis_list, x_axis_list],
-                ys = [eig_mean_list, eig_plus_std_list, eig_minus_std_list],
-                keys=['eig_mean', 'eig_mean + eig_std', 'eig_mean - eig_std'],
-                title="Hessian Eigen Spectrum",
-            )
-        })
+        if self.plot_std:
+            eig_mean_list = eig_mean.tolist()
+            eig_plus_std_list = (eig_mean + eig_std).tolist()
+            eig_minus_std_list = (eig_mean - eig_std).tolist()
+            x_axis_list = x_axis.tolist()
+            
+            wandb.log({
+                'hessian_eigen_spectrum': wandb.plot.line_series(
+                    xs = [x_axis_list, x_axis_list, x_axis_list],
+                    ys = [eig_mean_list, eig_plus_std_list, eig_minus_std_list],
+                    keys=['eig_mean', 'eig_mean + eig_std', 'eig_mean - eig_std'],
+                    title="Hessian Eigen Spectrum",
+                )
+            })
+        else:
+            data = [[x, y] for x, y in zip(x_axis.tolist(), eig_mean.tolist())]
+            table = wandb.Table(data=data, columns = ["i", "eig_mean"])
+            wandb.log(
+                {"hessian_eigen_spectrum" : wandb.plot.line(table, "i", "eig_mean",
+                    title="Hessian Eigen Spectrum")})
