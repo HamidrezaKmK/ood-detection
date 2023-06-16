@@ -6,6 +6,8 @@ import wandb
 from tqdm import tqdm
 from math import inf
 import numpy as np
+from .local_optimization import OODLocalOptimization
+import matplotlib.pyplot as plt
 
 class HessianSpectrumMonitor(OODBaseMethod):
     """
@@ -27,6 +29,9 @@ class HessianSpectrumMonitor(OODBaseMethod):
         x_loader: th.Optional[torch.utils.data.DataLoader] = None,
         logger: th.Optional[th.Any] = None,
         data_limit: th.Optional[int] = None,
+        use_functorch: bool = False,
+        use_local_optimization: bool = False,
+        local_optimization_args: th.Optional[th.Dict[str, th.Any]] = None,
         **kwargs,
     ) -> None:
         super().__init__(x_loader=x_loader, likelihood_model=likelihood_model, logger=logger, **kwargs)
@@ -35,9 +40,15 @@ class HessianSpectrumMonitor(OODBaseMethod):
         
         self.representation_rank = representation_rank
         self.data_limit = inf if data_limit is None else data_limit
+        
+        # TODO: implement representation_rank
         if representation_rank is not None:
             raise NotImplementedError("representation_rank is not implemented yet.")
 
+        self.use_functorch = use_functorch
+        self.local_optimization_args = local_optimization_args
+        self.use_local_optimization = use_local_optimization
+        
     def run(self):
             
         def nll_func(x):
@@ -67,10 +78,17 @@ class HessianSpectrumMonitor(OODBaseMethod):
             real_ind += 1
             
             x = x.to(device)
+            
+            if self.use_local_optimization:
+                x = OODLocalOptimization(self.likelihood_model, x, representation_rank=self.representation_rank, logger=self.logger, **self.local_optimization_args).run()
+            
             # calculate the Hessian w.r.t x0
             
             # TODO: make this compatible with functorch
-            hess = torch.autograd.functional.hessian(nll_func, x)
+            if self.use_functorch:
+                hess = torch.func.hessian(nll_func)(x)
+            else:
+                hess = torch.autograd.functional.hessian(nll_func, x)
 
             # Hess has weired dimensions now, we turn it into a 2D matrix
             # by reshaping only the first half.
@@ -102,10 +120,20 @@ class HessianSpectrumMonitor(OODBaseMethod):
         # for all the datapoints using the eigval_history
         eig_mean = torch.mean(eigval_history, dim=0)
         eig_std = torch.std(eigval_history, dim=0)
+        x_axis = torch.arange(len(eig_mean))
         
-        data = [[mean, std] for mean, std in zip(eig_mean, eig_std)]
-        table = wandb.Table(data=data, columns=["eig_mean", "eig_std"])
-        wandb.log({'spectrum first order statistics': wandb.plot.histogram(table, "eig_mean",
-            title="Mean of the eigenvalues")})
-        wandb.log({'spectrum second order statistics': wandb.plot.histogram(table, "eig_std",
-            title="STD of the eigenvalues")})
+        # create three lists, one with eig_mean, one with eig_mean + eig_std and one with eig_mean - eig_std
+        # and log them to wandb
+        eig_mean_list = eig_mean.tolist()
+        eig_plus_std_list = (eig_mean + eig_std).tolist()
+        eig_minus_std_list = (eig_mean - eig_std).tolist()
+        x_axis_list = x_axis.tolist()
+        
+        wandb.log({
+            'hessian_eigen_spectrum': wandb.plot.line_series(
+                xs = [x_axis_list, x_axis_list, x_axis_list],
+                ys = [eig_mean_list, eig_plus_std_list, eig_minus_std_list],
+                keys=['eig_mean', 'eig_mean + eig_std', 'eig_mean - eig_std'],
+                title="Hessian Eigen Spectrum",
+            )
+        })

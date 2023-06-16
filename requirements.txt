@@ -15,3 +15,6 @@ dysweep
 dypy
 wandb
 jsonargparse
+
+# visualization
+plotly

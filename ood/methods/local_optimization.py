@@ -205,10 +205,7 @@ class OODLocalOptimization(OODBaseMethod):
             nll = forward_func(x)
             
             nll.backward()
-            nll_grad_norm = torch.norm(self.repr_point.grad)
-            # get the dimensionality of self.repr_point
-            dim = self.repr_point.numel()
-            nll_grad_norm = nll_grad_norm / dim
+            nll_grad_norm = torch.norm(self.repr_point.grad, p=1.0) / self.repr_point.numel()
             
             # clear the gradient
             self.repr_point.grad.zero_()
