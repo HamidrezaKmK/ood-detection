@@ -32,7 +32,10 @@ class HessianSpectrumMonitor(OODBaseMethod):
         use_functorch: bool = False,
         use_local_optimization: bool = False,
         local_optimization_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # plotting the second order and first_order characteristics
         plot_std: bool = False,
+        
         **kwargs,
     ) -> None:
         super().__init__(x_loader=x_loader, likelihood_model=likelihood_model, logger=logger, **kwargs)
@@ -41,10 +44,6 @@ class HessianSpectrumMonitor(OODBaseMethod):
         
         self.representation_rank = representation_rank
         self.data_limit = inf if data_limit is None else data_limit
-        
-        # TODO: implement representation_rank
-        # if representation_rank is not None:
-        #     raise NotImplementedError("representation_rank is not implemented yet.")
 
         self.use_functorch = use_functorch
         self.local_optimization_args = local_optimization_args
@@ -52,7 +51,10 @@ class HessianSpectrumMonitor(OODBaseMethod):
         self.plot_std = plot_std
         
     def run(self):
-            
+        zero_order_characteristics = []
+        first_order_characteristics = []
+        second_order_characteristics = []
+        
         def nll_func(repr_point):
             if self.representation_rank is None:
                 return -self.likelihood_model.log_prob(repr_point.unsqueeze(0)).squeeze(0)
@@ -116,6 +118,20 @@ class HessianSpectrumMonitor(OODBaseMethod):
                     # remove the hook
                     handle.remove()
                     repr_point = self.repr_point.squeeze(0)
+                    
+            # First order characteristics
+            # activate requires_grad for repr_point
+            repr_point.requires_grad = True
+            loss = nll_func(repr_point)
+            zero_order_characteristics.append(loss.detach().cpu().item())
+            loss.backward()
+            first_order_score = torch.norm(repr_point.grad, p=1.0) / repr_point.grad.numel()
+            first_order_characteristics.append(first_order_score.detach().cpu().item())
+            # zero out the gradient
+            repr_point.grad.zero_()
+            # deactivate requires_grad for repr_point
+            repr_point.requires_grad = False
+            
                 
             # calculate the Hessian w.r.t x0
             
@@ -143,13 +159,26 @@ class HessianSpectrumMonitor(OODBaseMethod):
             # sort all the eigenvalues
             eigvals = eigvals.sort(descending=False).values
             
-            
+            second_order_score = torch.sum(torch.log(eigvals[eigvals > 0]))
+            second_order_characteristics.append(second_order_score.detach().cpu().item())
             # detach and put it on cpu and add it to the list
             if eigval_history is None:
                 eigval_history = eigvals.detach().cpu().unsqueeze(0)
             else:
                 eigval_history = torch.cat([eigval_history, eigvals.detach().cpu().unsqueeze(0)], dim=0)
         
+        data = [[x, y, z] for x, y, z in zip(zero_order_characteristics, first_order_characteristics, second_order_characteristics)]
+        table = wandb.Table(data=data, columns=["nll", "||grad nll||/dim", "log det Hessian nll"])
+        
+        wandb.log({
+            'characteristics (0-vs-1)': wandb.plot.scatter(table, "nll", "||grad nll||/dim", title="0-vs-1")
+        })
+        wandb.log({
+            'characteristics (0-vs-2)': wandb.plot.scatter(table, "nll", "log det Hessian nll", title="0-vs-2")
+        })
+        wandb.log({
+            'characteristics (1-vs-2)': wandb.plot.scatter(table, "||grad nll||/dim", "log det Hessian nll", title="1-vs-2")
+        })
         
         # calculate the mean and std of the k'th largest eigenvalue
         # for all the datapoints using the eigval_history
