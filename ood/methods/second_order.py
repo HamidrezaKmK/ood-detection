@@ -36,6 +36,10 @@ class HessianSpectrumMonitor(OODBaseMethod):
         
         # plotting the second order and first_order characteristics
         plot_std: bool = False,
+        second_order_score_type: th.Literal['ignore_negative', 'ignore_tails', 'absolute_value', 'force_negative'] = 'ignore_negative',
+        second_order_score_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        cancel_background: bool = False,
         
         **kwargs,
     ) -> None:
@@ -51,12 +55,17 @@ class HessianSpectrumMonitor(OODBaseMethod):
         self.use_local_optimization = use_local_optimization
         self.plot_std = plot_std
         
+        self.second_order_score_type = second_order_score_type
+        self.second_order_score_args = second_order_score_args or {}
+        
+        self.cancel_background = cancel_background
+        
     def run(self):
         zero_order_characteristics = []
         first_order_characteristics = []
         second_order_characteristics = []
         
-        def nll_func(repr_point):
+        def nll_func(repr_point, dummy=None):
             if self.representation_rank is None:
                 return -self.likelihood_model.log_prob(repr_point.unsqueeze(0)).squeeze(0)
             else:
@@ -69,7 +78,7 @@ class HessianSpectrumMonitor(OODBaseMethod):
                 
                 repr_module = self.likelihood_model.get_representation_module(self.representation_rank)
                 handle = repr_module.register_forward_hook(hook_fn)
-                dummy = torch.zeros(self.input_shape).to(device).unsqueeze(0)
+                dummy = (torch.zeros(self.input_shape) if dummy is None else dummy).to(device).unsqueeze(0)
                 ret = -self.likelihood_model.log_prob(dummy).squeeze(0)
                 handle.remove()
                 return ret
@@ -123,11 +132,20 @@ class HessianSpectrumMonitor(OODBaseMethod):
                     handle.remove()
                     repr_point = self.repr_point.squeeze(0)
                     
-            # First order characteristics
+            
+            # Second order characteristics
             # activate requires_grad for repr_point
             repr_point.requires_grad = True
-            loss = nll_func(repr_point)
-            zero_order_characteristics.append(loss.detach().cpu().item())
+            
+            if self.cancel_background:
+                dummy = torch.zeros_like(x).detach()
+            else:
+                dummy = x.clone().detach()
+                
+            loss = nll_func(repr_point, dummy=dummy)
+            # First order characteristics
+            zero_order_characteristics.append(loss.item())
+            
             loss.backward()
             first_order_score = torch.norm(repr_point.grad, p=1.0) / repr_point.grad.numel()
             first_order_characteristics.append(first_order_score.detach().cpu().item())
@@ -163,7 +181,27 @@ class HessianSpectrumMonitor(OODBaseMethod):
             # sort all the eigenvalues
             eigvals = eigvals.sort(descending=False).values
             
-            second_order_score = torch.sum(torch.log(eigvals[eigvals > 0]))
+            if self.second_order_score_type == 'ignore_negative':
+                second_order_score = torch.sum(torch.log(eigvals[eigvals > 1e-6]))
+            elif self.second_order_score_type == 'absolute_value':
+                second_order_score = torch.sum(torch.log(torch.abs(eigvals)))
+            elif self.second_order_score_type == 'force_negative':
+                repl = torch.where(eigvals > 1e-6, eigvals, torch.ones_like(eigvals) * 1e-6)
+                second_order_score = torch.sum(torch.log(repl))
+            elif self.second_order_score_type == 'ignore_tails':
+                t_l = 0
+                if 'factor_left' in self.second_order_score_args:
+                    t_l = int(self.second_order_score_args['factor_left'] * len(eigvals))
+                t_r = 1
+                if 'factor_right' in self.second_order_score_args:
+                    t_r = max(1, int(self.second_order_score_args['factor_right'] * len(eigvals)))
+                
+                new_eigvals = eigvals[t_l:-t_r]
+                
+                second_order_score = torch.sum(torch.log(new_eigvals[new_eigvals > 1e-6]))
+            else:
+                raise ValueError(f'Unknown score type: {self.second_order_score_type}')
+            
             second_order_characteristics.append(second_order_score.detach().cpu().item())
             # detach and put it on cpu and add it to the list
             if eigval_history is None:
