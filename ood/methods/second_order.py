@@ -1,3 +1,4 @@
+
 from .base_method import OODBaseMethod
 import torch
 import typing as th
@@ -72,7 +73,10 @@ class HessianSpectrumMonitor(OODBaseMethod):
                 ret = -self.likelihood_model.log_prob(dummy).squeeze(0)
                 handle.remove()
                 return ret
-             
+        
+        if self.use_functorch:
+            self.hessian_function = torch.func.hessian(nll_func)
+            
         eigval_history = None
         device = self.likelihood_model.device
         
@@ -137,7 +141,7 @@ class HessianSpectrumMonitor(OODBaseMethod):
             
             # TODO: make this compatible with functorch
             if self.use_functorch:
-                hess = torch.func.hessian(nll_func)(repr_point)
+                hess = self.hessian_function(repr_point)
             else:
                 hess = torch.autograd.functional.hessian(nll_func, repr_point)
 
