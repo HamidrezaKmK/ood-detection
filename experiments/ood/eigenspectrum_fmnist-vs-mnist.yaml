@@ -20,7 +20,7 @@ ood:
   method_args:
     progress_bar: True
     data_limit: 5
-    use_functorch: False
+    use_functorch: True
     use_local_optimization: False
     plot_std: False
     representation_rank: null
