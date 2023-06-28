@@ -180,3 +180,6 @@ experiments/sweeps/checkpoints-*
 *.slrm
 # bash run files
 *.sh
+
+# dysweep
+dysweep_logs

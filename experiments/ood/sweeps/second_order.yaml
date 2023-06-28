@@ -20,6 +20,7 @@ base_config:
     seed: 10
 
 sweep_configuration:
+  name: second_order
   method: grid
   metric:
     goal: minimize
@@ -62,10 +63,14 @@ sweep_configuration:
           - sweep: True
             sweep_identifier: Z_Second_Order_Score_Type
             sweep_alias:
+            - force_negative
+            - absolute_value
             - ignore_negative
             - slice_left
             - slice_tails
             values:
+            - second_order_score_type: force_negative
+            - second_order_score_type: absolute_value
             - second_order_score_type: ignore_negative
             - second_order_score_type: ignore_tails
               second_order_score_args:

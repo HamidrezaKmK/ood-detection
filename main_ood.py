@@ -19,7 +19,7 @@ from config import load_config_from_run_dir
 from model_zoo.datasets import get_loaders
 from load_run import load_run
 import yaml
-
+import traceback
 
 @dataclass
 class OODConfig:
@@ -72,9 +72,6 @@ def plot_likelihood_ood_histogram(
 
 
 def run_ood(config: dict):
-    # Set the entire config so that you can see it from wandb
-    wandb.config = config
-
     # load all the dataset
     # NOTE: this is a janky way to do this and it is dependent on the place
     # where you run this script from
@@ -187,6 +184,15 @@ def run_ood(config: dict):
 
     # Call the run function of the given method
     method.run()
+
+def dysweep_run(config, checkpoint_dir):
+    try:
+        run_ood(config)
+    except Exception as e:
+        print("Exception:\n", e)
+        print(traceback.format_exc())
+        print("-----------")
+        raise e
 
 
 if __name__ == "__main__":
