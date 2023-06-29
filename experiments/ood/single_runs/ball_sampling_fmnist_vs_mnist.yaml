@@ -22,10 +22,11 @@ ood:
     
     sampler_args:
       p: 3
-      accuracy_factor: 1000
     
     # 
-    radii: [0.0, 0.0001, 0.001, 0.01, 0.1, 0.5, 10.0, 1000.0]
+    l_radius: 0.0
+    r_radius: 1000
+    n_radii: 1000
 
 logger:
   project: ood-detection-single-runs

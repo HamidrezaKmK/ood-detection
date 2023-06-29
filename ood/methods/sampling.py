@@ -15,20 +15,25 @@ import dypy as dy
 import numpy as np
 import wandb
 from tqdm import tqdm
+import math
+from scipy.stats import gennorm, norm, laplace, uniform
 
 class LpBallSampler:
     
     def __init__(
         self,
         # the type of proximity sampling, for example an lp-ball with p=2 samples a sphere with the predefined radius around the center
-        p: int = 2,
+        p: th.Union[int, float, th.Literal['inf']] = 2,
         accuracy_factor: int = 100,
     ):
         self.p = p
         self.accuracy_factor = accuracy_factor
     
     def calculate_norm(self, x):
-        return np.linalg.norm(x, ord=self.p, axis=1)
+        if self.p == 'inf':
+            return np.max(np.abs(x), axis=1)
+        else:
+            return np.linalg.norm(x, ord=self.p, axis=1)
     
     def sample(self, x: torch.Tensor, n: int, radius: float) -> torch.Tensor:
         # we use the following volume function to calculate the volume of the lp-ball
@@ -46,37 +51,21 @@ class LpBallSampler:
         
         radii_samples = np.power(u, 1.0 / d) * radius
         
-        res = []
-        # permute the elements of x and add the noise and then average them out
-        x_cum = np.zeros((n, d))
+        if self.p == 'inf':
+            x_s = uniform.rvs(loc=-1, scale=2, size=(n, d))
+            x_s = x_s / np.linalg.norm(x_s, ord=np.inf, axis=1)[:, None]
+        elif abs(self.p - 2) < 1e-6:
+            x_s = norm.rvs(size=(n, d))
+            x_s = x_s / np.linalg.norm(x_s, ord=2, axis=1)[:, None]
+        elif abs(self.p - 1) < 1e-6:
+            x_s = laplace.rvs(size=(n, d))
+            x_s = x_s / np.linalg.norm(x_s, ord=1, axis=1)[:, None]
+        else:
+            x_s = gennorm.rvs(beta=self.p, size=(n, d))
+            x_s = x_s / np.linalg.norm(x_s, ord=self.p, axis=1)[:, None]
         
-        for _ in range(self.accuracy_factor):
-            # sample an n by d-1 matrix with values from a normal distribution between -pi and pi
-            angles = np.random.uniform(low=-np.pi, high=np.pi, size=(n, d - 1))
-            
-            # create a matrix sin_mult[i,j] which contains the multiplication of the sin function for angles[i,0], angles[i,1], ..., angles[i,j-1] for j=1,2,...,d-1
-            # and for j=0, we have sin_mult[i,0] = 1
-            
-            def calculate_coefficients(angles):
-                sin_mult = np.concatenate((np.ones((n, 1)), np.cumprod(np.sin(angles), axis=1)), axis=1)
-                cos_mult = np.concatenate((np.cos(angles), np.ones((n, 1))), axis=1)
-                return sin_mult * cos_mult
-            
-            coefficients = calculate_coefficients(angles)
-            # calculate the l-p norm of all the rows of coefficients
-            transform_r = radii_samples / self.calculate_norm(coefficients)
-            
-            x_s = transform_r[:, None] * coefficients
-            
-            
-            # select a random permutation from 1 to d
-            perm = np.random.permutation(d)
-            
-            # permute elements of x_s and add with x_cum
-            x_cum += x_s[:, perm]
+        x_s = x_s * radii_samples[:, None]
         
-        x_s = x_cum / self.accuracy_factor
-
         # get the mean and std of x
         x_mean = torch.mean(x.flatten(), dim=0)
         x_std = torch.std(x.flatten(), dim=0)
@@ -85,7 +74,6 @@ class LpBallSampler:
         # create a bigger tensor that repeats x_normalized n times
         x_normalized = x_normalized.unsqueeze(0).repeat(n, *[1 for _ in range(len(x_normalized.shape))])
         add_noise = torch.tensor(x_s, device=x.device).reshape(n, *x.shape).type(x.dtype)
-        # print("add noise 0", add_noise[0][0])
         x_perturbed = x_normalized + add_noise
         return x_perturbed * x_std + x_mean
         
@@ -120,6 +108,7 @@ class SamplingOODDetection(OODBaseMethod):
         # 
         progress_bar: bool = True,
         log_image: bool = True,
+        img_log_freq: int = 10,
         
         **kwargs,
     ) -> None:
@@ -148,6 +137,7 @@ class SamplingOODDetection(OODBaseMethod):
         
         self.progress_bar = progress_bar
         self.log_image = log_image
+        self.img_log_freq = img_log_freq
         
         # TODO: plot the maximum, minimum and average norm of the perturbations
         
@@ -155,29 +145,44 @@ class SamplingOODDetection(OODBaseMethod):
     def run(self):
         """
         Creates a line chart of radius vs score.
+        The scores are either the log of the probability of being in that ball, or it is the average of the log probs in that ball
         """
         radius_vs_score = []
-        if self.progress_bar:
-            iterable = tqdm(self.radii)
-        else:
-            iterable = self.radii
+        
+        first_non_zero = None
+        for r in self.radii:
+            if abs(r) > 1e-6:
+                first_non_zero = r
+                break
             
-        for r in iterable:
+        mx_divided_by_mn_radii = self.radii[-1] / first_non_zero
+        
+        int_radii = [int(r * mx_divided_by_mn_radii) for r in self.radii]
+        
+        if self.progress_bar:
+            iterable = tqdm(list(zip(self.radii, int_radii)))
+        else:
+            iterable = list(zip(self.radii, int_radii))
+        
+        cnt = 0
+        for x in iterable:
+            r, idx = x
             x_prox = self.sampler.sample(self.x, self.n_samples, r)
             all_log_probs = self.likelihood_model.log_prob(x_prox)
             wandb.log({
                 'avg_log_prob': torch.mean(all_log_probs).item()
-            })
-            avg = torch.logsumexp(all_log_probs, dim=0) / self.n_samples
+            }, step=idx)
+            log_avg = torch.logsumexp(all_log_probs, dim=0) - math.log(self.n_samples)
             wandb.log({
-                'avg_prob': avg.item()
-            })
-            radius_vs_score.append([r, avg.item()])
+                'log_P': log_avg.item()
+            }, step=idx)
+            radius_vs_score.append([r, log_avg.item()])
             
-            if self.log_image:
+            if self.log_image and (cnt + 1) % self.img_log_freq == 0:
                 wandb.log(
-                    {"proximity samples" : wandb.Image(x_prox[0].cpu().numpy())})
-                
+                    {"proximity samples" : wandb.Image(x_prox[0].cpu().numpy())}, step=idx)
+            cnt += 1
+            
         table = wandb.Table(data=radius_vs_score, columns = ["radius", "score"])
         wandb.log(
             {"radius vs score" : wandb.plot.line(table, "radius", "score",
