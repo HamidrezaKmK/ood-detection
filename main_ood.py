@@ -145,7 +145,8 @@ def run_ood(config: dict):
     model.eval()
     with torch.no_grad():
         # set torch seed for reproducibility
-        torch.manual_seed(config["ood"]["seed"])
+        if config["ood"]["seed"] is not None:
+            torch.manual_seed(config["ood"]["seed"])
         samples = model.sample(9)
         samples = torchvision.utils.make_grid(samples, nrow=3)
         wandb.log(
@@ -164,7 +165,8 @@ def run_ood(config: dict):
     method_args["likelihood_model"] = model
 
     # pick a random batch with seed for reproducibility
-    np.random.seed(config["ood"]["seed"])
+    if config["ood"]["seed"] is not None:
+        np.random.seed(config["ood"]["seed"])
     idx = np.random.randint(len(ood_test_loader))
     for _ in range(idx):
         x, y, _ = next(iter(ood_test_loader))
@@ -179,7 +181,7 @@ def run_ood(config: dict):
     else:
         # pass in the entire batch
         method_args["x_batch"] = x
-
+    
     method = dy.eval(config["ood"]["method"])(**method_args)
 
     # Call the run function of the given method
