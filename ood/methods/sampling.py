@@ -17,6 +17,7 @@ import wandb
 from tqdm import tqdm
 import math
 from scipy.stats import gennorm, norm, laplace, uniform
+from scipy.special import gammaln
 
 class LpBallSampler:
     
@@ -35,7 +36,7 @@ class LpBallSampler:
         else:
             return np.linalg.norm(x, ord=self.p, axis=1)
     
-    def sample(self, x: torch.Tensor, n: int, radius: float) -> torch.Tensor:
+    def sample(self, x: torch.Tensor, n: int, radius: float, likelihood_model: torch.nn.Module) -> torch.Tensor:
         # we use the following volume function to calculate the volume of the lp-ball
         # V = 2^d * r^d * gamma(1 + 1/p)^d / gamma(1 + d/p)
         # we know this can represent the CDF of the radius of the lp-ball
@@ -75,10 +76,91 @@ class LpBallSampler:
         x_normalized = x_normalized.unsqueeze(0).repeat(n, *[1 for _ in range(len(x_normalized.shape))])
         add_noise = torch.tensor(x_s, device=x.device).reshape(n, *x.shape).type(x.dtype)
         x_perturbed = x_normalized + add_noise
-        return x_perturbed * x_std + x_mean
+        x_prox = x_perturbed * x_std + x_mean
+        with torch.no_grad():
+            all_log_probs = likelihood_model.log_prob(x_prox).detach()
+
+        if self.p != 'inf':
+            log_vol = d * math.log(radius + 1e-6) 
+            log_vol += d * math.log(2.0) 
+            log_vol += d * gammaln(1 + 1 / self.p)            
+            log_vol -= gammaln(1 + d / self.p)
+
+        else:
+            log_vol = d * (math.log(radius + 1e-6) + math.log(2))
         
+        return (
+            x_prox, 
+            (torch.logsumexp(all_log_probs, dim=0) - math.log(n) + log_vol).item(),
+            torch.mean(all_log_probs).item() + log_vol,
+            torch.std(all_log_probs).item() + log_vol,
+        )   
 
 
+class LpLatentFlowBallSampler:
+    
+    def __init__(
+        self,
+        # the type of proximity sampling, for example an lp-ball with p=2 samples a sphere with the predefined radius around the center
+        p: th.Union[int, float, th.Literal['inf']] = 2,
+        eps_correction: float = 1e-20,
+    ):
+        self.p = p
+        if self.p != 'inf':
+            raise NotImplementedError('Only Lp ball with p=inf is supported for now.')
+
+        self.eps_correction = eps_correction
+    
+    def calculate_norm(self, x):
+        if self.p == 'inf':
+            return np.max(np.abs(x), axis=1)
+        else:
+            return np.linalg.norm(x, ord=self.p, axis=1)
+    
+    def sample(self, x: torch.Tensor, n: int, radius: float, likelihood_model: torch.nn.Module) -> torch.Tensor:
+        
+        if not hasattr(likelihood_model, '_nflow'):
+            raise ValueError('The likelihood model must have a _nflow attribute that returns the number of flows.')
+        with torch.no_grad():
+            z = likelihood_model._nflow.transform_to_noise(x.unsqueeze(0)).detach().squeeze(0)
+            
+        log_P = 0.0
+        all_sampled_z = []
+        for z_i_device in z:
+            z_i = z_i_device.cpu().item()
+            r = z_i + radius
+            l = z_i - radius
+            # calculate the standard gaussian CDF of l and r
+            cdf_l = norm.cdf(l)
+            cdf_r = norm.cdf(r)
+            p_i = cdf_r - cdf_l
+            p_i = np.clip(p_i, a_min=self.eps_correction, a_max=1.0)
+            log_p_i = np.log(p_i)
+            
+            log_P += log_p_i
+            # sample uniformly from the [l, r] interval
+            u = np.random.uniform(size=n) * (r-l) + l
+            
+            u = torch.from_numpy(u).to(z_i_device.device).type(z_i_device.dtype)
+            all_sampled_z.append(u)
+            
+        all_sampled_z = torch.stack(all_sampled_z).transpose(0, 1)
+        
+        x_prox = None
+        if hasattr(likelihood_model._nflow, '_transform'):
+            x_prox, _ = likelihood_model._nflow._transform.inverse(all_sampled_z)
+        
+        with torch.no_grad():
+            all_log_probs = likelihood_model.log_prob(x_prox).detach()
+            
+        # returns samples, log_P, 
+        return (
+            x_prox, 
+            log_P,
+            torch.mean(all_log_probs).item(),
+            torch.std(all_log_probs).item(),
+        )
+    
 class SamplingOODDetection(OODBaseMethod):
     """
     This class of methods that relies on sampling proximity points to get a score
@@ -90,7 +172,7 @@ class SamplingOODDetection(OODBaseMethod):
         
         #
         sampler_cls: str,
-        n_samples: int = 100,
+        n_samples: int,
         
         sampler_args: th.Optional[th.Dict[str, th.Any]] = None,
         
@@ -98,6 +180,7 @@ class SamplingOODDetection(OODBaseMethod):
         l_radius: float = 0.1,
         r_radius: float = 0.5,
         n_radii: int = 10,
+        scaling_radii: th.Literal['linear', 'log', 'rev_log'] = 'linear',
         radii: th.Optional[th.List] = None,
         
         x: th.Optional[torch.Tensor] = None,
@@ -118,9 +201,22 @@ class SamplingOODDetection(OODBaseMethod):
         
         # create a sequence of n_samples radii between l_radius and r_radius
         # such that in the beginning, we have a lot of radii, and then we have less and less
-        self.radii = np.linspace(l_radius, r_radius, n_radii)
+        if scaling_radii == 'linear':
+            self.radii = np.linspace(l_radius, r_radius, n_radii)
+        elif scaling_radii == 'log':
+            self.radii = np.logspace(np.log10(l_radius + 1e-6), np.log10(r_radius), n_radii - 1)
+            # add l_radius to the beginning
+            self.radii = np.concatenate([np.array([l_radius]), self.radii])
+        elif scaling_radii == 'rev_log':
+            self.radii = r_radius - np.concatenate([np.array([0.0]), np.logspace(np.log10(1e-6), np.log10(r_radius - l_radius), n_radii - 1)])
+            # reverse the order
+            self.radii = self.radii[::-1]
+        else:
+            raise ValueError(f"scaling_radii must be either 'linear' or 'log', but got {scaling_radii}.")
+        self.use_rescaling = False
         
         if radii is not None:
+            self.use_rescaling = True
             self.radii = np.array(radii).astype(np.float32)
         
         if x is None:
@@ -157,7 +253,7 @@ class SamplingOODDetection(OODBaseMethod):
             
         mx_divided_by_mn_radii = self.radii[-1] / first_non_zero
         
-        int_radii = [int(r * mx_divided_by_mn_radii) for r in self.radii]
+        int_radii = [None if not self.use_rescaling else int(r * mx_divided_by_mn_radii) for r in self.radii]
         
         if self.progress_bar:
             iterable = tqdm(list(zip(self.radii, int_radii)))
@@ -167,26 +263,45 @@ class SamplingOODDetection(OODBaseMethod):
         cnt = 0
         for x in iterable:
             r, idx = x
-            x_prox = self.sampler.sample(self.x, self.n_samples, r)
-            all_log_probs = self.likelihood_model.log_prob(x_prox)
-            wandb.log({
-                'avg_log_prob': torch.mean(all_log_probs).item()
-            }, step=idx)
-            log_avg = torch.logsumexp(all_log_probs, dim=0) - math.log(self.n_samples)
-            wandb.log({
-                'log_P': log_avg.item()
-            }, step=idx)
-            radius_vs_score.append([r, log_avg.item()])
             
-            if self.log_image and (cnt + 1) % self.img_log_freq == 0:
+            x_prox, log_P, avg_log_prob, std_log_prob = self.sampler.sample(self.x, self.n_samples, r, likelihood_model=self.likelihood_model)
+            wandb.log({
+                'radii': r
+            })
+            wandb.log({
+                'avg_log_prob': avg_log_prob
+            })
+            wandb.log({
+                'std_log_prob': std_log_prob
+            })
+            wandb.log({
+                'log_P': log_P
+            })
+            wandb.log({
+                'P': np.exp(log_P)
+            })
+            radius_vs_score.append([r, log_P])
+            
+            if self.log_image and cnt % self.img_log_freq == 0 and x_prox is not None:
                 wandb.log(
-                    {"proximity samples" : wandb.Image(x_prox[0].cpu().numpy())}, step=idx)
+                    {"proximity/sample" : wandb.Image(x_prox[0].cpu())})
+                wandb.log({
+                    "proximity/average": wandb.Image(torch.mean(x_prox, dim=0).cpu())
+                })
+                
+                # for every pixel in every channel, calculate the difference between
+                # that pixel and the average of the surronding 3 x 3 pixels
+                
+                # calculate avg_x_prox[c,i,j] where it is equal to the average of the 3 x 3 pixels
+                avg_x_prox = torch.zeros_like(x_prox)
+                avg_x_prox = avg_x_prox.unfold(2, 3, 1).unfold(3, 3, 1).mean(dim=(4,5))
+                
             cnt += 1
             
-        table = wandb.Table(data=radius_vs_score, columns = ["radius", "score"])
+        table = wandb.Table(data=radius_vs_score, columns = ["radius", "log_P"])
         wandb.log(
-            {"radius vs score" : wandb.plot.line(table, "radius", "score",
-                title="radius vs score")})
+            {"radius vs prob" : wandb.plot.line(table, "radius", "log_P",
+                title="radius vs prob")})
     
     
     
