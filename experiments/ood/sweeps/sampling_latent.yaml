@@ -33,11 +33,11 @@ sweep_configuration:
     method_args:
       scaling_radii: 
         sweep: true
-        values: ['linear', 'log', 'rev_log']
+        values: ['linear', 'log']
       sampler_args:
         p:
           sweep: true
-          values: [1, 1.5, 2, 3, inf]
+          values: [2, 3, 5, 7, inf]
     seed:
       sweep: true
       values: [10, 20, 30, 40, 50]
