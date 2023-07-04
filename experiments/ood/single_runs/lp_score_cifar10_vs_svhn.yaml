@@ -1,0 +1,30 @@
+base_model:
+  run_dir: runs/flow_cifar10
+  config_dir: experiments/training/flow_heavy_cifar10.yaml
+  checkpoint_dir: runs/flow_cifar10/checkpoints/de_nf_latest.pt
+data:
+  # override the dataloader args that is obtained from the run_dir
+  in_distribution:
+    dataloader_args:
+      dataset: cifar10
+  out_of_distribution:
+    dataloader_args:
+      dataset: svhn
+  # for reproducibility
+  seed: 10
+ood:
+  pick_single: False
+  use_dataloader: False
+  pick_count: 100
+  
+  seed: null
+  
+  method: ood.methods.lp_norm_method.LpNorm
+  method_args:
+    p: 1
+    bincount: 15
+
+logger:
+  project: ood-detection-single-runs
+  entity: dgm-l6
+  name: flow_cifar10_vs_svhn

@@ -12,6 +12,7 @@ class OODBaseMethod(ABC):
         x: th.Optional[torch.Tensor] = None,
         x_batch: th.Optional[torch.Tensor] = None,
         x_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         logger: th.Optional[th.Any] = None,
         progress_bar: bool = False,
     ) -> None:
@@ -24,6 +25,7 @@ class OODBaseMethod(ABC):
         self.logger = logger
         self.progress_bar = progress_bar
         self.x_loader = x_loader
+        self.in_distr_loader = in_distr_loader
 
     @abstractmethod
     def run(self):

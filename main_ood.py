@@ -182,6 +182,8 @@ def run_ood(config: dict):
         # pass in the entire batch
         method_args["x_batch"] = x
     
+    method_args["in_distr_loader"] = in_test_loader
+    
     method = dy.eval(config["ood"]["method"])(**method_args)
 
     # Call the run function of the given method

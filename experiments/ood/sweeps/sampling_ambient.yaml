@@ -4,10 +4,6 @@ count: 10000
 
 # BASE configuration which is being used
 base_config:
-  base_model:
-    run_dir: runs/flow_fmnist
-    config_dir: experiments/training/flow_elaborate_fmnist.yaml
-    checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
   data:
     # for reproducibility
     seed: 10
@@ -30,6 +26,9 @@ base_config:
 sweep_configuration:
   ood:
     method_args:
+      scaling_radii: 
+        sweep: true
+        values: ['linear', 'log', 'rev_log']
       sampler_args:
         p: 
           sweep: true
@@ -37,7 +36,7 @@ sweep_configuration:
           values: [1, 1.5, 2, 3, inf]
     seed:
       sweep: true
-      values: [10, 20, 30, 40, 50]
+      values: [11, 21, 31, 41, 51]
   dy__upsert:
     - sweep: True
       sweep_identifier: B_dataset
