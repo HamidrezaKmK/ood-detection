@@ -89,6 +89,9 @@ class LpLatentFlowBallSampler:
         p: th.Union[int, float, th.Literal['inf']] = 2,
     ):
         self.p = p
+        
+        # save all the last outputs here:
+        self._last_inverse_output = None
     
     def sample(self, x: torch.Tensor, n: int, radius: float, likelihood_model: torch.nn.Module) -> torch.Tensor:
         
@@ -109,8 +112,12 @@ class LpLatentFlowBallSampler:
             raise ValueError('The likelihood model must have a _transform attribute that returns the inverse transformation.')
         
         with torch.no_grad():
-            x_samples, log_dets = likelihood_model._nflow._transform.inverse(z_samples)
-        
+            try:
+                x_samples, log_dets = likelihood_model._nflow._transform.inverse(z_samples)
+            except AssertionError:
+                x_samples, log_dets = self._last_inverse_output
+            self._last_inverse_output = (x_samples, log_dets)
+            
         return x_samples
     
 class SamplingOODDetection(OODBaseMethod):
