@@ -180,7 +180,8 @@ def run_ood(config: dict):
         raise ValueError("pick_count not in config when pick_single=False")
     else:
         # pass in the entire batch
-        method_args["x_batch"] = x
+        r = min(config["ood"]["pick_count"], x.shape[0])
+        method_args["x_batch"] = x[:r]
     
     method_args["in_distr_loader"] = in_test_loader
     
