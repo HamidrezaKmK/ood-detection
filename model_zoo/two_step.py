@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from .utils import batch_or_dataloader
+import dypy as dy
 
 
 class TwoStepDensityEstimator(nn.Module):
@@ -133,33 +134,57 @@ class TwoStepComponent(nn.Module):
         }
 
     def set_optimizer(self, cfg):
-        self.optimizer = self._OPTIMIZER_MAP[cfg["optimizer"]](
-            self.parameters(), lr=cfg["lr"]
+        """
+        cfg format:
+        {
+            'class_path': the class of the optimizer
+            'init_args': the arguments to pass to the optimizer
+            {
+                'lr': learning rate
+            }
+            'lr_scheduler': if it is null or non-existant, then no lr scheduler is used
+            {
+                class_path: the class of the lr scheduler
+                init_args: the arguments to pass to the lr scheduler
+            }
+        }
+        """
+        self.optimizer: torch.optim.Optimizer = dy.eval(cfg['class_path'])(
+            self.parameters(), **cfg['init_args']
         )
         self.num_optimizers = 1
 
-        self.lr_scheduler = self._get_lr_scheduler(
-            optim=self.optimizer,
-            use_scheduler=cfg.get("use_lr_scheduler", False),
-            cfg=cfg
-        )
-
-    def _get_lr_scheduler(self, optim, use_scheduler, cfg):
-        if use_scheduler:
-            # NOTE: Only coding cosine LR scheduler right now
-            # NOTE: Use LR scheduling every train step, not every epoch
-            lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer=optim,
-                T_max=cfg["max_epochs"]*(cfg["train_dataset_size"]//cfg["train_batch_size"]),
-                eta_min=0.
-            )
-        else:
-            lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-                optimizer=optim,
+        if 'lr_scheduler' not in cfg:
+            self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+                optimizer=self.optimizer,
                 lr_lambda=lambda step: 1.
             )
+        else:
+            self.lr_scheduler: torch.optim.lr_scheduler.LRScheduler = dy.eval(cfg['lr_scheduler']['class_path'])(
+                optimizer=self.optimizer, **cfg['lr_scheduler']['init_args'])
+        
+    #     self._get_lr_scheduler(
+    #         optim=self.optimizer,
+    #         use_scheduler=cfg.get("use_lr_scheduler", False),
+    #         cfg=cfg
+    #     )
 
-        return lr_scheduler
+    # def _get_lr_scheduler(self, optim, use_scheduler, cfg):
+    #     if use_scheduler:
+    #         # NOTE: Only coding cosine LR scheduler right now
+    #         # NOTE: Use LR scheduling every train step, not every epoch
+    #         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #             optimizer=optim,
+    #             T_max=cfg["max_epochs"]*(cfg["train_dataset_size"]//cfg["train_batch_size"]),
+    #             eta_min=0.
+    #         )
+    #     else:
+    #         lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+    #             optimizer=optim,
+    #             lr_lambda=lambda step: 1.
+    #         )
+
+    #     return lr_scheduler
 
     def set_whitening_params(self, mu, sigma):
         self.whitening_mu = torch.reshape(mu, self._get_whiten_dims())

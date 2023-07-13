@@ -8,9 +8,18 @@ from .supervised_dataset import SupervisedDataset
 
 def get_loaders_from_config(cfg, device):
     """
-    Wrapper function providing frequently-used functionality.
-
-    Updates `cfg` with dataset information.
+    This function is used to get the loaders from the configuration file.
+    It also returns additional information about the datasets as a dictionary.
+    
+    The cfg format is:
+    {
+        'dataset': the name of the dataset that should be in the valid set of datasets
+        'data_root': the root directory of the dataset
+        'make_valid_loader': if true, then a validation loader is created
+        'train_batch_size': the batch size of the training loader
+        'valid_batch_size': the batch size of the validation loader
+        'test_batch_size': the batch size of the test loader
+    }
     """
     train_loader, valid_loader, test_loader = get_loaders(
         dataset=cfg["dataset"],
@@ -22,16 +31,18 @@ def get_loaders_from_config(cfg, device):
         test_batch_size=cfg["test_batch_size"]
     )
 
+    additional_info = {}
+    
     train_dataset = train_loader.dataset.x
-    cfg["train_dataset_size"] = train_dataset.shape[0]
-    cfg["data_shape"] = tuple(train_dataset.shape[1:])
-    cfg["data_dim"] = int(np.prod(cfg["data_shape"]))
+    additional_info["train_dataset_size"] = train_dataset.shape[0]
+    additional_info["data_shape"] = tuple(train_dataset.shape[1:])
+    additional_info["data_dim"] = int(np.prod(additional_info["data_shape"], None))
 
     if not cfg["make_valid_loader"]:
         valid_loader = test_loader
         print("WARNING: Using test loader for validation")
 
-    return train_loader, valid_loader, test_loader
+    return train_loader, valid_loader, test_loader, additional_info
 
 
 def get_loaders(
