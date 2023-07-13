@@ -5,7 +5,10 @@ pytest
 scipy
 pandas
 tensorboardx
-nflows
+
+# forked version of nflows that contains functorch support
+git+https://github.com/HamidrezaKmK/nflows.git
+
 pytorch_fid
 prdc
 
@@ -19,4 +22,4 @@ jsonargparse
 # visualization
 plotly
 
-chi2comb
+# chi2comb
