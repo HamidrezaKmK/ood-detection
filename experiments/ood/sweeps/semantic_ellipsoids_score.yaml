@@ -13,10 +13,6 @@ run_name_changer:
 
 # BASE configuration which is being used
 base_config:
-  base_model:
-    run_dir: runs/flow_fmnist
-    config_dir: experiments/training/flow_elaborate_fmnist.yaml
-    checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
   data:
     # for reproducibility
     seed: 10
@@ -29,19 +25,19 @@ base_config:
     
     method: ood.methods.latent_score_method.LatentScore
     method_args:
-      bincount: 300
+      bincount: 5
       score_cls: ood.methods.latent_score_method.SemanticAwareEllipsoidScore
       score_args:
         p: 2
-      tunable_parameter_name: radius
-      tunable_lr: [0.01, 20000.0]
+        statistics: quantile
+        
 
 sweep_configuration:
-  ood:
-    method_args:
-      show_std:
-        sweep: true
-        values: [false, true]
+  method_args:
+    score_args:
+      quantile:
+        sweep: True
+        values: [0.05, 0.5, 0.95, 0.99]
   dy__upsert:
     - sweep: True
       sweep_identifier: B_dataset

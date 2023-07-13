@@ -1,58 +1,50 @@
-# This sweep only considers the ignore negative metric on different representation scales
-# for the troublesom cifar10-vs-svhn case!
-
-project: 012-analysis-cifar-vs-svhn
+project: semantic-ellipsoids-dysweep
 entity: dgm-l6
 count: 10000
+run_name_changer:
+  function_descriptor: |
+    def func(conf, run_name):
+      ret = conf['data']['in_distribution']['dataloader_args']['dataset']
+      ret += '_vs_'
+      ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']
+      ret += f"_{run_name}"
+      return ret
+  function_of_interest: func
 
 # BASE configuration which is being used
 base_config:
+  data:
+    # for reproducibility
+    seed: 10
   ood:
     pick_single: False
-    use_dataloader: True
+    use_dataloader: False
+    pick_count: 100
+    
     seed: 10
-    method: ood.methods.second_order.HessianSpectrumMonitor
+    
+    method: ood.methods.latent_score_method.LatentScore
     method_args:
-      progress_bar: True
-      data_limit: 15
-      # TODO: this should be fixed!
-      use_functorch: False
-      plot_std: False
-      second_order_score_type: ignore_negative
-      use_local_optimization: False
-  data:
-    seed: 10
+      score_cls: ood.methods.latent_score_method.SemanticEllipsoidCDFDistance
+      score_args:
+        n_radii: 100
+        limit_radii: 10
+        calculate_reference: True
 
-# The sweep configuration itself
 sweep_configuration:
-  ood:
-    method_args:
-      dy__upsert:
-        - sweep: True
-          sweep_identifier: Z_Cancel_Background
-          sweep_alias:
-          - cancel
-          - no_cancel
-          values:
-          - cancel_background: True
-          - cancel_background: False
-        - sweep: True
-          sweep_identifier: Z_representation_rank
-          sweep_alias:
-          - input
-          - middle
-          - deep
-          values:
-          - representation_rank: null
-          - representation_rank: 25
-          - representation_rank: 43
   dy__upsert:
     - sweep: True
       sweep_identifier: B_dataset
       sweep_alias:
+        - flow_fmnist
         - flow_cifar10
         - flow_svhn
+        - flow_mnist
       values:
+        - base_model:
+            run_dir: runs/flow_fmnist
+            config_dir: experiments/training/flow_elaborate_fmnist.yaml
+            checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
         - base_model:
             run_dir: runs/flow_cifar10
             config_dir: experiments/training/flow_heavy_cifar10.yaml
@@ -61,6 +53,11 @@ sweep_configuration:
             run_dir: runs/flow_svhn
             config_dir: experiments/training/flow_heavy_svhn.yaml
             checkpoint_dir: runs/flow_svhn/checkpoints/de_nf_latest.pt
+        - base_model:
+            run_dir: runs/flow_mnist
+            config_dir: experiments/training/flow_elaborate_mnist.yaml
+            checkpoint_dir: runs/flow_mnist/checkpoints/de_nf_latest.pt
+        
     - sweep: True
       sweep_identifier: C_ood_or_not
       sweep_alias:

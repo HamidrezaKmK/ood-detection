@@ -9,7 +9,6 @@ import typing as th
 import dypy as dy
 from torch.utils import tensorboard
 
-
 def local_optimization(
     x: torch.Tensor,
     likelihood_model: torch.nn.Module,

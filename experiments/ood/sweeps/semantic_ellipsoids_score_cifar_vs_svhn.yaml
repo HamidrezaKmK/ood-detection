@@ -13,10 +13,6 @@ run_name_changer:
 
 # BASE configuration which is being used
 base_config:
-  base_model:
-    run_dir: runs/flow_fmnist
-    config_dir: experiments/training/flow_elaborate_fmnist.yaml
-    checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
   data:
     # for reproducibility
     seed: 10
@@ -29,32 +25,27 @@ base_config:
     
     method: ood.methods.latent_score_method.LatentScore
     method_args:
-      bincount: 300
+      bincount: 10
       score_cls: ood.methods.latent_score_method.SemanticAwareEllipsoidScore
       score_args:
         p: 2
-      tunable_parameter_name: radius
-      tunable_lr: [0.01, 20000.0]
+        statistics: cdf-value
+        
 
 sweep_configuration:
   ood:
     method_args:
-      show_std:
-        sweep: true
-        values: [false, true]
+      score_args:
+        r_value:
+          sweep: true
+          values: [3350, 3370, 3400, 3500, 14800]
   dy__upsert:
     - sweep: True
       sweep_identifier: B_dataset
       sweep_alias:
-        - flow_fmnist
         - flow_cifar10
         - flow_svhn
-        - flow_mnist
       values:
-        - base_model:
-            run_dir: runs/flow_fmnist
-            config_dir: experiments/training/flow_elaborate_fmnist.yaml
-            checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
         - base_model:
             run_dir: runs/flow_cifar10
             config_dir: experiments/training/flow_heavy_cifar10.yaml
@@ -63,10 +54,6 @@ sweep_configuration:
             run_dir: runs/flow_svhn
             config_dir: experiments/training/flow_heavy_svhn.yaml
             checkpoint_dir: runs/flow_svhn/checkpoints/de_nf_latest.pt
-        - base_model:
-            run_dir: runs/flow_mnist
-            config_dir: experiments/training/flow_elaborate_mnist.yaml
-            checkpoint_dir: runs/flow_mnist/checkpoints/de_nf_latest.pt
         
     - sweep: True
       sweep_identifier: C_ood_or_not

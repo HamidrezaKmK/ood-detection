@@ -18,3 +18,5 @@ jsonargparse
 
 # visualization
 plotly
+
+chi2comb

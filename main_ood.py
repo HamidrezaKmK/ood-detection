@@ -183,8 +183,9 @@ def run_ood(config: dict):
         r = min(config["ood"]["pick_count"], x.shape[0])
         method_args["x_batch"] = x[:r]
     
-    method_args["in_distr_loader"] = in_test_loader
+    method_args["in_distr_loader"] = in_train_loader
     
+    torch.manual_seed(110)
     method = dy.eval(config["ood"]["method"])(**method_args)
 
     # Call the run function of the given method

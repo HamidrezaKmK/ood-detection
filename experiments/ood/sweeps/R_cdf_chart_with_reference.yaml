@@ -21,27 +21,24 @@ base_config:
     # for reproducibility
     seed: 10
   ood:
-    pick_single: False
-    use_dataloader: False
-    pick_count: 100
-    
-    seed: 10
-    
+    pick_single: True
     method: ood.methods.latent_score_method.LatentScore
     method_args:
-      bincount: 300
+      visualize_reference: True
       score_cls: ood.methods.latent_score_method.SemanticAwareEllipsoidScore
       score_args:
         p: 2
       tunable_parameter_name: radius
-      tunable_lr: [0.01, 20000.0]
+      tunable_lr: [0.01, 4.5]
+      bincount: 100
 
 sweep_configuration:
   ood:
-    method_args:
-      show_std:
-        sweep: true
-        values: [false, true]
+    seed:
+      sweep: true
+      sweep_identifier: data_picking_seed
+      values: [11, 21, 31, 41, 51]
+
   dy__upsert:
     - sweep: True
       sweep_identifier: B_dataset
