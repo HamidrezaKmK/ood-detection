@@ -6,6 +6,7 @@ from ..visualization import visualize_histogram
 import numpy as np
 from chi2comb import ChiSquared, chi2comb_cdf
 from tqdm import tqdm
+import wandb
 
 class LatentEllipsoids(OODBaseMethod):
     """
@@ -372,6 +373,12 @@ class LatentEllipsoids(OODBaseMethod):
             "first-moment": "First Moment",
         }
         scores = metric_name_to_func[self.metric_name](**self.metric_args)
+        
+        # add the scores as a table to weights and biases
+        tbl = wandb.Table(data=[[x] for x in scores], columns = [self.metric_name])
+        wandb.log({
+            f"native_histogram/{self.metric_name} on R^2": wandb.plot.histogram(tbl, self.metric_name, title=f"{self.metric_name} on R^2")
+        })
         
         visualize_histogram(
             scores,
