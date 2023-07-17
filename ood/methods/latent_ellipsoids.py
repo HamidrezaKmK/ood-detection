@@ -2,30 +2,32 @@ from .base_method import OODBaseMethod
 import typing as th
 import torch
 import math
-from ..visualization import visualize_histogram
+from ..visualization import visualize_histogram, visualize_trends
 import numpy as np
 from chi2comb import ChiSquared, chi2comb_cdf
 from tqdm import tqdm
 import wandb
+import dypy as dy
 
-class LatentEllipsoids(OODBaseMethod):
+class ElliposoidCalculator:
     """
-    This class of methods works only on Gaussian latent spaces, for example, VAEs and Normflows.
-    One might potentially extend these to general models via an extra level of transformation. However,
-    for the sake of simplicity, we will only consider this to work on Latent Gaussian Models.
+    This is a class that is used in methods that use latent ellipsoids.
+    For a likelihood model that has an encoding and a decoding into a Gaussian
+    space, this ellipsoid calculator yields all the calculations required to 
+    calculate the corresponding ellipsoid for each data point.
+    
+    This class has an abstract encode and decode method that should be implemented for
+    specific generative models. For example, for a flow model, that would be running
+    the transformation both ways, and for a VAE, that would be running the encoder and
+    the decoder.
+    
+    Moreover, we have computation knobs to optimize the computation of the Jacobian.
+    For example, one might use vmaps to optimize the computation of the Jacobian of a 
+    batch. Or one can use either functorch or autograd to compute the Jacobian.
     """
     def __init__(
         self,
         likelihood_model: torch.nn.Module,
-        #
-        metric_name: str,
-        metric_args: th.Optional[th.Dict[str, th.Any]] = None,
-        # 
-        x: th.Optional[torch.Tensor] = None,
-        x_batch: th.Optional[torch.Tensor] = None,
-        x_loader: th.Optional[torch.utils.data.DataLoader] = None,
-        logger: th.Optional[th.Any] = None,
-        in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         # These are computation-related knobs
         # For example, with use_functorch and use_forward_mode
         # you can specify how to compute the Jacobian
@@ -37,40 +39,11 @@ class LatentEllipsoids(OODBaseMethod):
         use_forward_mode: bool = True,
         computation_batch_size: th.Optional[int] = None,
         loader_limit: th.Optional[int] = None,
-        
-        # for logging args
+        # verbosity
         verbose: int = 0,
+    ) -> None:
         
-        # for visualization args
-        visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
-    ):
-        """
-
-        Args:
-            likelihood_model (torch.nn.Module): The likelihood model with initialized parameters that work best for generation.
-            metric_name (str): The class of the metric in use.
-            metric_args (th.Optional[th.Dict[str, th.Any]], optional): The instantiation arguments for the metric. Defaults to None which means empty dict.
-            x (th.Optional[torch.Tensor], optional): If the OOD detection task is only aimed for single point, this is the point.
-            x_batch (th.Optional[torch.Tensor], optional): _description_. Defaults to None.
-            x_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
-            logger (th.Optional[th.Any], optional): _description_. Defaults to None.
-            in_distr_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
-            use_vmap (bool, optional): _description_. Defaults to False.
-            use_functorch (bool, optional): _description_. Defaults to True.
-            use_forward_mode (bool, optional): _description_. Defaults to True.
-            computation_batch_size (th.Optional[int], optional): _description_. Defaults to None.
-            loader_limit (th.Optional[int], optional): _description_. Defaults to None.
-            verbose (int, optional): _description_. Defaults to 0.
-            visualization_args (th.Optional[th.Dict[str, th.Any]], optional): _description_. Defaults to None.
-        """
-        super().__init__(
-            x_loader=x_loader, 
-            x=x, 
-            x_batch=x_batch, 
-            likelihood_model=likelihood_model, 
-            logger=logger, 
-            in_distr_loader=in_distr_loader, 
-        )
+        self.likelihood_model = likelihood_model
         
         self.use_functorch = use_functorch
         self.use_forward_mode = use_forward_mode
@@ -81,21 +54,8 @@ class LatentEllipsoids(OODBaseMethod):
             self.loader_limit = math.inf
         else:
             self.loader_limit = loader_limit
-            
-        if self.x is not None:
-            
-            self.x_batch = self.x.unsqueeze(0)
-        
-        if self.x_batch is not None:
-            # create a loader with that single batch
-            self.x_loader = [(self.x_batch, None, None)]
-            
-        self.metric_name = metric_name
-        self.metric_args = metric_args or {}
         
         self.verbose = verbose
-        
-        self.visualization_args = visualization_args or {}
     
     def decode(self, z):
         """Decodes the input from a standard Gaussian latent space 'z' onto the data space."""
@@ -198,7 +158,7 @@ class LatentEllipsoids(OODBaseMethod):
             radii.append(L.cpu().detach())
         
         return centers, radii
-     
+
     def calculate_single_cdf(self, r, centers, radii, use_cache: bool = False) -> np.ndarray:
         """
         Given two loaders of radii and centers, this function calculates the
@@ -263,15 +223,251 @@ class LatentEllipsoids(OODBaseMethod):
         if self.verbose > 1:
             print("Calculating the mean CDF...")
         return np.mean(self.calculate_single_cdf(r, centers, radii, use_cache))
+        
+
+class EllipsoidBaseMethod(OODBaseMethod):
+    """
+    This class is the base class that employs an ellipsoid calculator.
     
+    All the methods that rely on these computations should inherit from this class.
+    For example, the EllipsoidTrend method inherits this one and uses the average
+    R^2 trend to detect or visualize OOD data. On the other hand, EllipsoidScore summarizes
+    information from R^2 into a specific score and then uses that score plus thresholding
+    to calculate OOD data.
+    """
+    def __init__(
+        self,
+        likelihood_model: torch.nn.Module,
+        # 
+        x: th.Optional[torch.Tensor] = None,
+        x_batch: th.Optional[torch.Tensor] = None,
+        x_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        logger: th.Optional[th.Any] = None,
+        in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        
+        # Ellipsoid calculator
+        ellipsoid_calculator_cls: th.Optional[str] = None,
+        ellipsoid_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # for logging args
+        verbose: int = 0,
+    ):
+        """
+        Args:
+            likelihood_model (torch.nn.Module): The likelihood model with initialized parameters that work best for generation.
+            metric_name (str): The class of the metric in use.
+            metric_args (th.Optional[th.Dict[str, th.Any]], optional): The instantiation arguments for the metric. Defaults to None which means empty dict.
+            x (th.Optional[torch.Tensor], optional): If the OOD detection task is only aimed for single point, this is the point.
+            x_batch (th.Optional[torch.Tensor], optional): _description_. Defaults to None.
+            x_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
+            logger (th.Optional[th.Any], optional): _description_. Defaults to None.
+            in_distr_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
+            verbose (int, optional): _description_. Defaults to 0.
+            ellipsoid_calculator_cls: (str) The class of the ellipsoid calculator
+            ellipsoid_calculator_args (dict) The arguments used for visualizing the ellipsoid calculator
+        """
+        super().__init__(
+            x_loader=x_loader, 
+            x=x, 
+            x_batch=x_batch, 
+            likelihood_model=likelihood_model, 
+            logger=logger, 
+            in_distr_loader=in_distr_loader, 
+        )
+        
+        ellipsoid_calculator_args = ellipsoid_calculator_args or {}
+        if 'verbose' not in ellipsoid_calculator_args:
+            ellipsoid_calculator_args['verbose'] = verbose
+            
+        self.ellipsoid_calculator = dy.eval(ellipsoid_calculator_cls)(likelihood_model, **(ellipsoid_calculator_args or {}))
+        
+        if self.x is not None:    
+            self.x_batch = self.x.unsqueeze(0)
+        
+        if self.x_batch is not None:
+            # create a loader with that single batch
+            self.x_loader = [(self.x_batch, None, None)]
+        
+        self.verbose = verbose
+        
+        
+
+class EllipsoidTrend(EllipsoidBaseMethod):
+    """
+    Instead of evaluating the OOD data using a single score visualization,
+    these methods evaluate the OOD data by visualizing the trend of the scores.
+    
+    Args:
+        EllipsoidBaseMethod (_type_): _description_
+    """
+    def __init__(
+        self,
+        likelihood_model: torch.nn.Module,
+        
+        x: th.Optional[torch.Tensor] = None,
+        x_batch: th.Optional[torch.Tensor] = None,
+        x_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        logger: th.Optional[th.Any] = None,
+        in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        
+        # Ellipsoid calculator
+        ellipsoid_calculator_cls: th.Optional[str] = None,
+        ellipsoid_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # for logging args
+        verbose: int = 0,
+        
+        # The range of the radii to show in the trend
+        radii_range: th.Optional[th.Tuple[float, float]] = None,
+        radii_n: int = 100,
+        
+        # visualization arguments
+        visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # include reference or not
+        include_reference: bool = False,
+    ):
+        """
+        Inherits from EllipsoidBaseMethod and adds the visualization of the trend.
+        
+        Args:
+            radii_range (th.Optional[th.Tuple[float, float]], optional): The smallest and largest distance to consider.
+            radii_n (int, optional): The number of Radii scales in the range to consider. Defaults to 100.
+            visualization_args (th.Optional[th.Dict[str, th.Any]], optional): Additional arguments that will get passed on
+                visualize_trend function. Defaults to None which is an empty dict.
+            include_reference (bool, optional): If set to True, then the training data trend will also be visualized.
+        """
+        super().__init__(
+            likelihood_model=likelihood_model,
+            x=x,
+            x_batch=x_batch,
+            x_loader=x_loader,
+            logger=logger,
+            in_distr_loader=in_distr_loader,
+            ellipsoid_calculator_cls=ellipsoid_calculator_cls,
+            ellipsoid_calculator_args=ellipsoid_calculator_args,
+            verbose=verbose,
+        )
+        
+        self.radii = np.linspace(*radii_range, radii_n)
+        
+        self.visualization_args = visualization_args or {}
+        
+        self.include_reference = include_reference
+    
+    def run(self):
+        
+        centers, ellipsoid_radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
+        trend = []
+        
+        # display if verbose is set
+        if self.verbose > 1:
+            radii_range = tqdm(self.radii)
+            radii_range.set_description("Calculating the trend of the average cdf")
+        else:
+            radii_range = self.radii
+            
+        for r in radii_range:
+            trend.append(self.ellipsoid_calculator.calculate_mean_cdf(r, centers, ellipsoid_radii, use_cache=True))
+        
+        # add reference if the option is set to True
+        reference_scores = None
+        if self.include_reference:
+            centers, ellipsoid_radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.in_distr_loader)
+            reference_scores = []
+            
+            if self.verbose > 1:
+                radii_range = tqdm(self.radii)
+                radii_range.set_description("Calculating the trend of the average cdf for reference")
+            else:
+                radii_range = self.radii
+        
+            for r in radii_range:
+                reference_scores.append(self.ellipsoid_calculator.calculate_mean_cdf(r, centers, ellipsoid_radii, use_cache=True))
+                
+        visualize_trends(
+            trend,
+            t_values=self.radii,
+            reference_scores=reference_scores,
+            x_label="r",
+            y_label="mean CDF(R^2(r^2))",
+            title="Trend of the average cdf",
+            **self.visualization_args,
+        )
+        
+class EllipsoidScore(EllipsoidBaseMethod):
+    """
+    This set of methods summarizes the trends observed from R^2 into a single
+    score that is used for OOD detection. This score can be obtained by different
+    heuristics, which maybe choosed between by the user.
+    """
+    def __init__(
+        self,
+        likelihood_model: torch.nn.Module,
+        
+        x: th.Optional[torch.Tensor] = None,
+        x_batch: th.Optional[torch.Tensor] = None,
+        x_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        logger: th.Optional[th.Any] = None,
+        in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        
+        # Ellipsoid calculator
+        ellipsoid_calculator_cls: th.Optional[str] = None,
+        ellipsoid_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # for logging args
+        verbose: int = 0,
+        
+        # for visualization args
+        visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
+        # metric
+        metric_name: th.Optional[str] = None,
+        metric_args: th.Optional[th.Dict[str, th.Any]] = None,
+    ):
+        """
+        This class adds the score calculation functionalities to the EllipsoidBaseMethod. By setting a metric name and a set of arguments
+        you determine what kind of metric you want to calculate on top of R^2 to obtain a single score.
+        
+        Moreover, the single score would be visualized in W&B using histograms so you can easily compare the result of your run with other
+        different OOD settings.
+        
+        Args:
+            metric_name: Determine how the score is going to get computed. The following are currently implemented:
+                1. 'cdf' for a predefined 'R'
+                2. 'auto_cdf', where we first calculate an appropriate R by 
+                    just looking at train data and then plugging it in for the CDF method in 1.
+                3. 'cdf_inv' for a predefined 'q' (quantile) we calculate the R corresponding to that
+                    using a binary search.
+                4. 'first_moment': Calculate the average of R^2 which is the semantic distance in a 
+                    fast and efficient manner (This is the fastest metric).
+            metric_args: Additional arguments that the corresponding functions might need. Take a look at the implementations to see
+                what are the appropriate arguments to pass in your configuration file.
+        """
+            
+        super().__init__(
+            likelihood_model=likelihood_model,
+            x=x,
+            x_batch=x_batch,
+            x_loader=x_loader,
+            logger=logger,
+            in_distr_loader=in_distr_loader,
+            ellipsoid_calculator_cls=ellipsoid_calculator_cls,
+            ellipsoid_calculator_args=ellipsoid_calculator_args,
+            verbose=verbose,
+        )
+        self.metric_name = metric_name
+        self.metric_args = metric_args or {}
+
+        self.visualization_args = visualization_args or {}
+        
     def _predef_r_cdf(self, r: float):
         """
         Given a specific 'r', it first calculates the entailed generalized-chi-squared
         distribution from self.x_loader, and then, it calculates the CDF of each of the
         ellipsoids.
         """
-        centers, radii = self.calculate_ellipsoids(loader=self.x_loader)
-        return self.calculate_single_cdf(r, centers, radii)
+        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
+        return self.ellipsoid_calculator.calculate_single_cdf(r, centers, radii)
     
     def _find_r_then_cdf(self, bn_search_limit: int = 100, cdf_threshold: float = 0.001):
         """
@@ -295,7 +491,7 @@ class LatentEllipsoids(OODBaseMethod):
         """
         r_l = 0.0
         r_r = 1e12
-        centers, radii = self.calculate_ellipsoids(loader=self.in_distr_loader)
+        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.in_distr_loader)
         
         if self.verbose == 1:
             rng = tqdm(range(bn_search_limit))
@@ -306,7 +502,7 @@ class LatentEllipsoids(OODBaseMethod):
             if self.verbose > 1:
                 print(f"Binary Searching iteration no.{iter + 1}")
             mid = (r_l + r_r) / 2.0
-            if self.calculate_mean_cdf(mid, centers, radii, use_cache=True) > cdf_threshold:
+            if self.ellipsoid_calculator.calculate_mean_cdf(mid, centers, radii, use_cache=True) > cdf_threshold:
                 r_r = mid
             else:
                 r_l = mid
@@ -324,7 +520,7 @@ class LatentEllipsoids(OODBaseMethod):
         we employ a binary search to find the smallest 'r' in which the cdf of that 
         datapoint is larger than q.
         """
-        centers, radii = self.calculate_ellipsoids(loader=self.x_loader)
+        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
         T = sum([len(c_batch) for c_batch in centers])
         r_l = np.zeros(T)
         r_r = np.ones(T) * 1e12
@@ -339,7 +535,7 @@ class LatentEllipsoids(OODBaseMethod):
                 print(f"Binary Searching iteration no.{iter + 1}")
                 
             mid = (r_l + r_r) / 2.0
-            single_cdfs = self.calculate_single_cdf(mid, centers, radii, use_cache=True)
+            single_cdfs = self.ellipsoid_calculator.calculate_single_cdf(mid, centers, radii, use_cache=True)
             r_l = np.where(single_cdfs > q, r_l, mid)
             r_r = np.where(single_cdfs > q, mid, r_r)
         return r_r
@@ -352,7 +548,7 @@ class LatentEllipsoids(OODBaseMethod):
         Returns:
             np.ndarray: The average R^2.
         """
-        centers, radii = self.calculate_ellipsoids(loader=self.x_loader)
+        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
         scores = []
         for c_batch, rad_batch in zip(centers, radii):
             for c, rad in zip(c_batch, rad_batch):
@@ -387,12 +583,18 @@ class LatentEllipsoids(OODBaseMethod):
             y_label="Density",
             **self.visualization_args,
         )
-                
-class LatentEllipsoidsVAE(LatentEllipsoids):
+
+# TODO: Implement the VAE models here                
+class ElliposoidCalculatorVAE(ElliposoidCalculator):
+    """
+    The EllipsoidCalculator implemented for the VAEs in the model_zoo repository.
+    """
     pass
 
-class LatentEllipsoidsNormflow(LatentEllipsoids):
-    
+class ElliposoidCalculatorFlow(ElliposoidCalculator):
+    """
+    The EllipsoidCalculator implemented for the NormFlows in the model_zoo repository.
+    """
     def encode(self, x):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters

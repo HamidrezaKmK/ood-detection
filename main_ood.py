@@ -11,13 +11,10 @@ import numpy as np
 import torch
 import dypy as dy
 from jsonargparse import ArgumentParser, ActionConfigFile
-import pprint
 import wandb
 from dataclasses import dataclass
 from random_word import RandomWords
 import os
-from model_zoo.evaluators.ood_helpers import plot_ood_histogram_from_run_dir
-from config import load_config_from_run_dir
 from model_zoo.datasets import get_loaders
 import yaml
 import traceback
@@ -188,23 +185,29 @@ def run_ood(config: dict):
     )
     
     # in_loader is the loader that is used for the in-distribution data
-    if 'pick_loader' in config['data']['in_distribution']:
-        if config['data']['in_distribution']['pick_loader'] == 'test':
-            in_loader = in_test_loader
-        elif config['data']['in_distribution']['pick_loader'] == 'train':
-            in_loader = in_train_loader
-        else:
-            raise ValueError("pick_loader should be either test or train")
+    if not 'pick_loader' in config['data']['in_distribution']:
+        print("pick_loader for in-distribution not in config, setting to test")
+        config['data']['in_distribution']['pick_loader'] = 'test'
+    
+    if config['data']['in_distribution']['pick_loader'] == 'test':
+        in_loader = in_test_loader
+    elif config['data']['in_distribution']['pick_loader'] == 'train':
+        in_loader = in_train_loader
+    else:
+        raise ValueError("pick_loader should be either test or train")
     
     # out_loader is the loader that is used for the out-of-distribution data
-    if 'pick_loader' in config['data']['out_of_distribution']:
-        if config['data']['out_of_distribution']['pick_loader'] == 'test':
-            out_loader = ood_test_loader
-        elif config['data']['out_of_distribution']['pick_loader'] == 'train':
-            out_loader = ood_train_loader
-        else:
-            raise ValueError("pick_loader should be either test or train")
-    
+    if not 'pick_loader' in config['data']['out_of_distribution']:
+        print("pick_loader for ood not in config, setting to test")
+        config['data']['out_of_distribution']['pick_loader'] = 'test'
+        
+    if config['data']['out_of_distribution']['pick_loader'] == 'test':
+        out_loader = ood_test_loader
+    elif config['data']['out_of_distribution']['pick_loader'] == 'train':
+        out_loader = ood_train_loader
+    else:
+        raise ValueError("pick_loader should be either test or train")
+
 
     ############################################################
     # (3) Log model samples and in/out of distribution samples #
@@ -248,6 +251,10 @@ def run_ood(config: dict):
     #########################################
     # (4) Instantiate an OOD solver and run #
     #########################################
+    
+    if "method_args" not in config["ood"] or "method" not in config["ood"]:
+        print("No method available! Exiting...")
+        return
     
     method_args = copy.deepcopy(config["ood"]["method_args"])
     method_args["logger"] = wandb.run
