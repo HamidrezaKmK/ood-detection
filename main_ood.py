@@ -186,6 +186,25 @@ def run_ood(config: dict):
         shuffle=False,
         data_root='data/',
     )
+    
+    # in_loader is the loader that is used for the in-distribution data
+    if 'pick_loader' in config['data']['in_distribution']:
+        if config['data']['in_distribution']['pick_loader'] == 'test':
+            in_loader = in_test_loader
+        elif config['data']['in_distribution']['pick_loader'] == 'train':
+            in_loader = in_train_loader
+        else:
+            raise ValueError("pick_loader should be either test or train")
+    
+    # out_loader is the loader that is used for the out-of-distribution data
+    if 'pick_loader' in config['data']['out_of_distribution']:
+        if config['data']['out_of_distribution']['pick_loader'] == 'test':
+            out_loader = ood_test_loader
+        elif config['data']['out_of_distribution']['pick_loader'] == 'train':
+            out_loader = ood_train_loader
+        else:
+            raise ValueError("pick_loader should be either test or train")
+    
 
     ############################################################
     # (3) Log model samples and in/out of distribution samples #
@@ -195,10 +214,10 @@ def run_ood(config: dict):
     np.random.seed(config["data"]["seed"])
 
     # get 9 random samples from the in distribution dataset
-    in_samples = in_test_loader.dataset.x[np.random.randint(
-        len(in_test_loader.dataset), size=9)]
-    out_samples = ood_test_loader.dataset.x[np.random.randint(
-        len(ood_test_loader.dataset), size=9)]
+    in_samples = in_loader.dataset.x[np.random.randint(
+        len(in_loader.dataset), size=9)]
+    out_samples = out_loader.dataset.x[np.random.randint(
+        len(out_loader.dataset), size=9)]
     in_samples = torchvision.utils.make_grid(in_samples, nrow=3)
     out_samples = torchvision.utils.make_grid(out_samples, nrow=3)
     
@@ -220,8 +239,8 @@ def run_ood(config: dict):
 
     img_array = plot_likelihood_ood_histogram(
         model,
-        in_test_loader,
-        ood_test_loader,
+        in_loader,
+        out_loader,
     )
     wandb.log({"likelihood_ood_histogram": [wandb.Image(
         img_array, caption="Histogram of log likelihoods")]})
@@ -237,15 +256,15 @@ def run_ood(config: dict):
     # pick a random batch with seed for reproducibility
     if config["ood"]["seed"] is not None:
         np.random.seed(config["ood"]["seed"])
-    idx = np.random.randint(len(ood_test_loader))
+    idx = np.random.randint(len(out_loader))
     for _ in range(idx):
-        x, y, _ = next(iter(ood_test_loader))
+        x, y, _ = next(iter(out_loader))
 
     if config["ood"]["pick_single"]:
         # pick a single image the selected batch
         method_args["x"] = x[np.random.randint(x.shape[0])]
     elif "use_dataloader" in config["ood"] and config["ood"]["use_dataloader"]:
-        method_args["x_loader"] = ood_test_loader
+        method_args["x_loader"] = out_loader
     elif "pick_count" not in config["ood"]:
         raise ValueError("pick_count not in config when pick_single=False")
     else:
