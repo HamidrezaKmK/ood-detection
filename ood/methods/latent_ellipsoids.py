@@ -1,29 +1,67 @@
 from .base_method import OODBaseMethod
 import typing as th
 import torch
+import math
+from ..visualization import visualize_histogram
+import numpy as np
+from chi2comb import ChiSquared, chi2comb_cdf
+from tqdm import tqdm
 
 class LatentEllipsoids(OODBaseMethod):
     """
     This class of methods works only on Gaussian latent spaces, for example, VAEs and Normflows.
     One might potentially extend these to general models via an extra level of transformation. However,
-    for the sake of simplicity, we will only consider this to work on flow models.
+    for the sake of simplicity, we will only consider this to work on Latent Gaussian Models.
     """
     def __init__(
         self,
         likelihood_model: torch.nn.Module,
+        #
+        metric_name: str,
+        metric_args: th.Optional[th.Dict[str, th.Any]] = None,
         # 
         x: th.Optional[torch.Tensor] = None,
         x_batch: th.Optional[torch.Tensor] = None,
         x_loader: th.Optional[torch.utils.data.DataLoader] = None,
         logger: th.Optional[th.Any] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
-        #
+        # These are computation-related knobs
+        # For example, with use_functorch and use_forward_mode
+        # you can specify how to compute the Jacobian
+        # With computation_batch_size you determine how large your jacobian batch
+        # is going to be
+        # With loader_limit you can specify how many batches you want to use
+        use_vmap: bool = False,
         use_functorch: bool = True,
         use_forward_mode: bool = True,
-        computation_batch_size: int = 1,
-        #
-        predefined_r: th.Optional[float] = None,
+        computation_batch_size: th.Optional[int] = None,
+        loader_limit: th.Optional[int] = None,
+        
+        # for logging args
+        verbose: int = 0,
+        
+        # for visualization args
+        visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
     ):
+        """
+
+        Args:
+            likelihood_model (torch.nn.Module): The likelihood model with initialized parameters that work best for generation.
+            metric_name (str): The class of the metric in use.
+            metric_args (th.Optional[th.Dict[str, th.Any]], optional): The instantiation arguments for the metric. Defaults to None which means empty dict.
+            x (th.Optional[torch.Tensor], optional): If the OOD detection task is only aimed for single point, this is the point.
+            x_batch (th.Optional[torch.Tensor], optional): _description_. Defaults to None.
+            x_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
+            logger (th.Optional[th.Any], optional): _description_. Defaults to None.
+            in_distr_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
+            use_vmap (bool, optional): _description_. Defaults to False.
+            use_functorch (bool, optional): _description_. Defaults to True.
+            use_forward_mode (bool, optional): _description_. Defaults to True.
+            computation_batch_size (th.Optional[int], optional): _description_. Defaults to None.
+            loader_limit (th.Optional[int], optional): _description_. Defaults to None.
+            verbose (int, optional): _description_. Defaults to 0.
+            visualization_args (th.Optional[th.Dict[str, th.Any]], optional): _description_. Defaults to None.
+        """
         super().__init__(
             x_loader=x_loader, 
             x=x, 
@@ -35,16 +73,28 @@ class LatentEllipsoids(OODBaseMethod):
         
         self.use_functorch = use_functorch
         self.use_forward_mode = use_forward_mode
+        self.use_vmap = use_vmap
         self.computation_batch_size = computation_batch_size
         
-        self.predefined_r = predefined_r
-        
+        if loader_limit is None:
+            self.loader_limit = math.inf
+        else:
+            self.loader_limit = loader_limit
+            
         if self.x is not None:
+            
             self.x_batch = self.x.unsqueeze(0)
         
         if self.x_batch is not None:
             # create a loader with that single batch
             self.x_loader = [(self.x_batch, None, None)]
+            
+        self.metric_name = metric_name
+        self.metric_args = metric_args or {}
+        
+        self.verbose = verbose
+        
+        self.visualization_args = visualization_args or {}
     
     def decode(self, z):
         """Decodes the input from a standard Gaussian latent space 'z' onto the data space."""
@@ -54,9 +104,306 @@ class LatentEllipsoids(OODBaseMethod):
         """Encodes the input 'x' onto a standard Gaussian Latent Space."""
         raise NotImplementedError("You must implement an encode method for your model.")
     
-    def calculate_reference(self):
-        pass
+    def calculate_ellipsoids(self, loader):
+        """
+        This function takes in a loader of the form
+        [
+            (x_batch_1, _, _),
+            (x_batch_2, _, _),
+            ...,
+            (x_batch_n, _, _)
+        ]
+        where each x_batch_i is a batch of data points.
+        
+        This function calculates the ellipsoids for each of the data points in the batch.
+        And optimizes some of the computations by doing either vmap or batching if specified.
+        After that, it returns the centers and radii of the ellipsoids in the following format.
+        
+        centers = [centers_batch_1, centers_batch_2, ..., centers_batch_n]
+        radii = [radii_batch_1, radii_batch_2, ..., radii_batch_n]
+        
+        Where each of the centers_batch_i and radii_batch_i 
+        have the shape (batch_size, latent_dim)
+        """
+        centers = []
+        radii = []
+        
+        idx = 0
+        
+        if self.verbose > 1:
+            loader_decorated = tqdm(loader)
+            loader_decorated.set_description(f"Computing latent ellipsoids for loader with limit = {self.loader_limit}")
+        else:
+            loader_decorated = loader
+            
+        for x_batch, _, _ in loader_decorated:
+            idx += 1
+            if idx > self.loader_limit:
+                # if loader limit is set, then
+                # we won't need to calculate 
+                # a lot of batches
+                break
+            
+            jac = []
+            # encode to obtain the latent representation in the Gaussian space
+            z = self.encode(x_batch)
+            
+            # Since Jacobian computation is heavier than the normal batch_wise
+            # computations, we have another level of batching here
+            step = self.computation_batch_size
+            if self.computation_batch_size is None:
+                step = z.shape[0]
+                
+            for l in range(0, z.shape[0], step):
+                r = min(l + step, z.shape[0])
+                
+                # Get a batch of latent representations
+                z_s = z[l:r]
+
+                # Calculate the jacobian of the decode function
+                if self.use_functorch:
+                    jac_fn = torch.func.jacfwd if self.use_forward_mode else torch.func.jacrev
+                    if self.use_vmap:
+                        # optimized implementation with vmap, however, it does not work as of yet
+                        jac_until_now = torch.func.vmap(jac_fn(self.decode))(z_s)
+                    else:
+                        jac_until_now = jac_fn(self.decode)(z_s)
+                else:
+                    jac_until_now = torch.autograd.functional.jacobian(self.decode, z_s)
+
+                # Reshaping the jacobian to be of the shape (batch_size, latent_dim, latent_dim)
+                if self.use_vmap:
+                    jac_until_now = jac_until_now.reshape(z_s.shape[0], -1, z_s.numel() // z_s.shape[0])
+                    for j in range(jac_until_now.shape[0]):
+                        jac.append(jac_until_now[j, :, :])
+                else:
+                    jac_until_now = jac_until_now.reshape(z_s.shape[0], -1, z_s.shape[0], z_s.numel() // z_s.shape[0])
+                    for j in range(jac_until_now.shape[0]):
+                        jac.append(jac_until_now[j, :, j, :])   
+                    
+                        
+            # Stack all the obtained jacobians from the computation batch scale
+            # to original batch scale
+            jac = torch.stack(jac)
+            
+            # ellipsoids = J^T * J for each batch
+            ellipsoids = torch.matmul(jac.transpose(1, 2), jac)
+            
+            L, Q = torch.linalg.eigh(ellipsoids)
+            # Each row of L would contain the scales of the non-central chi-squared distribution
+            center = torch.matmul(Q.transpose(1, 2), z.unsqueeze(-1)).squeeze(-1)
+            
+            centers.append(center.cpu().detach())
+            radii.append(L.cpu().detach())
+        
+        return centers, radii
+     
+    def calculate_single_cdf(self, r, centers, radii, use_cache: bool = False) -> np.ndarray:
+        """
+        Given two loaders of radii and centers, this function calculates the
+        CDF of each of the entailed generalized chi-squared distributions.
+        If use_cache is set to true, then this means that centers and radii have been
+        cached from before and some of the computations can be optimized.
+        
+        Args:
+            r: Union(float, List[float]) 
+                Value where the cdf is evaluated.
+            centers: The loader for the centers of the ellipsoids.
+                [batch_centers_1, batch_centers_2, ..., batch_centers_n]
+            radii: The loader for the radius of the ellipsoids.
+                [batch_radii_1, batch_radii_2, ..., batch_radii_n]
+            use_cache: (bool)
+                Whether to use the cached centers and radii or not.
+        Returns:
+            np.ndarray: The CDF of each of the ellipsoids when the entire loader
+                is flattened. In other words, if batch_i has size sz_i and T = sum(sz_i),
+                then the returned array would have size T.
+        """
+        def _check_r_primitive():
+            if isinstance(r, float):
+                return True
+            if isinstance(r, int):
+                return True
+        if self.verbose > 1:
+            print("Calculating the single CDFs...")
+            if _check_r_primitive():
+                print(f"\tr = {r}")
+            
+        if not use_cache or not hasattr(self, 'chi2s'):
+            # if it is not cached, then we should calculate the chi2s
+            self.chi2s = []
+            for c_batch, rad_batch in zip(centers, radii):
+                for c, rad in zip(c_batch, rad_batch):
+                    self.chi2s.append([ChiSquared(coef=r_i, ncent=c_i**2, dof=1) for c_i, r_i in zip(c, rad)])
+        
+        
+        if self.verbose > 1:
+            rng_chi2s = tqdm(self.chi2s)
+            rng_chi2s.set_description("Calculating the CDFs for each of the chi2s")
+        else:
+            rng_chi2s = self.chi2s
+                
+        # self.chi2s contains a list of flattened chi2s
+        cdfs = []
+        if _check_r_primitive():
+            for chi2s in rng_chi2s:
+                cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0)[0])
+        else:
+            for r_single, chi2s in zip(r, rng_chi2s):
+                cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0)[0])
+                
+        return np.array(cdfs)
+    
+    def calculate_mean_cdf(self, r, centers, radii, use_cache: bool = False):
+        """
+        Passes the exact arguments to calculate_single_cdf and returns the mean of the cdfs
+        which will also represent a complex semantic distance CDF.
+        """
+        if self.verbose > 1:
+            print("Calculating the mean CDF...")
+        return np.mean(self.calculate_single_cdf(r, centers, radii, use_cache))
+    
+    def _predef_r_cdf(self, r: float):
+        """
+        Given a specific 'r', it first calculates the entailed generalized-chi-squared
+        distribution from self.x_loader, and then, it calculates the CDF of each of the
+        ellipsoids.
+        """
+        centers, radii = self.calculate_ellipsoids(loader=self.x_loader)
+        return self.calculate_single_cdf(r, centers, radii)
+    
+    def _find_r_then_cdf(self, bn_search_limit: int = 100, cdf_threshold: float = 0.001):
+        """
+        This function does a binary search to find the smallest 'r' in which the
+        average cdf of the train data is larger than the cdf_threshold. This represents
+        a meaningful semantic distance that can be used for OOD detection. Smaller values
+        would have very tiny probabilities, while larger values might lose the local properties
+        of R^2 that only hold for a small neighborhood.
+        
+        Args:
+            bn_search_limit (int, optional): 
+                For calculating the R, we do a binary search and this parameter determines
+                the number of iterartions, which translates to the precision of the R. Defaults to 100.
+            cdf_threshold (float, optional): 
+                This is the infinitesimal threshold that is considered (meaningful).
+                Defaults to 0.001.
+
+        Returns:
+            np.ndarray: The CDF of each of the ellipsoids ran on x_loader, with the r value
+                obtained from the search above.
+        """
+        r_l = 0.0
+        r_r = 1e12
+        centers, radii = self.calculate_ellipsoids(loader=self.in_distr_loader)
+        
+        if self.verbose == 1:
+            rng = tqdm(range(bn_search_limit))
+        else:
+            rng = range(bn_search_limit)
+            
+        for iter in rng:
+            if self.verbose > 1:
+                print(f"Binary Searching iteration no.{iter + 1}")
+            mid = (r_l + r_r) / 2.0
+            if self.calculate_mean_cdf(mid, centers, radii, use_cache=True) > cdf_threshold:
+                r_r = mid
+            else:
+                r_l = mid
+        auto_r = r_r
+        
+        if self.verbose > 1:
+            print(f"Found r = {auto_r}")
+            
+        return self._predef_r_cdf(auto_r)
+    
+    def _cdf_inv(self, q: float, bn_search_limit: int = 100):
+        """
+        For each datapoint in self.x_loader, we calculate the CDF inverse of the
+        entailed semantic distance from that datapoint. To calculate the inverse,
+        we employ a binary search to find the smallest 'r' in which the cdf of that 
+        datapoint is larger than q.
+        """
+        centers, radii = self.calculate_ellipsoids(loader=self.x_loader)
+        T = sum([len(c_batch) for c_batch in centers])
+        r_l = np.zeros(T)
+        r_r = np.ones(T) * 1e12
+        
+        if self.verbose == 1:
+            rng = tqdm(range(bn_search_limit))
+        else:
+            rng = range(bn_search_limit)
+            
+        for iter in rng:
+            if self.verbose > 1:
+                print(f"Binary Searching iteration no.{iter + 1}")
+                
+            mid = (r_l + r_r) / 2.0
+            single_cdfs = self.calculate_single_cdf(mid, centers, radii, use_cache=True)
+            r_l = np.where(single_cdfs > q, r_l, mid)
+            r_r = np.where(single_cdfs > q, mid, r_r)
+        return r_r
+    
+    def _first_moment(self):
+        """
+        Calculate the first moment of the generalized chi-squared entailed by each data
+        point in a flattened manner.
+        
+        Returns:
+            np.ndarray: The average R^2.
+        """
+        centers, radii = self.calculate_ellipsoids(loader=self.x_loader)
+        scores = []
+        for c_batch, rad_batch in zip(centers, radii):
+            for c, rad in zip(c_batch, rad_batch):
+                scores.append(np.sum(rad.numpy() * (1 + c.numpy()**2)))
+        return np.array(scores)
     
     def run(self):
-        for x_batch, _, _ in self.x_loader:
-            pass
+        metric_name_to_func = {
+            "find-r-then-cdf": self._find_r_then_cdf,
+            "cdf-inv": self._cdf_inv,
+            "predef-r-cdf": self._predef_r_cdf,
+            "first-moment": self._first_moment,
+        }
+        x_label = {
+            "find-r-then-cdf": "CDF",
+            "cdf-inv": "CDF^{-1}",
+            "predef-r-cdf": "CDF",
+            "first-moment": "First Moment",
+        }
+        scores = metric_name_to_func[self.metric_name](**self.metric_args)
+        
+        visualize_histogram(
+            scores,
+            title=f"{self.metric_name} on R^2",
+            x_label=x_label[self.metric_name],
+            y_label="Density",
+            **self.visualization_args,
+        )
+                
+class LatentEllipsoidsVAE(LatentEllipsoids):
+    pass
+
+class LatentEllipsoidsNormflow(LatentEllipsoids):
+    
+    def encode(self, x):
+        # turn off the gradient for faster computation
+        # because we don't need to change the model parameters
+        with torch.no_grad():
+            try:
+                z = self.likelihood_model._nflow.transform_to_noise(x)
+            except ValueError as e:
+                z = self.likelihood_model._nflow.transform_to_noise(x.unsqueeze(0))
+                z = z.squeeze(0)
+            return z
+
+    def decode(self, z):
+        # turn off the gradient for faster computation
+        # because we don't need to change the model parameters
+        with torch.no_grad():
+            try:
+                x, logdets = self.likelihood_model._nflow._transform.inverse(z)
+            except ValueError as e:
+                x, logdets = self.likelihood_model._nflow._transform.inverse(z.unsqueeze(0))
+                x = x.squeeze(0)
+            return x
