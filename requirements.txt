@@ -14,12 +14,12 @@ prdc
 
 # ood detection
 random-word
-dysweep
 dypy
 wandb
 jsonargparse
 
-
+# use the development package of dysweep (TODO: change this to normal when over)
+git+https://github.com/HamidrezaKmK/dysweep.git
 
 # dotenv for environment variables and secrets
 python-dotenv
