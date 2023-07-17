@@ -52,7 +52,8 @@ def get_loaders(
         make_valid_loader,
         train_batch_size,
         valid_batch_size,
-        test_batch_size
+        test_batch_size,
+        shuffle=True,
 ):
     if dataset in ["celeba", "mnist", "fashion-mnist", "cifar10", "svhn"]:
         train_dset, valid_dset, test_dset = get_image_datasets(dataset, data_root, make_valid_loader)
@@ -63,23 +64,23 @@ def get_loaders(
     else:
         raise ValueError(f"Unknown dataset {dataset}")
     
-    train_loader = get_loader(train_dset, device, train_batch_size, drop_last=True)
+    train_loader = get_loader(train_dset, device, train_batch_size, drop_last=True, shuffle=shuffle)
 
     if make_valid_loader:
-        valid_loader = get_loader(valid_dset, device, valid_batch_size, drop_last=False)
+        valid_loader = get_loader(valid_dset, device, valid_batch_size, drop_last=False, shuffle=False)
     else:
         valid_loader = None
 
-    test_loader = get_loader(test_dset, device, test_batch_size, drop_last=False)
+    test_loader = get_loader(test_dset, device, test_batch_size, drop_last=False, shuffle=False)
 
     return train_loader, valid_loader, test_loader
     
     
-def get_loader(dset, device, batch_size, drop_last):
+def get_loader(dset, device, batch_size, drop_last, shuffle=True):
     return DataLoader(
         dset.to(device),
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=shuffle,
         drop_last=drop_last,
         num_workers=0,
         pin_memory=False

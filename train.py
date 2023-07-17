@@ -1,6 +1,11 @@
-#!/usr/bin/env python3
+"""
+The main file used for training models.
+This file is based on jsonargparse and can be run using the following scheme
 
-import pprint
+python train.py -c config.yaml
+
+"""
+
 import torch
 import typing as th
 import jsonargparse
@@ -9,12 +14,8 @@ import dypy as dy
 from model_zoo import TwoStepComponent
 from model_zoo.trainers.single_trainer import BaseTrainer
 
-import matplotlib.pyplot as plt
-
-from config import get_single_config, load_config, parse_config_arg
 from model_zoo import (
-    get_single_module, get_single_trainer, get_loaders_from_config,
-    get_writer, get_evaluator, get_ood_evaluator, Writer
+   get_loaders_from_config, get_evaluator, Writer
 )
 
 from dataclasses import dataclass
@@ -50,8 +51,10 @@ class TrainingConfig:
     data: th.Optional[th.Dict[str, th.Any]] = None
     model: th.Optional[ModelConfig] = None
     trainer: th.Optional[TrainerConfig] = None
-    
-    
+
+
+# Setup a parser for the configurations according to the above dataclasses
+# we use jsonargparse to allow for nested configurations
 parser = jsonargparse.ArgumentParser(description="Single Density Estimation or Generalized Autoencoder Training Module")
 parser.add_class_arguments(
     TrainingConfig,
@@ -64,14 +67,19 @@ parser.add_argument(
 args = parser.parse_args()
 
 
+# setup device
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Get the loaders from the configuration
 train_loader, valid_loader, test_loader, additional_data_info = get_loaders_from_config(args.data, device)
 
+# Create the module 
 module: TwoStepComponent = dy.eval(args.model.class_path)(**args.model.init_args).to(device)
+# Set the appropriate optimizer
 module.set_optimizer(args.trainer.optimizer)
 
+# Set an evaluator that gets called after each epoch of the trainer
+# for potential early stopping or evaluation
 evaluator = get_evaluator(
     module,
     train_loader=train_loader, valid_loader=valid_loader, test_loader=test_loader,
@@ -80,6 +88,7 @@ evaluator = get_evaluator(
     **args.trainer.evaluator.get("metric_kwargs", {}),
 )
 
+# Additional args used for trainer.
 additional_args = args.trainer.additional_init_args or {}
 trainer: BaseTrainer = dy.eval(args.trainer.trainer_cls)(
     module,
@@ -99,4 +108,5 @@ trainer: BaseTrainer = dy.eval(args.trainer.trainer_cls)(
     **additional_args
 )
 
+# The actual training loop
 trainer.train()

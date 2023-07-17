@@ -70,7 +70,22 @@ class RQCouplingTransform(PiecewiseRationalQuadraticCouplingTransform):
             transform_net_create_fn=create_resnet,
             **kwargs,
         )
+
+class LogitTransform(Transform):
+    """Base class for all transform objects."""
+    def __init__(self, eps=0.05):
+        super().__init__()
+        self.eps = eps
         
+    def forward(self, inputs, context=None):
+        inputs = torch.clamp(inputs, self.eps, 1 - self.eps)
+        return torch.logit(inputs), -torch.sum(torch.log(1 - inputs) + torch.log(inputs))
+
+    def inverse(self, inputs, context=None):
+        sigm = torch.sigmoid(inputs)
+        sigm_clamped = torch.clamp(sigm, self.eps, 1 - self.eps)
+        return sigm, torch.sum(torch.log(1 - sigm_clamped) + torch.log(sigm_clamped))
+    
 class NormalizingFlow(DensityEstimator):
     """
     A wrapper class for nflows Normalizing Flows.
@@ -92,6 +107,7 @@ class NormalizingFlow(DensityEstimator):
                  base_distribution: th.Optional[th.Union[Distribution, th.Dict[str, th.Any]]]=None, 
                  **kwargs):
         super().__init__(**kwargs)
+        
         
         
         if isinstance(transform, list):
@@ -173,40 +189,16 @@ class NormalizingFlow(DensityEstimator):
         elif isinstance(base_distribution, Distribution):
             self.base_distribution = base_distribution
 
+        # if logit transform is true, then add a logit transform to the beginning of the flow
+        if self.logit_transform:
+            self.transform = CompositeTransform([LogitTransform(), self.transform])
+            self.logit_transform = False
+            
         # Setup the actual flow underneath
         self._nflow = Flow(
             transform=self.transform,
             distribution=self.base_distribution
         )
-
-    # def representation_hook(self, module, args, output, module_rank):
-    #     """
-    #     This is a function that gets called on each of the hooked modules
-    #     When registering the hook for every single module, we pass it into
-    #     this function to get the representation output of the module.
-        
-    #     Here, this function simply returns the output of the module, in default.
-    #     However, this function can be overridden to return a different representation.
-    #     """
-    #     # if not hasattr(self, 'called_count'):
-    #     #     self.called_count = 0
-        
-    #     # # if self.called_count < 10:
-    #     # #     # if module_rank == 2:
-    #     # #     print("**************")
-    #     # #     print("Module rank: ", module_rank)
-    #     # #     print("args", len(args))
-    #     # #     print("args0", args[0].shape)
-    #     # #     print("args1", type(args[1]))
-    #     # #     print("outpus", len(output))
-    #     # #     print("output0", output[0].shape)
-    #     # #     print("output1", output[1].shape)
-    #     # #     # print("Module output: ", output)
-    #     # #     print("Module", module)
-    #     # #     print("**************")
-    #     # #     self.called_count += 1
-            
-    #     return output[0]
     
     def sample(self, n_samples):
         # TODO: batch in parent class
@@ -215,10 +207,19 @@ class NormalizingFlow(DensityEstimator):
 
     @batch_or_dataloader()
     def log_prob(self, x):
-        # TODO: Careful with log probability when using _data_transform()
+        # NOTE: Careful with log probability when using _data_transform()
         x = self._data_transform(x)
+        # print the maximum and minimum of x
+        # print("x max: ", x.max()) 
+        # print("x min: ", x.min())
         log_prob = self._nflow.log_prob(x)
-
+        # check if log_prob has nan values, otherwise print the maximum and minimum of log_prob
+        if torch.isnan(log_prob).any():
+            raise ValueError("log_prob has nan values")
+        # else:
+        #     print("log_prob max: ", log_prob.max())
+        #     print("log_prob min: ", log_prob.min())
+            
         if len(log_prob.shape) == 1:
             log_prob = log_prob.unsqueeze(1)
 
