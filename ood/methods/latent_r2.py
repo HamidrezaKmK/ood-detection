@@ -9,21 +9,15 @@ from tqdm import tqdm
 import wandb
 import dypy as dy
 
-class ElliposoidCalculator:
+class EncodingModel:
     """
-    This is a class that is used in methods that use latent ellipsoids.
-    For a likelihood model that has an encoding and a decoding into a Gaussian
-    space, this ellipsoid calculator yields all the calculations required to 
-    calculate the corresponding ellipsoid for each data point.
-    
-    This class has an abstract encode and decode method that should be implemented for
-    specific generative models. For example, for a flow model, that would be running
-    the transformation both ways, and for a VAE, that would be running the encoder and
-    the decoder.
-    
-    Moreover, we have computation knobs to optimize the computation of the Jacobian.
-    For example, one might use vmaps to optimize the computation of the Jacobian of a 
-    batch. Or one can use either functorch or autograd to compute the Jacobian.
+    This is a class that is used for likelihood models that have an encode and
+    decode functionality with them. Here, the encode and decode function are 
+    abstract. For example, for a flow model, that would be running the transformation.
+    And for a VAE model, that would be running the encoder and the decoder.
+
+    Moreover, this class has a set of knobs designed for optimizing the computation
+    of the Jacobian.
     """
     def __init__(
         self,
@@ -65,7 +59,7 @@ class ElliposoidCalculator:
         """Encodes the input 'x' onto a standard Gaussian Latent Space."""
         raise NotImplementedError("You must implement an encode method for your model.")
     
-    def calculate_ellipsoids(self, loader):
+    def calculate_jacobian(self, loader):
         """
         This function takes in a loader of the form
         [
@@ -76,27 +70,21 @@ class ElliposoidCalculator:
         ]
         where each x_batch_i is a batch of data points.
         
-        This function calculates the ellipsoids for each of the data points in the batch.
-        And optimizes some of the computations by doing either vmap or batching if specified.
-        After that, it returns the centers and radii of the ellipsoids in the following format.
-        
-        centers = [centers_batch_1, centers_batch_2, ..., centers_batch_n]
-        radii = [radii_batch_1, radii_batch_2, ..., radii_batch_n]
-        
-        Where each of the centers_batch_i and radii_batch_i 
-        have the shape (batch_size, latent_dim)
+        This function calculates the encoding of each of the datapoints,
+        then using the latent representation, calculates the Jacobian of
+        the decoded function. This is done batch-wise to optimize the computation.
         """
-        centers = []
-        radii = []
         
         idx = 0
         
         if self.verbose > 1:
             loader_decorated = tqdm(loader)
-            loader_decorated.set_description(f"Computing latent ellipsoids for loader with limit = {self.loader_limit}")
         else:
             loader_decorated = loader
-            
+        
+        jax = []
+        z_values = []
+           
         for x_batch, _, _ in loader_decorated:
             idx += 1
             if idx > self.loader_limit:
@@ -114,8 +102,13 @@ class ElliposoidCalculator:
             step = self.computation_batch_size
             if self.computation_batch_size is None:
                 step = z.shape[0]
-                
+            
+            progress = 0
             for l in range(0, z.shape[0], step):
+                progress += 1
+                if self.verbose > 1:
+                    loader_decorated.set_description(f"Computing latent jacobians [{progress}/{z.shape[0] // step}]")
+        
                 r = min(l + step, z.shape[0])
                 
                 # Get a batch of latent representations
@@ -147,7 +140,87 @@ class ElliposoidCalculator:
             # to original batch scale
             jac = torch.stack(jac)
             
-            # ellipsoids = J^T * J for each batch
+            jax.append(jac.cpu().detach())
+            z_values.append(z.cpu().detach())
+        
+        return jax, z_values
+
+class CDFCalculator:
+    def __init__(
+        self,
+        likelihood_model: torch.nn.Module,
+        # Encoding and decoding model
+        encoding_model_class: th.Optional[str] = None, 
+        encoding_model_args: th.Optional[th.Dict[str, th.Any]] = None,
+        # verbosity
+        verbose: int = 0,
+    ):
+        self.verbose = verbose
+        self.encoding_model = dy.eval(encoding_model_class)(likelihood_model, **(encoding_model_args or {}))
+    
+    def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
+        # You should implement your own function here
+        raise NotImplementedError("You must implement a calculate_single_cdf method for your model.")
+
+    def calculate_mean_cdf(self, r, loader, use_cache: bool = False) -> float:
+        """
+        Passes the exact arguments to calculate_single_cdf and returns the mean of the cdfs
+        which will also represent a complex semantic distance CDF.
+        """
+        if self.verbose > 1:
+            print("Calculating the mean CDF...")
+        return np.mean(self.calculate_single_cdf(r, loader, use_cache))
+
+class CDFElliposoidCalculator(CDFCalculator):
+    """
+    This is a class that is used in methods that use latent ellipsoids.
+    For a likelihood model that has an encoding and a decoding into a Gaussian
+    space, this ellipsoid calculator yields all the calculations required to 
+    calculate the corresponding ellipsoid for each data point.
+    
+    This class has an abstract encode and decode method that should be implemented for
+    specific generative models. For example, for a flow model, that would be running
+    the transformation both ways, and for a VAE, that would be running the encoder and
+    the decoder.
+    
+    Moreover, we have computation knobs to optimize the computation of the Jacobian.
+    For example, one might use vmaps to optimize the computation of the Jacobian of a 
+    batch. Or one can use either functorch or autograd to compute the Jacobian.
+    """
+    
+    def calculate_ellipsoids(self, loader):
+        """
+        This function takes in a loader of the form
+        [
+            (x_batch_1, _, _),
+            (x_batch_2, _, _),
+            ...,
+            (x_batch_n, _, _)
+        ]
+        where each x_batch_i is a batch of data points.
+        
+        This function calculates the ellipsoids for each of the data points in the batch.
+        And optimizes some of the computations by doing either vmap or batching if specified.
+        After that, it returns the centers and radii of the ellipsoids in the following format.
+        
+        centers = [centers_batch_1, centers_batch_2, ..., centers_batch_n]
+        radii = [radii_batch_1, radii_batch_2, ..., radii_batch_n]
+        
+        Where each of the centers_batch_i and radii_batch_i 
+        have the shape (batch_size, latent_dim)
+        """
+        centers = []
+        radii = []
+        
+        jax, z_values = self.encoding_model.calculate_jacobian(loader)
+        
+        if self.verbose > 1:
+            iterable = tqdm(zip(jax, z_values))
+            iterable.set_description("Calculating the ellipsoids")
+        else:
+            iterable = zip(jax, z_values)
+        
+        for jac, z in iterable: 
             ellipsoids = torch.matmul(jac.transpose(1, 2), jac)
             
             L, Q = torch.linalg.eigh(ellipsoids)
@@ -156,10 +229,10 @@ class ElliposoidCalculator:
             
             centers.append(center.cpu().detach())
             radii.append(L.cpu().detach())
-        
+            
         return centers, radii
 
-    def calculate_single_cdf(self, r, centers, radii, use_cache: bool = False) -> np.ndarray:
+    def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
         """
         Given two loaders of radii and centers, this function calculates the
         CDF of each of the entailed generalized chi-squared distributions.
@@ -168,7 +241,7 @@ class ElliposoidCalculator:
         
         Args:
             r: Union(float, List[float]) 
-                Value where the cdf is evaluated.
+                r value(s) where the cdf is evaluated.
             centers: The loader for the centers of the ellipsoids.
                 [batch_centers_1, batch_centers_2, ..., batch_centers_n]
             radii: The loader for the radius of the ellipsoids.
@@ -180,6 +253,11 @@ class ElliposoidCalculator:
                 is flattened. In other words, if batch_i has size sz_i and T = sum(sz_i),
                 then the returned array would have size T.
         """
+        if not use_cache:
+            self.centers, self.radii = self.calculate_ellipsoids(loader)
+        if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
+            raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
+        centers, radii = self.centers, self.radii
         def _check_r_primitive():
             if isinstance(r, float):
                 return True
@@ -214,18 +292,112 @@ class ElliposoidCalculator:
                 cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0)[0])
                 
         return np.array(cdfs)
-    
-    def calculate_mean_cdf(self, r, centers, radii, use_cache: bool = False):
-        """
-        Passes the exact arguments to calculate_single_cdf and returns the mean of the cdfs
-        which will also represent a complex semantic distance CDF.
-        """
-        if self.verbose > 1:
-            print("Calculating the mean CDF...")
-        return np.mean(self.calculate_single_cdf(r, centers, radii, use_cache))
-        
 
-class EllipsoidBaseMethod(OODBaseMethod):
+class CDFRotatedHypercube(CDFCalculator):
+    """
+    This class calculates rotated hypercube masses around the
+    OOD datapoint.
+    """
+    
+    def calculate_rectangles(self, loader):
+        """
+        This function takes in a loader of the form
+        [
+            (x_batch_1, _, _),
+            (x_batch_2, _, _),
+            ...,
+            (x_batch_n, _, _)
+        ]
+        where each x_batch_i is a batch of data points.
+        
+        This function calculates rectangles, centers and their corresponding rotations.
+        return values:
+        
+        ratations, centers, scales
+        
+        """
+        centers = []
+        radii = []
+        
+        jax, z_values = self.encoding_model.calculate_jacobian(loader)
+        
+        if self.verbose > 1:
+            iterable = tqdm(zip(jax, z_values))
+            iterable.set_description("Calculating the ellipsoids")
+        else:
+            iterable = zip(jax, z_values)
+        
+        for jac, z in iterable: 
+            ellipsoids = torch.matmul(jac.transpose(1, 2), jac)
+            
+            L, Q = torch.linalg.eigh(ellipsoids)
+            # Each row of L would contain the scales of the non-central chi-squared distribution
+            center = torch.matmul(Q.transpose(1, 2), z.unsqueeze(-1)).squeeze(-1)
+            
+            centers.append(center.cpu().detach())
+            radii.append(L.cpu().detach())
+            
+        return centers, radii
+
+    def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
+        """
+        Given two loaders of radii and centers, this function calculates the
+        CDF of each of the entailed generalized chi-squared distributions.
+        If use_cache is set to true, then this means that centers and radii have been
+        cached from before and some of the computations can be optimized.
+        
+        Args:
+            r: Union(float, List[float]) 
+                r value(s) where the cdf is evaluated.
+            centers: The loader for the centers of the ellipsoids.
+                [batch_centers_1, batch_centers_2, ..., batch_centers_n]
+            radii: The loader for the radius of the ellipsoids.
+                [batch_radii_1, batch_radii_2, ..., batch_radii_n]
+            use_cache: (bool)
+                Whether to use the cached centers and radii or not.
+        Returns:
+            np.ndarray: The CDF of each of the ellipsoids when the entire loader
+                is flattened. In other words, if batch_i has size sz_i and T = sum(sz_i),
+                then the returned array would have size T.
+        """
+        if not use_cache:
+            self.centers, self.radii = self.calculate_ellipsoids(loader)
+        if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
+            raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
+        centers, radii = self.centers, self.radii
+        def _check_r_primitive():
+            if isinstance(r, float):
+                return True
+            if isinstance(r, int):
+                return True
+          
+        if not use_cache or not hasattr(self, 'chi2s'):
+            # if it is not cached, then we should calculate the chi2s
+            self.chi2s = []
+            for c_batch, rad_batch in zip(centers, radii):
+                for c, rad in zip(c_batch, rad_batch):
+                    self.chi2s.append([ChiSquared(coef=r_i, ncent=c_i**2, dof=1) for c_i, r_i in zip(c, rad)])
+        
+        
+        if self.verbose > 1:
+            rng_chi2s = tqdm(self.chi2s)
+            rng_chi2s.set_description("Calculating the CDFs for each of the chi2s")
+        else:
+            rng_chi2s = self.chi2s
+                
+        # self.chi2s contains a list of flattened chi2s
+        cdfs = []
+        if _check_r_primitive():
+            for chi2s in rng_chi2s:
+                cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0)[0])
+        else:
+            for r_single, chi2s in zip(r, rng_chi2s):
+                cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0)[0])
+                
+        return np.array(cdfs)
+
+
+class CDFBaseMethod(OODBaseMethod):
     """
     This class is the base class that employs an ellipsoid calculator.
     
@@ -245,9 +417,9 @@ class EllipsoidBaseMethod(OODBaseMethod):
         logger: th.Optional[th.Any] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
-        # Ellipsoid calculator
-        ellipsoid_calculator_cls: th.Optional[str] = None,
-        ellipsoid_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        # CDF calculator
+        cdf_calculator_class: th.Optional[str] = None,
+        cdf_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
         # for logging args
         verbose: int = 0,
@@ -263,8 +435,8 @@ class EllipsoidBaseMethod(OODBaseMethod):
             logger (th.Optional[th.Any], optional): _description_. Defaults to None.
             in_distr_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
             verbose (int, optional): _description_. Defaults to 0.
-            ellipsoid_calculator_cls: (str) The class of the ellipsoid calculator
-            ellipsoid_calculator_args (dict) The arguments used for visualizing the ellipsoid calculator
+            cdf_calculator_class: (str) The class of the CDF calculator
+            cdf_calculator_args (dict) The arguments used for visualizing the cdf calculator
         """
         super().__init__(
             x_loader=x_loader, 
@@ -275,11 +447,11 @@ class EllipsoidBaseMethod(OODBaseMethod):
             in_distr_loader=in_distr_loader, 
         )
         
-        ellipsoid_calculator_args = ellipsoid_calculator_args or {}
-        if 'verbose' not in ellipsoid_calculator_args:
-            ellipsoid_calculator_args['verbose'] = verbose
+        cdf_calculator_args = cdf_calculator_args or {}
+        if 'verbose' not in cdf_calculator_args:
+            cdf_calculator_args['verbose'] = verbose
             
-        self.ellipsoid_calculator = dy.eval(ellipsoid_calculator_cls)(likelihood_model, **(ellipsoid_calculator_args or {}))
+        self.cdf_calculator: CDFCalculator = dy.eval(cdf_calculator_class)(likelihood_model, **(cdf_calculator_args or {}))
         
         if self.x is not None:    
             self.x_batch = self.x.unsqueeze(0)
@@ -290,9 +462,7 @@ class EllipsoidBaseMethod(OODBaseMethod):
         
         self.verbose = verbose
         
-        
-
-class EllipsoidTrend(EllipsoidBaseMethod):
+class CDFTrend(CDFBaseMethod):
     """
     Instead of evaluating the OOD data using a single score visualization,
     these methods evaluate the OOD data by visualizing the trend of the scores.
@@ -310,9 +480,10 @@ class EllipsoidTrend(EllipsoidBaseMethod):
         logger: th.Optional[th.Any] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
-        # Ellipsoid calculator
-        ellipsoid_calculator_cls: th.Optional[str] = None,
-        ellipsoid_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # CDF calculator
+        cdf_calculator_class: th.Optional[str] = None,
+        cdf_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
         # for logging args
         verbose: int = 0,
@@ -337,6 +508,8 @@ class EllipsoidTrend(EllipsoidBaseMethod):
                 visualize_trend function. Defaults to None which is an empty dict.
             include_reference (bool, optional): If set to True, then the training data trend will also be visualized.
         """
+        self.cdf_calculator: CDFCalculator
+        
         super().__init__(
             likelihood_model=likelihood_model,
             x=x,
@@ -344,8 +517,8 @@ class EllipsoidTrend(EllipsoidBaseMethod):
             x_loader=x_loader,
             logger=logger,
             in_distr_loader=in_distr_loader,
-            ellipsoid_calculator_cls=ellipsoid_calculator_cls,
-            ellipsoid_calculator_args=ellipsoid_calculator_args,
+            cdf_calculator_class=cdf_calculator_class,
+            cdf_calculator_args=cdf_calculator_args,
             verbose=verbose,
         )
         
@@ -356,8 +529,10 @@ class EllipsoidTrend(EllipsoidBaseMethod):
         self.include_reference = include_reference
     
     def run(self):
-        
-        centers, ellipsoid_radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
+        # This function first calculates the ellipsoids for each datapoint in the loader self.x_loader
+        # This calculation is carried out with the ellipsoid calculator that is passed in the constructor.
+        # Then, it increases the radius "r" to mintor how the CDF changes per datapoint
+        # for visualization of multiple datapoints, the visualize_trend function is used.
         trend = []
         
         # display if verbose is set
@@ -366,14 +541,17 @@ class EllipsoidTrend(EllipsoidBaseMethod):
             radii_range.set_description("Calculating the trend of the average cdf")
         else:
             radii_range = self.radii
-            
+        
+        first = True  
         for r in radii_range:
-            trend.append(self.ellipsoid_calculator.calculate_mean_cdf(r, centers, ellipsoid_radii, use_cache=True))
+            trend.append(self.cdf_calculator.calculate_single_cdf(r, loader=self.x_loader, use_cache=not first))
+            first = False
+            
+        trend = np.stack(trend).T
         
         # add reference if the option is set to True
         reference_scores = None
         if self.include_reference:
-            centers, ellipsoid_radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.in_distr_loader)
             reference_scores = []
             
             if self.verbose > 1:
@@ -381,21 +559,24 @@ class EllipsoidTrend(EllipsoidBaseMethod):
                 radii_range.set_description("Calculating the trend of the average cdf for reference")
             else:
                 radii_range = self.radii
-        
+            
+            first = True
             for r in radii_range:
-                reference_scores.append(self.ellipsoid_calculator.calculate_mean_cdf(r, centers, ellipsoid_radii, use_cache=True))
-                
+                reference_scores.append(self.cdf_calculator.calculate_single_cdf(r, loader=self.in_distr_loader, use_cache=not first))
+                first = False
+            reference_scores = np.stack(reference_scores).T
+                  
         visualize_trends(
-            trend,
+            scores=trend,
             t_values=self.radii,
             reference_scores=reference_scores,
             x_label="r",
-            y_label="mean CDF(R^2(r^2))",
+            y_label="CDF(R^2(r^2))",
             title="Trend of the average cdf",
             **self.visualization_args,
         )
         
-class EllipsoidScore(EllipsoidBaseMethod):
+class CDFScore(CDFBaseMethod):
     """
     This set of methods summarizes the trends observed from R^2 into a single
     score that is used for OOD detection. This score can be obtained by different
@@ -411,9 +592,9 @@ class EllipsoidScore(EllipsoidBaseMethod):
         logger: th.Optional[th.Any] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
-        # Ellipsoid calculator
-        ellipsoid_calculator_cls: th.Optional[str] = None,
-        ellipsoid_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        # CDF calculator
+        cdf_calculator_class: th.Optional[str] = None,
+        cdf_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
         # for logging args
         verbose: int = 0,
@@ -451,8 +632,8 @@ class EllipsoidScore(EllipsoidBaseMethod):
             x_loader=x_loader,
             logger=logger,
             in_distr_loader=in_distr_loader,
-            ellipsoid_calculator_cls=ellipsoid_calculator_cls,
-            ellipsoid_calculator_args=ellipsoid_calculator_args,
+            cdf_calculator_class=cdf_calculator_class,
+            cdf_calculator_args=cdf_calculator_args,
             verbose=verbose,
         )
         self.metric_name = metric_name
@@ -466,8 +647,7 @@ class EllipsoidScore(EllipsoidBaseMethod):
         distribution from self.x_loader, and then, it calculates the CDF of each of the
         ellipsoids.
         """
-        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
-        return self.ellipsoid_calculator.calculate_single_cdf(r, centers, radii)
+        return self.cdf_calculator.calculate_single_cdf(r, loader=self.x_loader, use_cache=False)
     
     def _find_r_then_cdf(self, bn_search_limit: int = 100, cdf_threshold: float = 0.001):
         """
@@ -491,21 +671,24 @@ class EllipsoidScore(EllipsoidBaseMethod):
         """
         r_l = 0.0
         r_r = 1e12
-        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.in_distr_loader)
         
         if self.verbose == 1:
             rng = tqdm(range(bn_search_limit))
         else:
             rng = range(bn_search_limit)
-            
+        
+        first = True
         for iter in rng:
             if self.verbose > 1:
                 print(f"Binary Searching iteration no.{iter + 1}")
             mid = (r_l + r_r) / 2.0
-            if self.ellipsoid_calculator.calculate_mean_cdf(mid, centers, radii, use_cache=True) > cdf_threshold:
+            if self.cdf_calculator.calculate_mean_cdf(mid, loader=self.in_distr_loader, use_cache=not first) > cdf_threshold:
                 r_r = mid
             else:
                 r_l = mid
+                
+            first = False
+            
         auto_r = r_r
         
         if self.verbose > 1:
@@ -520,8 +703,7 @@ class EllipsoidScore(EllipsoidBaseMethod):
         we employ a binary search to find the smallest 'r' in which the cdf of that 
         datapoint is larger than q.
         """
-        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
-        T = sum([len(c_batch) for c_batch in centers])
+        T = sum([len(x_batch) for x_batch, _, _ in self.x_loader])
         r_l = np.zeros(T)
         r_r = np.ones(T) * 1e12
         
@@ -529,13 +711,15 @@ class EllipsoidScore(EllipsoidBaseMethod):
             rng = tqdm(range(bn_search_limit))
         else:
             rng = range(bn_search_limit)
-            
+        
+        first = True
         for iter in rng:
             if self.verbose > 1:
                 print(f"Binary Searching iteration no.{iter + 1}")
                 
             mid = (r_l + r_r) / 2.0
-            single_cdfs = self.ellipsoid_calculator.calculate_single_cdf(mid, centers, radii, use_cache=True)
+            single_cdfs = self.cdf_calculator.calculate_single_cdf(mid, loader=self.x_loader, use_cache=not first)
+            first = False
             r_l = np.where(single_cdfs > q, r_l, mid)
             r_r = np.where(single_cdfs > q, mid, r_r)
         return r_r
@@ -548,12 +732,14 @@ class EllipsoidScore(EllipsoidBaseMethod):
         Returns:
             np.ndarray: The average R^2.
         """
-        centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
-        scores = []
-        for c_batch, rad_batch in zip(centers, radii):
-            for c, rad in zip(c_batch, rad_batch):
-                scores.append(np.sum(rad.numpy() * (1 + c.numpy()**2)))
-        return np.array(scores)
+        raise NotImplementedError("You should implement the first moment calculation for your model.")
+        # TODO: implement this
+        # centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
+        # scores = []
+        # for c_batch, rad_batch in zip(centers, radii):
+        #     for c, rad in zip(c_batch, rad_batch):
+        #         scores.append(np.sum(rad.numpy() * (1 + c.numpy()**2)))
+        # return np.array(scores)
     
     def run(self):
         metric_name_to_func = {
@@ -585,15 +771,15 @@ class EllipsoidScore(EllipsoidBaseMethod):
         )
 
 # TODO: Implement the VAE models here                
-class ElliposoidCalculatorVAE(ElliposoidCalculator):
+class EncodingVAE(EncodingModel):
     """
-    The EllipsoidCalculator implemented for the VAEs in the model_zoo repository.
+    The EncodingModel implemented for the VAEs in the model_zoo repository.
     """
     pass
 
-class ElliposoidCalculatorFlow(ElliposoidCalculator):
+class EncodingFlow(EncodingModel):
     """
-    The EllipsoidCalculator implemented for the NormFlows in the model_zoo repository.
+    The EncodingModel implemented for the NormFlows in the model_zoo repository.
     """
     def encode(self, x):
         # turn off the gradient for faster computation

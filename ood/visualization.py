@@ -146,10 +146,10 @@ def visualize_trends(
     mean_plus_std_reference_scores = []
     
     for _, i in zip(t_values, range(scores.shape[1])):
-        scores = scores[:, i]
-        avg_scores = np.mean(scores)
-        upper_scores = scores[scores >= avg_scores]
-        lower_scores = scores[scores <= avg_scores]
+        scores_ = scores[:, i]
+        avg_scores = np.mean(scores_)
+        upper_scores = scores_[scores_ >= avg_scores]
+        lower_scores = scores_[scores_ <= avg_scores]
         
         mean_scores.append(avg_scores)
         mean_minus_std.append(avg_scores - np.std(lower_scores))
@@ -189,17 +189,27 @@ def visualize_trends(
             )
         })
     else:
-        ys = [mean_scores]
-        keys = [f"{y_label}-mean"]
         if reference_scores is not None:
-            ys = [mean_reference_scores] + ys
-            keys = ["ref-{y_label}-mean"] + keys
-        wandb.log({
-            f"trend/{title}": wandb.plot.line_series(
-                xs = t_values,
-                ys = ys,
-                keys = keys,
-                title = title,
-                xname = x_label,
-            )
-        })
+            ys = [mean_reference_scores, mean_scores]
+            keys = [f"ref-{y_label}-mean", f"{y_label}-mean"]
+            wandb.log({
+                f"trend/{title}": wandb.plot.line_series(
+                    xs = t_values,
+                    ys = ys,
+                    keys = keys,
+                    title = title,
+                    xname = x_label,
+                )
+            })
+        else:
+            # if no reference or no STD is given, there is no reason to
+            # plot line series, we can simply plot a line plot
+            table = wandb.Table(data = [[x, y] for x, y in zip(t_values, mean_scores)], columns = [x_label, y_label])
+            wandb.log({
+                f"trend/{title}": wandb.plot.line(
+                    table,
+                    x_label,
+                    y_label,
+                    title=title,
+                )
+            })

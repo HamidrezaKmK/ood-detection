@@ -34,4 +34,4 @@ ood:
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6
-  name: flow_cifar10_vs_svhn
+  name: flow_cifar10_vs_cifar10

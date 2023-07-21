@@ -1,21 +1,21 @@
 base_model:
   # A directory containing the configuration used for instantiating the likelihood model itself
-  config_dir: runs/RQ_NSF_no_logit_cifar10/model.yaml
+  config_dir: runs/RQ_NSF_no_logit_fmnist/model.yaml
   # A directory containing the model weights of the likelihood model to work with a good fit one
   # This is produced by running the single step training models
-  checkpoint_dir: runs/RQ_NSF_no_logit_cifar10/checkpoints/de_nf_latest.pt
+  checkpoint_dir: runs/RQ_NSF_no_logit_fmnist/checkpoints/de_nf_latest.pt
 data:
   # specify the datasets and dataloader configurations for the in and out of distribution data.
   in_distribution:
     dataloader_args:
-      dataset: cifar10
+      dataset: fashion-mnist
       make_valid_loader: false
       train_batch_size: 32
       valid_batch_size: 32
       test_batch_size: 32
   out_of_distribution:
     dataloader_args:
-      dataset: svhn
+      dataset: mnist
       make_valid_loader: false
       train_batch_size: 32
       valid_batch_size: 32
@@ -36,7 +36,7 @@ ood:
       encoding_model_class: ood.methods.latent_r2.EncodingFlow
       encoding_model_args:
         computation_batch_size: 1
-        loader_limit: 10
+        loader_limit: 2
         use_functorch: True
         use_forward_mode: True
         use_vmap: False
@@ -55,4 +55,4 @@ ood:
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6
-  name: flow_cifar10_vs_svhn
+  name: flow_fmnist_vs_mnist

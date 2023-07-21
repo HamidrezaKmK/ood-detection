@@ -238,7 +238,7 @@ def run_ood(config: dict):
         samples = model.sample(9)
         samples = torchvision.utils.make_grid(samples, nrow=3)
         wandb.log(
-            {"data/model_samples": [wandb.Image(samples, caption="model samples")]})
+            {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
 
     img_array = plot_likelihood_ood_histogram(
         model,
@@ -252,8 +252,9 @@ def run_ood(config: dict):
     # (4) Instantiate an OOD solver and run #
     #########################################
     
+    # For dummy runs that you just use for visualization
     if "method_args" not in config["ood"] or "method" not in config["ood"]:
-        print("No method available! Exiting...")
+        print("No ood method available! Exiting...")
         return
     
     method_args = copy.deepcopy(config["ood"]["method_args"])
@@ -264,8 +265,8 @@ def run_ood(config: dict):
     if config["ood"]["seed"] is not None:
         np.random.seed(config["ood"]["seed"])
     idx = np.random.randint(len(out_loader))
-    for _ in range(idx):
-        x, y, _ = next(iter(out_loader))
+    for _ in range(idx + 1):
+        x, _, _ = next(iter(out_loader))
 
     if config["ood"]["pick_single"]:
         # pick a single image the selected batch

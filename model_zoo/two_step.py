@@ -198,6 +198,7 @@ class TwoStepComponent(nn.Module):
             return (1, *self.data_shape)
 
     def _data_transform(self, data):
+       
         if self.flatten:
             data = data.flatten(start_dim=1)
         if self.denoising_sigma is not None and self.training:

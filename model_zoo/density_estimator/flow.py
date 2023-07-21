@@ -10,6 +10,7 @@ import torch
 from pprint import pprint
 from nflows.nn import nets as nets
 import copy
+import math
 
 class RQCouplingTransform(PiecewiseRationalQuadraticCouplingTransform):
     """
@@ -71,20 +72,64 @@ class RQCouplingTransform(PiecewiseRationalQuadraticCouplingTransform):
             **kwargs,
         )
 
+class RescalingTransform(Transform):
+    """
+    This class performs elementwise rescaling.
+    This is performed via dividing every pixel or element
+    by a constant `rescaling_factor`.
+    """
+    def __init__(self, rescaling_factor: float = 256.):
+        super().__init__()
+        self.rescaling_factor = 1.0 / rescaling_factor
+    
+    def forward(self, inputs, context=None):
+        dims = list(range(1, len(inputs.shape)))
+        
+        # make an all ones vector of dimension inputs.shape[0] with the same device and dtype as inputs
+        return self.rescaling_factor * inputs, torch.sum(torch.ones_like(inputs), dim=dims) * math.log(self.rescaling_factor) 
+    
+    def inverse(self, inputs, context=None):
+        dims = list(range(1, len(inputs.shape)))
+        
+        return 1.0 / self.rescaling_factor * inputs, -torch.sum(torch.ones_like(inputs), dim=dims) * math.log(self.rescaling_factor)
+    
 class LogitTransform(Transform):
     """Base class for all transform objects."""
-    def __init__(self, eps=0.05):
+    def __init__(self, alpha=0.05, eps=1e-6):
         super().__init__()
+        
+        if alpha < eps:
+            raise ValueError("alpha must be greater than eps")
+        
+        self.alpha = alpha
         self.eps = eps
         
+    def log(self, x: torch.Tensor):
+        """Log function with a small offset for numerical stability."""
+        return torch.log(x + self.eps)
+    
+    def logit(self, x: torch.Tensor):
+        """Logit function with a small offset for numerical stability."""
+        return torch.log(x / (1 - x + self.eps))
+    
     def forward(self, inputs, context=None):
-        inputs = torch.clamp(inputs, self.eps, 1 - self.eps)
-        return torch.logit(inputs), -torch.sum(torch.log(1 - inputs) + torch.log(inputs))
-
+        # get all the non-batch dimensions
+        dims = list(range(1, len(inputs.shape)))
+        
+        pre_logit = self.alpha + (1 - self.alpha) * inputs
+        
+        logdets = torch.sum(math.log(1 - self.alpha) - self.log(1 - pre_logit) - self.log(pre_logit), dim=dims)
+        
+        
+        return self.logit(pre_logit), logdets
+        
     def inverse(self, inputs, context=None):
+        # get all the non-batch dimensions
+        dims = list(range(1, len(inputs.shape)))
+        
         sigm = torch.sigmoid(inputs)
-        sigm_clamped = torch.clamp(sigm, self.eps, 1 - self.eps)
-        return sigm, torch.sum(torch.log(1 - sigm_clamped) + torch.log(sigm_clamped))
+        
+        return sigm, torch.sum(self.log(1 - sigm) + self.log(sigm) - math.log(1 - self.alpha), dim=dims)
     
 class NormalizingFlow(DensityEstimator):
     """
@@ -193,6 +238,15 @@ class NormalizingFlow(DensityEstimator):
         if self.logit_transform:
             self.transform = CompositeTransform([LogitTransform(), self.transform])
             self.logit_transform = False
+        
+        # rescaling is part of the transforms, then include it in the flow transforms
+        if self.scale_data:
+            # TODO: the rescaling factor part is janky! Fix it!
+            self.transform = CompositeTransform([
+                RescalingTransform(rescaling_factor=255. + self.dequantize), 
+                self.transform
+            ])
+            self.scale_data = False
             
         # Setup the actual flow underneath
         self._nflow = Flow(
@@ -209,16 +263,10 @@ class NormalizingFlow(DensityEstimator):
     def log_prob(self, x):
         # NOTE: Careful with log probability when using _data_transform()
         x = self._data_transform(x)
-        # print the maximum and minimum of x
-        # print("x max: ", x.max()) 
-        # print("x min: ", x.min())
         log_prob = self._nflow.log_prob(x)
         # check if log_prob has nan values, otherwise print the maximum and minimum of log_prob
         if torch.isnan(log_prob).any():
             raise ValueError("log_prob has nan values")
-        # else:
-        #     print("log_prob max: ", log_prob.max())
-        #     print("log_prob min: ", log_prob.min())
             
         if len(log_prob.shape) == 1:
             log_prob = log_prob.unsqueeze(1)

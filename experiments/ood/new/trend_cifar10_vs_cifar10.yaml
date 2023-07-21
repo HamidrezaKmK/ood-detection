@@ -15,7 +15,7 @@ data:
       test_batch_size: 32
   out_of_distribution:
     dataloader_args:
-      dataset: svhn
+      dataset: cifar10
       make_valid_loader: false
       train_batch_size: 32
       valid_batch_size: 32
@@ -55,4 +55,4 @@ ood:
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6
-  name: flow_cifar10_vs_svhn
+  name: flow_cifar10_vs_cifar10

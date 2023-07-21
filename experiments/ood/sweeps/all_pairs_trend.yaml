@@ -1,4 +1,6 @@
-project: semantic-ellipsoids
+# This sweep will contain all the CDF trends across pairs
+# of datasets 
+project: all-pairs-R2-trends
 entity: dgm-l6
 count: 10000
 
@@ -10,6 +12,7 @@ run_name_changer:
       ret = conf['data']['in_distribution']['dataloader_args']['dataset']
       ret += '_vs_'
       ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']
+      ret += f"_{conf['data']['out_of_distribution']['pick_loader']}"
       ret += f"_{run_name}"
       return ret
   function_of_interest: func
@@ -37,24 +40,49 @@ base_config:
     pick_single: False
     use_dataloader: True
     seed: 10
-    method: ood.methods.latent_ellipsoids.LatentEllipsoidsNormflow
+    # The OOD detection method in use
+    method: ood.methods.latent_r2.CDFTrend
     method_args:
-      metric_name: predef-r-cdf
-      metric_args: 
-        r: 3400
-      computation_batch_size: 1
-      loader_limit: 10
       verbose: 2
-      visualization_args:
-        bincount: 10
+      
+      cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
+      cdf_calculator_args:
+        encoding_model_class: ood.methods.latent_r2.EncodingFlow
+        encoding_model_args:
+          computation_batch_size: 1
+          loader_limit: 10
+          use_functorch: True
+          use_forward_mode: True
+          use_vmap: False
+          verbose: 2
+
+        verbose: 0
+      
+      include_reference: False
+
+      
 
 sweep_configuration:
   ood:
     method_args:
-      metric_args:
-        r:
-          sweep: true
-          values: [3350, 3370, 3400, 3500, 14800]
+      visualization_args:
+        with_std:
+          sweep: True
+          sweep_identifier: A_with_std
+          values:
+          - False
+          - True
+      dy__upsert:
+        - sweep: True
+          sweep_identifier: radius_range
+          sweep_alias:
+          - close_range
+          - holistic
+          values:
+          - radii_range: [0, 20000]
+            radii_n: 1000
+          - radii_range: [0, 3500]
+            radii_n: 100
   dy__upsert:
     - sweep: True
       sweep_identifier: in_distribution_model
@@ -111,9 +139,10 @@ sweep_configuration:
         - in_distribution_train
       values:
         - data:
-            # doesn't really matter whether it is test or train
-            pick_loader: test
             out_of_distribution:
+              # the pick loader in this case doesn't really matter
+              pick_loader: test
+
               dataloader_args:
                 dataset:
                   dy__eval:
@@ -135,8 +164,8 @@ sweep_configuration:
 
                     function_of_interest: func
         - data:
-            pick_loader: test
             out_of_distribution:
+              pick_loader: test
               dataloader_args:
                 dataset:
                   dy__eval:
@@ -150,8 +179,8 @@ sweep_configuration:
                         return in_distr_dataset
                     function_of_interest: func
         - data:
-            pick_loader: train
             out_of_distribution:
+              pick_loader: train
               dataloader_args:
                 dataset:
                   dy__eval:
