@@ -1,9 +1,9 @@
 base_model:
   # A directory containing the configuration used for instantiating the likelihood model itself
-  config_dir: runs/RQ_NSF_no_logit_cifar10/model.yaml
+  config_dir: runs/Jul21_07-22-35/model.yaml
   # A directory containing the model weights of the likelihood model to work with a good fit one
   # This is produced by running the single step training models
-  checkpoint_dir: runs/RQ_NSF_no_logit_cifar10/checkpoints/de_nf_latest.pt
+  checkpoint_dir: runs/Jul21_07-22-35/checkpoints/de_nf_latest.pt
 data:
   # specify the datasets and dataloader configurations for the in and out of distribution data.
   in_distribution:

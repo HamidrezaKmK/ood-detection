@@ -239,7 +239,7 @@ def run_ood(config: dict):
         samples = torchvision.utils.make_grid(samples, nrow=3)
         wandb.log(
             {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
-
+    
     img_array = plot_likelihood_ood_histogram(
         model,
         in_loader,
@@ -247,7 +247,7 @@ def run_ood(config: dict):
     )
     wandb.log({"likelihood_ood_histogram": [wandb.Image(
         img_array, caption="Histogram of log likelihoods")]})
-
+    
     #########################################
     # (4) Instantiate an OOD solver and run #
     #########################################
