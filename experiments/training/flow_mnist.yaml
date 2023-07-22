@@ -1,31 +1,62 @@
-# Settings from the legacy config
-legacy:
-  dataset: fashion-mnist
-  cfg:
-    max_epochs: 100
+data:
+  dataset: mnist
+  make_valid_loader: false
+  train_batch_size: 128
+  valid_batch_size: 128
+  test_batch_size: 128
+
 trainer:
-  sample_freq: 5 # logs the samples after every two epochs
+  trainer_cls: model_zoo.trainers.single_trainer.SingleTrainer
+  optimizer:
+    class_path: torch.optim.AdamW
+    init_args:
+      lr: 0.001
   writer:
+    logdir: runs
+    make_subdir: True
+    tag_group: flow
     type: wandb
     entity: dgm-l6
     project: training-dgms
+    
+  evaluator:
+    valid_metrics: [loss]
+    test_metrics: [loss]
+
+  sample_freq: 1 # logs the samples after every two epochs
+  max_epochs: 200
+  early_stopping_metric: loss
+  max_bad_valid_epochs: 30
+  max_grad_norm: 1.0
+  only_test: False
+  progress_bar: True
+    
+
 # Settings from the new configurations
 model:
+  is_gae: false
   class_path: model_zoo.density_estimator.flow.NormalizingFlow
   init_args:
-    # Data args
+    # Data transform args (they are here because they might influence log_prob)
     flatten: False
     data_shape: [1, 28, 28]
     denoising_sigma: null
     dequantize: True
-    scale_data: False
+    scale_data: True
     whitening_transform: False
-    logit_transform: False
+    
+    # with flow_logit_transform, it also get's included in the log_prob
+    logit_transform: True
+
     clamp_samples: False
+
+    # Base distribution arguments (in this work the base is always Gaussian)
     base_distribution:
       class_path: nflows.distributions.StandardNormal
       init_args:
         shape: [784]
+    
+
     transform:
     ######################################################################### 
     ###### First level
