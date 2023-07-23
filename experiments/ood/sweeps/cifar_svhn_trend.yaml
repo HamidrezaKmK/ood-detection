@@ -38,7 +38,9 @@ base_config:
     method: ood.methods.latent_r2.CDFTrend
     method_args:
       verbose: 2
-      
+      visualization_args:
+        with_std: False
+
       cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
       cdf_calculator_args:
         encoding_model_class: ood.methods.latent_r2.EncodingFlow
@@ -49,6 +51,10 @@ base_config:
           use_vmap: False
           verbose: 2
 
+        atol: 0.000001
+        marginalization_threshold: 0.01
+        lim: 10000
+
         verbose: 0
       
       include_reference: False
@@ -56,75 +62,29 @@ base_config:
       
 
 sweep_configuration:
-  ood:
-    method_args:
-      visualization_args:
-        with_std:
-          sweep: True
-          sweep_identifier: A_with_std
-          values:
-          - False
-          - True
-      dy__upsert:
-        - sweep: True
-          sweep_identifier: radius_range
-          sweep_alias:
-          - close_range
-          - holistic
-          values:
-          - radii_range: [0, 20000]
-            radii_n: 1000
-          - radii_range: [0, 3500]
-            radii_n: 100
   dy__upsert:
     - sweep: True
-      sweep_identifier: in_distribution_model
+      sweep_identifier: radius_range
       sweep_alias:
-        - flow_mnist_RQ_NSF
-        - flow_fmnist_RQ_NSF
+      - close_range
+      - holistic
+      values:
+      - ood:
+          method_args:
+            radii_range: [0, 20000]
+            radii_n: 1000
+      - ood:
+          method_args:
+            radii_range: [0, 3500]
+            radii_n: 100
+    - sweep: True
+      sweep_identifier: A_in_distribution_model
+      sweep_alias:
         - flow_cifar10_RQ_NSF
         - flow_svhn_RQ_NSF
+        - flow_mnist_RQ_NSF
+        - flow_fmnist_RQ_NSF
       values:
-        - base_model:
-            config_dir: runs/RQ_NSF_mnist/model.yaml
-            checkpoint_dir: runs/RQ_NSF_mnist/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: mnist
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-          ood:
-            method_args:
-              cdf_calculator_args:
-                encoding_model_args:
-                  computation_batch_size: 7
-        - base_model:
-            config_dir: runs/RQ_NSF_fmnist/model.yaml
-            checkpoint_dir: runs/RQ_NSF_fmnist/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: fashion-mnist
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-          ood:
-            method_args:
-              cdf_calculator_args:
-                encoding_model_args:
-                  computation_batch_size: 7
         - base_model:
             config_dir: runs/RQ_NSF_cifar10/model.yaml
             checkpoint_dir: runs/RQ_NSF_cifar10/checkpoints/de_nf_best_valid.pt
@@ -165,6 +125,46 @@ sweep_configuration:
               cdf_calculator_args:
                 encoding_model_args:
                   computation_batch_size: 1
+        - base_model:
+            config_dir: runs/RQ_NSF_mnist/model.yaml
+            checkpoint_dir: runs/RQ_NSF_mnist/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: mnist
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+          ood:
+            method_args:
+              cdf_calculator_args:
+                encoding_model_args:
+                  computation_batch_size: 7
+        - base_model:
+            config_dir: runs/RQ_NSF_fmnist/model.yaml
+            checkpoint_dir: runs/RQ_NSF_fmnist/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: fashion-mnist
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+          ood:
+            method_args:
+              cdf_calculator_args:
+                encoding_model_args:
+                  computation_batch_size: 7
         
     - sweep: True
       sweep_identifier: ood_picker

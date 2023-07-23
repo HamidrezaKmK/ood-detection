@@ -27,30 +27,30 @@ ood:
   use_dataloader: True
   seed: 10
   # The OOD detection method in use
-  method: ood.methods.latent_r2.CDFTrend
+  method: ood.methods.latent_r2.CDFScore
   method_args:
-    verbose: 2
-    
+    verbose: 1
+    visualization_args:
+      bincount: 15
+
+    metric_name: find-r-then-cdf
+    metric_args:
+      bn_search_limit: 100
+      cdf_threshold: 0.01
+      
     cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
     cdf_calculator_args:
       encoding_model_class: ood.methods.latent_r2.EncodingFlow
       encoding_model_args:
-        computation_batch_size: 1
-        loader_limit: 2
+        computation_batch_size: 5
+        loader_limit: 10
         use_functorch: True
         use_forward_mode: True
         use_vmap: False
         verbose: 2
 
       verbose: 0
-    
-    include_reference: True
-    
-    visualization_args:
-      with_std: False
-
-    radii_range: [0, 25000]
-    radii_n: 100
+  
 
 logger:
   project: ood-detection-single-runs
