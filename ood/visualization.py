@@ -8,7 +8,7 @@ import wandb
 
 def visualize_histogram(
     scores: np.ndarray,
-    bincount: int,
+    bincount: int = 10,
     reject_outliers: th.Optional[float] = None,
     logger = None,
     x_label: str = 'scores',

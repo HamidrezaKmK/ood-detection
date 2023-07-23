@@ -187,7 +187,20 @@ class CDFElliposoidCalculator(CDFCalculator):
     For example, one might use vmaps to optimize the computation of the Jacobian of a 
     batch. Or one can use either functorch or autograd to compute the Jacobian.
     """
-    
+    def __init__(
+        self,
+        *args,
+        lim: int = 1000,
+        atol: float =1e-4,
+        marginalization_threshold: float = 1e-4,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        
+        self.lim = lim
+        self.atol = atol
+        self.marginilization_threshold = marginalization_threshold
+        
     def calculate_ellipsoids(self, loader):
         """
         This function takes in a loader of the form
@@ -273,7 +286,13 @@ class CDFElliposoidCalculator(CDFCalculator):
             self.chi2s = []
             for c_batch, rad_batch in zip(centers, radii):
                 for c, rad in zip(c_batch, rad_batch):
-                    self.chi2s.append([ChiSquared(coef=r_i, ncent=c_i**2, dof=1) for c_i, r_i in zip(c, rad)])
+                    chi2s_ = []
+                    for c_i, r_i in zip(c, rad):
+                        if r_i > self.marginalization_threshold:
+                            chi2s_.append(ChiSquared(coef=r_i, ncent=c_i**2, dof=1))
+                    if len(chi2s_) == 0:
+                        raise Exception("Marginalization threshold is too large; no coordinates remain!")
+                    self.chi2s.append(chi2s_)
         
         
         if self.verbose > 1:
@@ -286,116 +305,22 @@ class CDFElliposoidCalculator(CDFCalculator):
         cdfs = []
         if _check_r_primitive():
             for chi2s in rng_chi2s:
-                cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0)[0])
+                cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0])
         else:
             for r_single, chi2s in zip(r, rng_chi2s):
-                cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0)[0])
+                cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0])
                 
         return np.array(cdfs)
 
-class CDFRotatedHypercube(CDFCalculator):
-    """
-    This class calculates rotated hypercube masses around the
-    OOD datapoint.
-    """
-    
-    def calculate_rectangles(self, loader):
-        """
-        This function takes in a loader of the form
-        [
-            (x_batch_1, _, _),
-            (x_batch_2, _, _),
-            ...,
-            (x_batch_n, _, _)
-        ]
-        where each x_batch_i is a batch of data points.
-        
-        This function calculates rectangles, centers and their corresponding rotations.
-        return values:
-        
-        ratations, centers, scales
-        
-        """
-        centers = []
-        radii = []
-        
-        jax, z_values = self.encoding_model.calculate_jacobian(loader)
-        
-        if self.verbose > 1:
-            iterable = tqdm(zip(jax, z_values))
-            iterable.set_description("Calculating the ellipsoids")
-        else:
-            iterable = zip(jax, z_values)
-        
-        for jac, z in iterable: 
-            ellipsoids = torch.matmul(jac.transpose(1, 2), jac)
-            
-            L, Q = torch.linalg.eigh(ellipsoids)
-            # Each row of L would contain the scales of the non-central chi-squared distribution
-            center = torch.matmul(Q.transpose(1, 2), z.unsqueeze(-1)).squeeze(-1)
-            
-            centers.append(center.cpu().detach())
-            radii.append(L.cpu().detach())
-            
-        return centers, radii
-
-    def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
-        """
-        Given two loaders of radii and centers, this function calculates the
-        CDF of each of the entailed generalized chi-squared distributions.
-        If use_cache is set to true, then this means that centers and radii have been
-        cached from before and some of the computations can be optimized.
-        
-        Args:
-            r: Union(float, List[float]) 
-                r value(s) where the cdf is evaluated.
-            centers: The loader for the centers of the ellipsoids.
-                [batch_centers_1, batch_centers_2, ..., batch_centers_n]
-            radii: The loader for the radius of the ellipsoids.
-                [batch_radii_1, batch_radii_2, ..., batch_radii_n]
-            use_cache: (bool)
-                Whether to use the cached centers and radii or not.
-        Returns:
-            np.ndarray: The CDF of each of the ellipsoids when the entire loader
-                is flattened. In other words, if batch_i has size sz_i and T = sum(sz_i),
-                then the returned array would have size T.
-        """
+    def calculate_mean(self, loader, use_cache=False):
         if not use_cache:
             self.centers, self.radii = self.calculate_ellipsoids(loader)
-        if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
-            raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
-        centers, radii = self.centers, self.radii
-        def _check_r_primitive():
-            if isinstance(r, float):
-                return True
-            if isinstance(r, int):
-                return True
-          
-        if not use_cache or not hasattr(self, 'chi2s'):
-            # if it is not cached, then we should calculate the chi2s
-            self.chi2s = []
-            for c_batch, rad_batch in zip(centers, radii):
-                for c, rad in zip(c_batch, rad_batch):
-                    self.chi2s.append([ChiSquared(coef=r_i, ncent=c_i**2, dof=1) for c_i, r_i in zip(c, rad)])
-        
-        
-        if self.verbose > 1:
-            rng_chi2s = tqdm(self.chi2s)
-            rng_chi2s.set_description("Calculating the CDFs for each of the chi2s")
-        else:
-            rng_chi2s = self.chi2s
-                
-        # self.chi2s contains a list of flattened chi2s
-        cdfs = []
-        if _check_r_primitive():
-            for chi2s in rng_chi2s:
-                cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0)[0])
-        else:
-            for r_single, chi2s in zip(r, rng_chi2s):
-                cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0)[0])
-                
-        return np.array(cdfs)
-
+        scores = []
+        for c_batch, rad_batch in zip(self.centers, self.radii):
+            for c, rad in zip(c_batch, rad_batch):
+                scores.append(np.sum(rad.numpy() * (1 + c.numpy()**2)))
+        return np.array(scores)
+    
 
 class CDFBaseMethod(OODBaseMethod):
     """
@@ -674,14 +599,18 @@ class CDFScore(CDFBaseMethod):
         
         if self.verbose == 1:
             rng = tqdm(range(bn_search_limit))
+            rng.set_description("Binary Searching for the best R")
         else:
             rng = range(bn_search_limit)
         
         first = True
         for iter in rng:
+            mid = (r_l + r_r) / 2.0
             if self.verbose > 1:
                 print(f"Binary Searching iteration no.{iter + 1}")
-            mid = (r_l + r_r) / 2.0
+            elif self.verbose == 1:
+                rng.set_description(f"Binary Searching iteration no.{iter + 1}")
+            
             if self.cdf_calculator.calculate_mean_cdf(mid, loader=self.in_distr_loader, use_cache=not first) > cdf_threshold:
                 r_r = mid
             else:
@@ -703,9 +632,12 @@ class CDFScore(CDFBaseMethod):
         we employ a binary search to find the smallest 'r' in which the cdf of that 
         datapoint is larger than q.
         """
-        T = sum([len(x_batch) for x_batch, _, _ in self.x_loader])
-        r_l = np.zeros(T)
-        r_r = np.ones(T) * 1e12
+        
+        # just a single dummy run    
+        single_cdfs = self.cdf_calculator.calculate_single_cdf(0.0, loader=self.x_loader, use_cache=False)
+        
+        r_l = np.zeros(len(single_cdfs))
+        r_r = np.ones(len(single_cdfs)) * 1e12
         
         if self.verbose == 1:
             rng = tqdm(range(bn_search_limit))
@@ -716,6 +648,8 @@ class CDFScore(CDFBaseMethod):
         for iter in rng:
             if self.verbose > 1:
                 print(f"Binary Searching iteration no.{iter + 1}")
+            if self.verbose == 1:
+                rng.set_description(f"Binary Searching iteration no.{iter + 1}")
                 
             mid = (r_l + r_r) / 2.0
             single_cdfs = self.cdf_calculator.calculate_single_cdf(mid, loader=self.x_loader, use_cache=not first)
@@ -732,15 +666,8 @@ class CDFScore(CDFBaseMethod):
         Returns:
             np.ndarray: The average R^2.
         """
-        raise NotImplementedError("You should implement the first moment calculation for your model.")
-        # TODO: implement this
-        # centers, radii = self.ellipsoid_calculator.calculate_ellipsoids(loader=self.x_loader)
-        # scores = []
-        # for c_batch, rad_batch in zip(centers, radii):
-        #     for c, rad in zip(c_batch, rad_batch):
-        #         scores.append(np.sum(rad.numpy() * (1 + c.numpy()**2)))
-        # return np.array(scores)
-    
+        return self.cdf_calculator.calculate_mean(loader=self.x_loader)
+        
     def run(self):
         metric_name_to_func = {
             "find-r-then-cdf": self._find_r_then_cdf,
