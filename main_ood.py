@@ -216,37 +216,39 @@ def run_ood(config: dict):
     # print out a sample ood and in distribution image onto the wandb logger
     np.random.seed(config["data"]["seed"])
 
-    # get 9 random samples from the in distribution dataset
-    in_samples = in_loader.dataset.x[np.random.randint(
-        len(in_loader.dataset), size=9)]
-    out_samples = out_loader.dataset.x[np.random.randint(
-        len(out_loader.dataset), size=9)]
-    in_samples = torchvision.utils.make_grid(in_samples, nrow=3)
-    out_samples = torchvision.utils.make_grid(out_samples, nrow=3)
-    
-    wandb.log({"data/in_distribution_samples": [wandb.Image(
-        in_samples, caption="in distribution_samples")]})
-    wandb.log({"data/out_of_distribution samples": [wandb.Image(
-        out_samples, caption="out of distribution samples")]})
-    
-    # generate 9 samples from the model
-    model.eval()
-    with torch.no_grad():
-        # set torch seed for reproducibility
-        if config["ood"]["seed"] is not None:
-            torch.manual_seed(config["ood"]["seed"])
-        samples = model.sample(9)
-        samples = torchvision.utils.make_grid(samples, nrow=3)
-        wandb.log(
-            {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
-    
-    img_array = plot_likelihood_ood_histogram(
-        model,
-        in_loader,
-        out_loader,
-    )
-    wandb.log({"likelihood_ood_histogram": [wandb.Image(
-        img_array, caption="Histogram of log likelihoods")]})
+    # you can set to visualize or bypass the visualization for speedup!
+    if 'bypass_visualization' in config['ood'] and not config['ood']['bypass_visualization']:
+        # get 9 random samples from the in distribution dataset
+        in_samples = in_loader.dataset.x[np.random.randint(
+            len(in_loader.dataset), size=9)]
+        out_samples = out_loader.dataset.x[np.random.randint(
+            len(out_loader.dataset), size=9)]
+        in_samples = torchvision.utils.make_grid(in_samples, nrow=3)
+        out_samples = torchvision.utils.make_grid(out_samples, nrow=3)
+        
+        wandb.log({"data/in_distribution_samples": [wandb.Image(
+            in_samples, caption="in distribution_samples")]})
+        wandb.log({"data/out_of_distribution samples": [wandb.Image(
+            out_samples, caption="out of distribution samples")]})
+        
+        # generate 9 samples from the model
+        model.eval()
+        with torch.no_grad():
+            # set torch seed for reproducibility
+            if config["ood"]["seed"] is not None:
+                torch.manual_seed(config["ood"]["seed"])
+            samples = model.sample(9)
+            samples = torchvision.utils.make_grid(samples, nrow=3)
+            wandb.log(
+                {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
+        
+        img_array = plot_likelihood_ood_histogram(
+            model,
+            in_loader,
+            out_loader,
+        )
+        wandb.log({"likelihood_ood_histogram": [wandb.Image(
+            img_array, caption="Histogram of log likelihoods")]})
     
     #########################################
     # (4) Instantiate an OOD solver and run #
