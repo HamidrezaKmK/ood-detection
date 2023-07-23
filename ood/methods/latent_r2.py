@@ -39,6 +39,9 @@ class EncodingModel:
         
         self.likelihood_model = likelihood_model
         
+        # Set the model to evaluation mode
+        self.likelihood_model.eval()
+        
         self.use_functorch = use_functorch
         self.use_forward_mode = use_forward_mode
         self.use_vmap = use_vmap
@@ -199,7 +202,7 @@ class CDFElliposoidCalculator(CDFCalculator):
         
         self.lim = lim
         self.atol = atol
-        self.marginilization_threshold = marginalization_threshold
+        self.marginalization_threshold = marginalization_threshold
         
     def calculate_ellipsoids(self, loader):
         """
@@ -711,6 +714,7 @@ class EncodingFlow(EncodingModel):
     def encode(self, x):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters
+        # self.likelihood_model.eval()
         with torch.no_grad():
             try:
                 z = self.likelihood_model._nflow.transform_to_noise(x)
@@ -722,6 +726,7 @@ class EncodingFlow(EncodingModel):
     def decode(self, z):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters
+        # self.likelihood_model.eval()
         with torch.no_grad():
             try:
                 x, logdets = self.likelihood_model._nflow._transform.inverse(z)
