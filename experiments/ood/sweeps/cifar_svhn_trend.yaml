@@ -46,14 +46,13 @@ base_config:
       cdf_calculator_args:
         encoding_model_class: ood.methods.latent_r2.EncodingFlow
         encoding_model_args:
-          loader_limit: 10
+          loader_limit: null
           use_functorch: True
           use_forward_mode: True
           use_vmap: False
           verbose: 2
 
         atol: 0.000001
-        marginalization_threshold: 0.01
         lim: 10000
 
         verbose: 0
@@ -63,6 +62,36 @@ base_config:
       
 
 sweep_configuration:
+  ood:
+    method_args:
+      cdf_calculator_args:
+        dy__upsert:
+        - sweep: True
+          sweep_identifier: Z_filtering
+          sweep_alias:
+          - no_filter
+          - filter_small_0.01
+          - keep_top_20
+          values:
+          - filtering: null
+
+          - filtering:
+              function_descriptor: |
+                import torch
+
+                def func(cent, rad):
+                  return rad < 0.01
+
+              function_of_interest: func
+
+          - filtering:
+              function_descriptor: |
+                import torch
+                def func(cent, rad):
+                  return rad < rad.topk(20)[0][-1]
+
+              function_of_interest: func
+
   dy__upsert:
     - sweep: True
       sweep_identifier: radius_range

@@ -43,7 +43,7 @@ base_config:
       cdf_calculator_args:
         encoding_model_class: ood.methods.latent_r2.EncodingFlow
         encoding_model_args:
-          loader_limit: 10
+          loader_limit: null
           use_functorch: True
           use_forward_mode: True
           use_vmap: False

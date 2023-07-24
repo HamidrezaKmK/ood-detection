@@ -195,14 +195,33 @@ class CDFElliposoidCalculator(CDFCalculator):
         *args,
         lim: int = 1000,
         atol: float =1e-4,
-        marginalization_threshold: float = 1e-4,
+        filtering: th.Optional[th.Union[th.Dict[str, str], str]] = None,
         **kwargs,
     ):
+        """
+
+        Args:
+            lim (int, optional): The limit set for the chi2comb_cdf function. Defaults to 1000.
+            atol (float, optional): The tolerance set for chi2comb_cdf function. Defaults to 1e-4.
+            filtering: A dypy standard function descriptor. This function
+                takes in two torch tensor vectors (cent, rad) and returns a boolean
+                mask to filter out a set of corrdinates. For example, the small coordinates might meddle
+                with the calculation of the chi2comb_cdf. Or in general, the off-manifold directions
+                might be problematic. So, this function can be used to filter out those coordinates.
+        """
         super().__init__(*args, **kwargs)
         
         self.lim = lim
         self.atol = atol
-        self.marginalization_threshold = marginalization_threshold
+        
+        if filtering is None:
+            self.filtering = lambda cent, rad: torch.zeros_like(rad, dtype=torch.bool)
+        elif isinstance(filtering, str):
+            self.filtering = dy.eval(filtering)
+        elif isinstance(filtering, dict):
+            self.filtering = dy.eval_function(**filtering)
+        else:
+            raise ValueError("filtering should be either a string or a dictionary.")
         
     def calculate_ellipsoids(self, loader):
         """
@@ -258,10 +277,6 @@ class CDFElliposoidCalculator(CDFCalculator):
         Args:
             r: Union(float, List[float]) 
                 r value(s) where the cdf is evaluated.
-            centers: The loader for the centers of the ellipsoids.
-                [batch_centers_1, batch_centers_2, ..., batch_centers_n]
-            radii: The loader for the radius of the ellipsoids.
-                [batch_radii_1, batch_radii_2, ..., batch_radii_n]
             use_cache: (bool)
                 Whether to use the cached centers and radii or not.
         Returns:
@@ -290,11 +305,17 @@ class CDFElliposoidCalculator(CDFCalculator):
             for c_batch, rad_batch in zip(centers, radii):
                 for c, rad in zip(c_batch, rad_batch):
                     chi2s_ = []
-                    for c_i, r_i in zip(c, rad):
-                        if r_i > self.marginalization_threshold:
+                    if self.filtering is not None:
+                        filter_out = self.filtering(c, rad)
+                    
+                    for i in range(len(rad)):
+                        c_i = c[i]
+                        r_i = rad[i]
+                        if not filter_out[i]:
                             chi2s_.append(ChiSquared(coef=r_i, ncent=c_i**2, dof=1))
+                            
                     if len(chi2s_) == 0:
-                        raise Exception("Marginalization threshold is too large; no coordinates remain!")
+                        raise Exception("Filtering too strict: no coordinates remain!")
                     self.chi2s.append(chi2s_)
         
         

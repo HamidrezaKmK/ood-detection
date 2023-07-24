@@ -13,14 +13,19 @@ run_name_changer:
 
 # BASE configuration which is being used
 base_config:
-  base_model:
-    run_dir: runs/flow_fmnist
-    config_dir: experiments/training/flow_elaborate_fmnist.yaml
-    checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
   data:
+    # specify the datasets and dataloader configurations for the in and out of distribution data.
+    in_distribution:
+      dataloader_args:
+        make_valid_loader: false
+      pick_loader: train
+    out_of_distribution:
+      dataloader_args:
+        make_valid_loader: false
     # for reproducibility
     seed: 10
   ood:
+    # bypass_visualization: True
     pick_single: False
     use_dataloader: False
     pick_count: 100
@@ -34,67 +39,102 @@ base_config:
       score_args:
         p: 2
       tunable_parameter_name: radius
-      tunable_lr: [0.01, 20000.0]
 
 sweep_configuration:
   ood:
     method_args:
-      show_std:
-        sweep: true
-        values: [false, true]
+      tunable_lr:
+        sweep: True
+        sweep_identifier: radii_range
+        sweep_alias:
+        - long_range
+        - short_range
+        values:
+        - [0.01, 20000.0]
+        - [0.01, 5000]
   dy__upsert:
     - sweep: True
-      sweep_identifier: B_dataset
+      sweep_identifier: in_distribution_model
       sweep_alias:
-        - flow_fmnist
-        - flow_cifar10
-        - flow_svhn
-        - flow_mnist
+        - flow_mnist_RQ_NSF_no_logit
+        - flow_fmnist_RQ_NSF_no_logit
+        - flow_cifar10_RQ_NSF_no_logit
+        - flow_svhn_RQ_NSF_no_logit
       values:
         - base_model:
-            run_dir: runs/flow_fmnist
-            config_dir: experiments/training/flow_elaborate_fmnist.yaml
-            checkpoint_dir: runs/flow_fmnist/checkpoints/de_nf_latest.pt
+            config_dir: runs/RQ_NSF_no_logit_mnist/model.yaml
+            checkpoint_dir: runs/RQ_NSF_no_logit_mnist/checkpoints/de_nf_latest.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: mnist
+                train_batch_size: 128
+                valid_batch_size: 128
+                test_batch_size: 128
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 128
+                valid_batch_size: 128
+                test_batch_size: 128
         - base_model:
-            run_dir: runs/flow_cifar10
-            config_dir: experiments/training/flow_heavy_cifar10.yaml
-            checkpoint_dir: runs/flow_cifar10/checkpoints/de_nf_latest.pt
+            config_dir: runs/RQ_NSF_no_logit_fmnist/model.yaml
+            checkpoint_dir: runs/RQ_NSF_no_logit_fmnist/checkpoints/de_nf_latest.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: fashion-mnist
+                train_batch_size: 128 
+                valid_batch_size: 128
+                test_batch_size: 128
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 128
+                valid_batch_size: 128
+                test_batch_size: 128
         - base_model:
-            run_dir: runs/flow_svhn
-            config_dir: experiments/training/flow_heavy_svhn.yaml
-            checkpoint_dir: runs/flow_svhn/checkpoints/de_nf_latest.pt
+            config_dir: runs/RQ_NSF_no_logit_cifar10/model.yaml
+            checkpoint_dir: runs/RQ_NSF_no_logit_cifar10/checkpoints/de_nf_latest.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: cifar10
+                train_batch_size: 128
+                valid_batch_size: 128
+                test_batch_size: 128
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 128
+                valid_batch_size: 128
+                test_batch_size: 128
         - base_model:
-            run_dir: runs/flow_mnist
-            config_dir: experiments/training/flow_elaborate_mnist.yaml
-            checkpoint_dir: runs/flow_mnist/checkpoints/de_nf_latest.pt
+            config_dir: runs/RQ_NSF_no_logit_svhn/model.yaml
+            checkpoint_dir: runs/RQ_NSF_no_logit_svhn/checkpoints/de_nf_latest.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: svhn
+                train_batch_size: 128
+                valid_batch_size: 128
+                test_batch_size: 128
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 128
+                valid_batch_size: 128
+                test_batch_size: 128
         
     - sweep: True
-      sweep_identifier: C_ood_or_not
+      sweep_identifier: ood_picker
+      # This part picks ood data
+      # for now, we've included opposite data and same but test
       sweep_alias:
-        - ood_for_test
-        - in_distr_for_test
+        - opposite
+        - in_distribution_test
       values:
         - data:
-            in_distribution:
-              dataloader_args:
-                dataset:
-                  dy__eval:
-                    expression: |
-                      from pprint import pprint
-
-                      def func(conf):
-
-                        last_part = conf['base_model']['run_dir'].split('_')[-1]
-                        if last_part == 'fmnist':
-                          return 'fashion-mnist'
-                        if last_part == 'cifar10':
-                          return 'cifar10'
-                        if last_part == 'mnist':
-                          return 'mnist'
-                        if last_part == 'svhn':
-                          return 'svhn'
-                    function_of_interest: func
             out_of_distribution:
+              # the pick loader in this case doesn't really matter
+              pick_loader: test
+
               dataloader_args:
                 dataset:
                   dy__eval:
@@ -103,36 +143,21 @@ sweep_configuration:
 
                       def func(conf):
 
-                        last_part = conf['base_model']['run_dir'].split('_')[-1]
-                        if last_part == 'fmnist':
-                          return 'mnist'
-                        if last_part == 'cifar10':
-                          return 'svhn'
-                        if last_part == 'mnist':
-                          return 'fashion-mnist'
-                        if last_part == 'svhn':
-                          return 'cifar10'
+                        in_distr_dataset = conf['data']['in_distribution']['dataloader_args']['dataset']
+
+                        map_to_other = {
+                          'mnist': 'fashion-mnist',
+                          'fashion-mnist': 'mnist',
+                          'cifar10': 'svhn',
+                          'svhn': 'cifar10',
+                        }
+                        
+                        return map_to_other[in_distr_dataset]
+
                     function_of_interest: func
         - data:
-            in_distribution:
-              dataloader_args:
-                dataset:
-                  dy__eval:
-                    expression: |
-                      from pprint import pprint
-                      def func(conf):
-
-                        last_part = conf['base_model']['run_dir'].split('_')[-1]
-                        if last_part == 'fmnist':
-                          return 'fashion-mnist'
-                        if last_part == 'cifar10':
-                          return 'cifar10'
-                        if last_part == 'mnist':
-                          return 'mnist'
-                        if last_part == 'svhn':
-                          return 'svhn'
-                    function_of_interest: func
             out_of_distribution:
+              pick_loader: test
               dataloader_args:
                 dataset:
                   dy__eval:
@@ -140,13 +165,8 @@ sweep_configuration:
                       from pprint import pprint
 
                       def func(conf):
-                        last_part = conf['base_model']['run_dir'].split('_')[-1]
-                        if last_part == 'fmnist':
-                          return 'fashion-mnist'
-                        if last_part == 'cifar10':
-                          return 'cifar10'
-                        if last_part == 'mnist':
-                          return 'mnist'
-                        if last_part == 'svhn':
-                          return 'svhn'
+
+                        in_distr_dataset = conf['data']['in_distribution']['dataloader_args']['dataset']
+
+                        return in_distr_dataset
                     function_of_interest: func

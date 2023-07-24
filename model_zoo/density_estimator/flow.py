@@ -5,12 +5,95 @@ from . import DensityEstimator
 from ..utils import batch_or_dataloader
 from nflows.transforms import Transform, CompositeTransform,  MultiscaleCompositeTransform, PiecewiseRationalQuadraticCouplingTransform, ActNorm
 from nflows.transforms.coupling import CouplingTransform
+from nflows.transforms import AffineCouplingTransform
 import dypy as dy
 import torch
 from pprint import pprint
 from nflows.nn import nets as nets
 import copy
 import math
+
+class ConfigurableCouplingTransform(Transform):
+    """
+    A wrapper for the nflow coupling transforms that
+    can be fully configured using a set of primitives in
+    a configuration file.
+    """
+    def __init__(
+        self,
+        coupling_transform_cls: th.Union[str, th.Type[CouplingTransform]],
+        net: th.Dict[str, th.Any],
+        mask: th.Dict[str, th.Any],
+        **kwargs,
+    ):
+        """
+        Here we define the network that the coupling transform uses
+        alongside a set of parameters defining the mask.
+        
+        Moreover, here we define the coupling transform class that is being used as well.
+        This can work with any coupling transform class that is defined in nflows.
+
+        Args:
+            net:
+                class_path: The class of network which is being used
+                            Note that the class constructor must have the first
+                            two arguments as in_features and out_features
+                init_args: The arguments to be passed to the class constructor besides
+                            in_features and out_features
+            mask:
+                dim: The dimension of the mask
+                mask_function: The function that is used for determining the mask
+                                it follows the standard dypy FunctionDescriptor format.
+                flip: Whether to flip the mask or not
+        """
+        
+        # call the super init method for nn.Module
+        super().__init__()
+        
+        if 'class_path' not in net:
+            raise ValueError("net must have a class_path")
+        if 'init_args' not in net:
+            raise ValueError("net must have init_args")
+        
+        if 'activation' in net['init_args'] and isinstance(net['init_args']['activation'], str):
+            net['init_args']['activation'] = dy.eval(net['init_args']['activation'])
+                
+        # define a transform_net_create_fn
+        def create_resnet(in_features, out_features):
+            return dy.eval(net['class_path'])(in_features, out_features, **net['init_args'])
+                
+        real_mask = torch.ones(mask['dim'])
+        if 'mask_function' in mask:
+            if isinstance(mask['mask_function'], str):
+                mask_function = dy.eval(mask['mask_function'])
+            elif isinstance(mask['mask_function'], dict):
+                mask_function = dy.eval_function(**mask['mask_function'])
+        else:
+            mask_function = lambda ind: ind % 2 == 0
+        
+        for i in range(mask['dim']):
+            real_mask[i] = real_mask[i] * -1 if mask_function(i) else real_mask[i]
+        
+        if 'flip' in mask and mask['flip']:
+            real_mask = real_mask * -1
+        
+        # set the wrapping value
+        self._value = dy.eval(coupling_transform_cls)(
+            mask=real_mask,
+            transform_net_create_fn=create_resnet,
+            **kwargs,
+        )
+        
+        
+    
+    def forward(self, inputs, context=None):
+        """Replace the wrapper forward method with the actual forward method of the coupling transform"""
+        return self._value.forward(inputs, context=context)
+
+    def inverse(self, inputs, context=None):
+        """Replace the wrapper inverse method with the actual inverse method of the coupling transform"""
+        return self._value.inverse(inputs, context=context)
+        
 
 class RQCouplingTransform(PiecewiseRationalQuadraticCouplingTransform):
     """
