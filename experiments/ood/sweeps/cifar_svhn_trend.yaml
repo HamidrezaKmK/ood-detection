@@ -38,6 +38,11 @@ base_config:
     # The OOD detection method in use
     method: ood.methods.latent_r2.CDFTrend
     method_args:
+
+      loader_buffer_size: 4
+      compress_trend: True
+      loader_limit: 2
+
       verbose: 2
       visualization_args:
         with_std: False
@@ -46,7 +51,6 @@ base_config:
       cdf_calculator_args:
         encoding_model_class: ood.methods.latent_r2.EncodingFlow
         encoding_model_args:
-          loader_limit: null
           use_functorch: True
           use_forward_mode: True
           use_vmap: False
@@ -79,18 +83,18 @@ sweep_configuration:
               function_descriptor: |
                 import torch
 
-                def func(cent, rad):
+                def func_threshold(cent, rad):
                   return rad < 0.01
 
-              function_of_interest: func
+              function_of_interest: func_threshold
 
           - filtering:
               function_descriptor: |
                 import torch
-                def func(cent, rad):
+                def func_topk(cent, rad):
                   return rad < rad.topk(20)[0][-1]
 
-              function_of_interest: func
+              function_of_interest: func_topk
 
   dy__upsert:
     - sweep: True

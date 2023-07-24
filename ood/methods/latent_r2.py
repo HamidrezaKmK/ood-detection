@@ -9,6 +9,20 @@ from tqdm import tqdm
 import wandb
 import dypy as dy
 
+def buffer_loader(loader, buffer_size, limit=None):
+    # tekes in a torch dataloader and returns an iterable where each
+    # iteration returns a list of buffer_size batches
+    for i, batch in enumerate(loader):
+        if limit is not None and i // buffer_size > limit:
+            break
+        if i % buffer_size == 0:
+            if i != 0:
+                yield buffer
+            buffer = []
+        buffer.append(batch)
+    if len(buffer) > 0:
+        yield buffer
+    
 class EncodingModel:
     """
     This is a class that is used for likelihood models that have an encode and
@@ -27,12 +41,10 @@ class EncodingModel:
         # you can specify how to compute the Jacobian
         # With computation_batch_size you determine how large your jacobian batch
         # is going to be
-        # With loader_limit you can specify how many batches you want to use
         use_vmap: bool = False,
         use_functorch: bool = True,
         use_forward_mode: bool = True,
         computation_batch_size: th.Optional[int] = None,
-        loader_limit: th.Optional[int] = None,
         # verbosity
         verbose: int = 0,
     ) -> None:
@@ -46,11 +58,6 @@ class EncodingModel:
         self.use_forward_mode = use_forward_mode
         self.use_vmap = use_vmap
         self.computation_batch_size = computation_batch_size
-        
-        if loader_limit is None:
-            self.loader_limit = math.inf
-        else:
-            self.loader_limit = loader_limit
         
         self.verbose = verbose
     
@@ -77,8 +84,7 @@ class EncodingModel:
         then using the latent representation, calculates the Jacobian of
         the decoded function. This is done batch-wise to optimize the computation.
         """
-        
-        idx = 0
+    
         
         if self.verbose > 1:
             loader_decorated = tqdm(loader)
@@ -89,12 +95,6 @@ class EncodingModel:
         z_values = []
            
         for x_batch, _, _ in loader_decorated:
-            idx += 1
-            if idx > self.loader_limit:
-                # if loader limit is set, then
-                # we won't need to calculate 
-                # a lot of batches
-                break
             
             jac = []
             # encode to obtain the latent representation in the Gaussian space
@@ -446,6 +446,10 @@ class CDFTrend(CDFBaseMethod):
         
         # include reference or not
         include_reference: bool = False,
+        
+        compress_trend: bool = False,
+        loader_buffer_size: int = 60,
+        loader_limit: th.Optional[int] = None,
     ):
         """
         Inherits from EllipsoidBaseMethod and adds the visualization of the trend.
@@ -476,49 +480,70 @@ class CDFTrend(CDFBaseMethod):
         self.visualization_args = visualization_args or {}
         
         self.include_reference = include_reference
+        
+        self.loader_buffer_size = loader_buffer_size
+        self.compress_trend = compress_trend
+        self.loader_limit = loader_limit
     
     def run(self):
         # This function first calculates the ellipsoids for each datapoint in the loader self.x_loader
         # This calculation is carried out with the ellipsoid calculator that is passed in the constructor.
         # Then, it increases the radius "r" to mintor how the CDF changes per datapoint
         # for visualization of multiple datapoints, the visualize_trend function is used.
-        trend = []
         
-        # display if verbose is set
-        if self.verbose > 1:
-            radii_range = tqdm(self.radii)
-            radii_range.set_description("Calculating the trend of the average cdf")
-        else:
-            radii_range = self.radii
         
-        first = True  
-        for r in radii_range:
-            trend.append(self.cdf_calculator.calculate_single_cdf(r, loader=self.x_loader, use_cache=not first))
-            first = False
+        def get_trend(loader):
             
-        trend = np.stack(trend).T
-        
-        # add reference if the option is set to True
-        reference_scores = None
-        if self.include_reference:
-            reference_scores = []
-            
+            # display if verbose is set
             if self.verbose > 1:
                 radii_range = tqdm(self.radii)
-                radii_range.set_description("Calculating the trend of the average cdf for reference")
+                radii_range.set_description("Calculating the trend of the average cdf")
             else:
                 radii_range = self.radii
+                
+            # split the loader and calculate the trend
+            trend = []
+            inner_loader_idx = 0
+            for inner_loader in buffer_loader(loader, self.loader_buffer_size, limit=self.loader_limit):
+                first = True  
+                inner_loader_idx += 1
+                inner_trend = []
+                
+                if self.verbose > 1:
+                    tot = min(self.loader_limit, (len(loader) + self.loader_buffer_size - 1) // self.loader_buffer_size)
+                    radii_range.set_description(f"Calculating buffer [{inner_loader_idx}/{tot}]")
+                    
+                for r in radii_range:
+                    inner_trend.append(self.cdf_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=not first))
+                    first = False
+                inner_trend = np.stack(inner_trend).T
+                
+                if self.compress_trend:
+                    # replace each column of trend with its mean
+                    inner_trend = np.mean(inner_trend, axis=0).reshape(1, -1)
+                
+                trend.append(inner_trend)
             
-            first = True
-            for r in radii_range:
-                reference_scores.append(self.cdf_calculator.calculate_single_cdf(r, loader=self.in_distr_loader, use_cache=not first))
-                first = False
-            reference_scores = np.stack(reference_scores).T
+            return np.concatenate(trend, axis=0)
+        
+        if self.verbose > 0:
+            print("Calculating trend ...")
+            
+        trend = get_trend(self.x_loader)
+        
+        # add reference if the option is set to True
+        reference_trend = None
+        if self.include_reference:
+            
+            if self.verbose > 0:
+                print("Calculating reference trend ...")
+            
+            reference_trend = get_trend(self.in_distr_loader)
                   
         visualize_trends(
             scores=trend,
             t_values=self.radii,
-            reference_scores=reference_scores,
+            reference_scores=reference_trend,
             x_label="r",
             y_label="CDF(R^2(r^2))",
             title="Trend of the average cdf",
@@ -553,6 +578,9 @@ class CDFScore(CDFBaseMethod):
         # metric
         metric_name: th.Optional[str] = None,
         metric_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        loader_limit: th.Optional[int] = None,
+        loader_buffer_size: int = 60,
     ):
         """
         This class adds the score calculation functionalities to the EllipsoidBaseMethod. By setting a metric name and a set of arguments
@@ -590,15 +618,26 @@ class CDFScore(CDFBaseMethod):
 
         self.visualization_args = visualization_args or {}
         
+        self.loader_limit = loader_limit
+        self.loader_buffer_size = loader_buffer_size
+        
     def _predef_r_cdf(self, r: float):
         """
         Given a specific 'r', it first calculates the entailed generalized-chi-squared
         distribution from self.x_loader, and then, it calculates the CDF of each of the
         ellipsoids.
         """
-        return self.cdf_calculator.calculate_single_cdf(r, loader=self.x_loader, use_cache=False)
+        scores = []
+        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
+            scores.append(self.cdf_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=False))
+        return np.concatenate(scores)
     
-    def _find_r_then_cdf(self, bn_search_limit: int = 100, cdf_threshold: float = 0.001):
+    def _find_r_then_cdf(
+        self, 
+        bn_search_limit: int = 100, 
+        cdf_threshold: float = 0.001, 
+        reference_loader_limit: th.Optional[int] = None
+    ):
         """
         This function does a binary search to find the smallest 'r' in which the
         average cdf of the train data is larger than the cdf_threshold. This represents
@@ -618,32 +657,42 @@ class CDFScore(CDFBaseMethod):
             np.ndarray: The CDF of each of the ellipsoids ran on x_loader, with the r value
                 obtained from the search above.
         """
-        r_l = 0.0
-        r_r = 1e12
+        auto_r = 0
+        idx = 0
         
-        if self.verbose == 1:
-            rng = tqdm(range(bn_search_limit))
-            rng.set_description("Binary Searching for the best R")
-        else:
-            rng = range(bn_search_limit)
-        
-        first = True
-        for iter in rng:
-            mid = (r_l + r_r) / 2.0
-            if self.verbose > 1:
-                print(f"Binary Searching iteration no.{iter + 1}")
-            elif self.verbose == 1:
-                rng.set_description(f"Binary Searching iteration no.{iter + 1}")
+        # use the loader_limit from the arguments if given
+        # otherwise, use the default loader_limit
+        if reference_loader_limit is None:
+            reference_loader_limit = self.loader_limit
             
-            if self.cdf_calculator.calculate_mean_cdf(mid, loader=self.in_distr_loader, use_cache=not first) > cdf_threshold:
-                r_r = mid
+        for inner_loader in buffer_loader(self.in_distr_loader, self.loader_buffer_size, limit=reference_loader_limit):
+            r_l = 0.0
+            r_r = 1e12
+            
+            if self.verbose == 1:
+                rng = tqdm(range(bn_search_limit))
+                rng.set_description("Binary Searching for the best R")
             else:
-                r_l = mid
-                
-            first = False
+                rng = range(bn_search_limit)
             
-        auto_r = r_r
-        
+            first = True
+            for iter in rng:
+                mid = (r_l + r_r) / 2.0
+                if self.verbose > 1:
+                    print(f"Binary Searching iteration no.{iter + 1}")
+                elif self.verbose == 1:
+                    rng.set_description(f"Binary Searching iteration no.{iter + 1}")
+                
+                if self.cdf_calculator.calculate_mean_cdf(mid, loader=inner_loader, use_cache=not first) > cdf_threshold:
+                    r_r = mid
+                else:
+                    r_l = mid
+                    
+                first = False
+            
+            auto_r = (idx * auto_r + r_r) / (idx + 1)
+            idx += 1
+            
         if self.verbose > 1:
             print(f"Found r = {auto_r}")
             
@@ -657,30 +706,32 @@ class CDFScore(CDFBaseMethod):
         datapoint is larger than q.
         """
         
-        # just a single dummy run    
-        single_cdfs = self.cdf_calculator.calculate_single_cdf(0.0, loader=self.x_loader, use_cache=False)
-        
-        r_l = np.zeros(len(single_cdfs))
-        r_r = np.ones(len(single_cdfs)) * 1e12
-        
-        if self.verbose == 1:
-            rng = tqdm(range(bn_search_limit))
-        else:
-            rng = range(bn_search_limit)
-        
-        first = True
-        for iter in rng:
-            if self.verbose > 1:
-                print(f"Binary Searching iteration no.{iter + 1}")
+        scores = []
+        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
+            T = sum([x.shape[0] for x, _, _ in inner_loader])
+           
+            r_l = np.zeros(T)
+            r_r = np.ones(T) * 1e12
+            
             if self.verbose == 1:
-                rng.set_description(f"Binary Searching iteration no.{iter + 1}")
-                
-            mid = (r_l + r_r) / 2.0
-            single_cdfs = self.cdf_calculator.calculate_single_cdf(mid, loader=self.x_loader, use_cache=not first)
-            first = False
-            r_l = np.where(single_cdfs > q, r_l, mid)
-            r_r = np.where(single_cdfs > q, mid, r_r)
-        return r_r
+                rng = tqdm(range(bn_search_limit))
+            else:
+                rng = range(bn_search_limit)
+            
+            first = True
+            for iter in rng:
+                if self.verbose > 1:
+                    print(f"Binary Searching iteration no.{iter + 1}")
+                if self.verbose == 1:
+                    rng.set_description(f"Binary Searching iteration no.{iter + 1}")
+                    
+                mid = (r_l + r_r) / 2.0
+                single_cdfs = self.cdf_calculator.calculate_single_cdf(mid, loader=inner_loader, use_cache=not first)
+                first = False
+                r_l = np.where(single_cdfs > q, r_l, mid)
+                r_r = np.where(single_cdfs > q, mid, r_r)
+            scores.append(r_r)
+        return np.concatenate(scores)
     
     def _first_moment(self):
         """
@@ -690,8 +741,11 @@ class CDFScore(CDFBaseMethod):
         Returns:
             np.ndarray: The average R^2.
         """
-        return self.cdf_calculator.calculate_mean(loader=self.x_loader)
-        
+        scores = []
+        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
+            scores.append(self.cdf_calculator.calculate_mean(loader=inner_loader))
+        return np.concatenate(scores)
+    
     def run(self):
         metric_name_to_func = {
             "find-r-then-cdf": self._find_r_then_cdf,
