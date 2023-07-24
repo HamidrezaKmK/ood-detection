@@ -1,5 +1,5 @@
 data:
-  dataset: cifar10
+  dataset: mnist
   make_valid_loader: false
   train_batch_size: 128
   valid_batch_size: 128
@@ -31,6 +31,7 @@ trainer:
   only_test: False
   progress_bar: True
     
+
 # Settings from the new configurations
 model:
   is_gae: false
@@ -38,7 +39,7 @@ model:
   init_args:
     # Data transform args (they are here because they might influence log_prob)
     flatten: False
-    data_shape: [3, 32, 32]
+    data_shape: [1, 28, 28]
     denoising_sigma: null
     dequantize: True
     scale_data: True
@@ -53,24 +54,23 @@ model:
     base_distribution:
       class_path: nflows.distributions.StandardNormal
       init_args:
-        shape: [3072]
+        shape: [784]
     
-    
-    # The actual transformations of the flow
+
     transform:
     ######################################################################### 
     ###### First level
     - class_path: nflows.transforms.reshape.SqueezeTransform
       init_args:
-        factor: 2 # turns the image into [12, 16, 16]
+        factor: 2 # turns the image into [4, 14, 14]
     - repeat_n: 3
       content:
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
-          features: 12 # Apply activation normalization to all the channels
+          features: 4 # Apply activation normalization to all the channels
       - class_path: nflows.transforms.conv.OneByOneConvolution
         init_args: 
-          num_channels: 12
+          num_channels: 4
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
           coupling_transform_cls: nflows.transforms.AffineCouplingTransform
@@ -83,17 +83,17 @@ model:
               dropout_probability: 0.2
               use_batch_norm: False
           mask:
-            dim: 12
+            dim: 4
             flip: True
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
-          features: 12 # Apply activation normalization to all the channels
+          features: 4 # Apply activation normalization to all the channels
       - class_path: nflows.transforms.conv.OneByOneConvolution
         init_args: 
-          num_channels: 12
+          num_channels: 4
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
-          coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+          coupling_transform_cls: nflows.transforms.AffineCouplingTransform 
           net:
             class_path: nflows.nn.nets.resnet.ConvResidualNet
             init_args:
@@ -103,27 +103,27 @@ model:
               dropout_probability: 0.2
               use_batch_norm: False
           mask:
-            dim: 12
+            dim: 4
             flip: False
     - class_path: nflows.transforms.conv.OneByOneConvolution
       init_args: 
-        num_channels: 12
+        num_channels: 4
       multiscale:
-        transform_output_shape: [12, 16, 16]
+        transform_output_shape: [4, 14, 14]
     ###########################################################################
     ##### Second Level
     # squeeze
     - class_path: nflows.transforms.reshape.SqueezeTransform
       init_args:
-        factor: 2 # turns the image into [24, 8, 8]
+        factor: 2 # turns the image into [8, 7, 7]
     - repeat_n: 3
       content:
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
-          features: 24 # Apply activation normalization to all the channels
+          features: 8 # Apply activation normalization to all the channels
       - class_path: nflows.transforms.conv.OneByOneConvolution
         init_args: 
-          num_channels: 24
+          num_channels: 8
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
           coupling_transform_cls: nflows.transforms.AffineCouplingTransform
@@ -136,14 +136,14 @@ model:
               dropout_probability: 0.2
               use_batch_norm: False
           mask:
-            dim: 24
+            dim: 8
             flip: True
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
-          features: 24 # Apply activation normalization to all the channels
+          features: 8 # Apply activation normalization to all the channels
       - class_path: nflows.transforms.conv.OneByOneConvolution
         init_args: 
-          num_channels: 24
+          num_channels: 8
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
           coupling_transform_cls: nflows.transforms.AffineCouplingTransform
@@ -156,24 +156,24 @@ model:
               dropout_probability: 0.2
               use_batch_norm: False
           mask:
-            dim: 24
+            dim: 8
             flip: False
     - class_path: nflows.transforms.conv.OneByOneConvolution
       init_args: 
-        num_channels: 24
+        num_channels: 8
       multiscale:
-        transform_output_shape: [24, 8, 8]
+        transform_output_shape: [8, 7, 7]
     ###########################################################################
     ##### Third Level
     # squeeze
     - class_path: nflows.transforms.reshape.SqueezeTransform
       init_args:
-        factor: 8 # turns the image into [768, 1, 1]
+        factor: 7 # turns the image into [196, 1, 1]
     - repeat_n: 2
       content:
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
-          features: 768 # Apply activation normalization to all the channels
+          features: 196 # Apply activation normalization to all the channels
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
           coupling_transform_cls: nflows.transforms.AffineCouplingTransform
@@ -186,11 +186,11 @@ model:
               dropout_probability: 0.2
               use_batch_norm: False
           mask:
-            dim: 768
+            dim: 196
             flip: True
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
-          features: 768 # Apply activation normalization to all the channels
+          features: 196 # Apply activation normalization to all the channels
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
           coupling_transform_cls: nflows.transforms.AffineCouplingTransform
@@ -203,11 +203,11 @@ model:
               dropout_probability: 0.2
               use_batch_norm: False
           mask:
-            dim: 768
-            flip: false
+            dim: 196
+            flip: False
     - class_path: nflows.transforms.conv.OneByOneConvolution
       init_args: 
-        num_channels: 768
+        num_channels: 196
       multiscale:
-        transform_output_shape: [768, 1, 1]
+        transform_output_shape: [196, 1, 1]
     
