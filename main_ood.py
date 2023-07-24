@@ -167,6 +167,9 @@ def run_ood(config: dict):
     # change the device of the model to device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
+    # set to evaluation mode to get rid of any randomness happening in the 
+    # architecture such as dropout
+    model.eval()
     
     ##################
     # (1) Data setup #
@@ -217,7 +220,7 @@ def run_ood(config: dict):
     np.random.seed(config["data"]["seed"])
 
     # you can set to visualize or bypass the visualization for speedup!
-    if 'bypass_visualization' in config['ood'] and not config['ood']['bypass_visualization']:
+    if 'bypass_visualization' not in config['ood'] or not config['ood']['bypass_visualization']:
         # get 9 random samples from the in distribution dataset
         in_samples = in_loader.dataset.x[np.random.randint(
             len(in_loader.dataset), size=9)]
@@ -232,7 +235,6 @@ def run_ood(config: dict):
             out_samples, caption="out of distribution samples")]})
         
         # generate 9 samples from the model
-        model.eval()
         with torch.no_grad():
             # set torch seed for reproducibility
             if config["ood"]["seed"] is not None:
