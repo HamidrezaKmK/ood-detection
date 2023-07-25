@@ -1,6 +1,6 @@
 # README
 
-This codebase contains implementations of several OOD detection methods on top of deep generative models. The [model_zoo](./model_zoo/) directory contains code from the paper ["Diagnosing and Fixing Manifold Overfitting in Deep Generative Models"](https://arxiv.org/abs/2204.07172) accepted to TMLR in July 2022.
+This repository explores different ways of performing OOD detection on likelihood-based deep generative models. The codebase uses [two_step_zoo](https://github.com/layer6ai/two_step_zoo), containing code from the paper ["Diagnosing and Fixing Manifold Overfitting in Deep Generative Models"](https://arxiv.org/abs/2204.07172) accepted to TMLR in July 2022.
 
 
 ## Setup
