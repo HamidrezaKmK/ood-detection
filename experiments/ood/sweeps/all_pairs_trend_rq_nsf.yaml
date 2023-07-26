@@ -31,23 +31,39 @@ base_config:
     # for reproducibility
     seed: 10
   ood:
+    bypass_visualization: True
     pick_single: False
     use_dataloader: True
     seed: 100
     # The OOD detection method in use
     method: ood.methods.latent_r2.CDFTrend
     method_args:
+
+      # loader buffers 
+      # each buffered loader will have 4 batches
+      loader_buffer_size: 10
+      # limit the loader for fast run (optional)
+      # loader_limit: 2
+
+      # Compressing the trends for memory usage
+      compress_trend: True
+      compression_bucket_size: 200
+
       verbose: 2
-      
+      visualization_args:
+        with_std: False
+
       cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
       cdf_calculator_args:
         encoding_model_class: ood.methods.latent_r2.EncodingFlow
         encoding_model_args:
-          loader_limit: null
           use_functorch: True
           use_forward_mode: True
           use_vmap: False
-          verbose: 2
+          verbose: 0
+
+        atol: 0.000001
+        lim: 10000
 
         verbose: 0
       
@@ -58,73 +74,57 @@ base_config:
 sweep_configuration:
   ood:
     method_args:
-      visualization_args:
-        with_std:
-          sweep: True
-          sweep_identifier: A_with_std
-          values:
-          - False
-          - True
-      dy__upsert:
+      cdf_calculator_args:
+        dy__upsert:
         - sweep: True
-          sweep_identifier: radius_range
+          sweep_identifier: A_filtering
           sweep_alias:
-          - close_range
-          - holistic
+          - keep_top_20
+          - no_filter
+          - filter_small_0.01
           values:
-          - radii_range: [0, 20000]
-            radii_n: 1000
-          - radii_range: [0, 3500]
-            radii_n: 100
+          - filtering:
+              function_descriptor: |
+                import torch
+                def func_topk(cent, rad):
+                  return rad < rad.topk(20)[0][-1]
+
+              function_of_interest: func_topk
+
+          - filtering: null
+
+          - filtering:
+              function_descriptor: |
+                import torch
+
+                def func_threshold(cent, rad):
+                  return rad < 0.01
+
+              function_of_interest: func_threshold
+
   dy__upsert:
     - sweep: True
-      sweep_identifier: in_distribution_model
+      sweep_identifier: radius_range
       sweep_alias:
-        - flow_mnist_RQ_NSF
-        - flow_fmnist_RQ_NSF
+      - close_range
+      - holistic
+      values:
+      - ood:
+          method_args:
+            radii_range: [0, 20000]
+            radii_n: 1000
+      - ood:
+          method_args:
+            radii_range: [0, 3500]
+            radii_n: 100
+    - sweep: True
+      sweep_identifier: B_in_distribution_model
+      sweep_alias:
         - flow_cifar10_RQ_NSF
         - flow_svhn_RQ_NSF
+        - flow_mnist_RQ_NSF
+        - flow_fmnist_RQ_NSF
       values:
-        - base_model:
-            config_dir: runs/RQ_NSF_mnist/model.yaml
-            checkpoint_dir: runs/RQ_NSF_mnist/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: mnist
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-          ood:
-            method_args:
-              cdf_calculator_args:
-                encoding_model_args:
-                  computation_batch_size: 7
-        - base_model:
-            config_dir: runs/RQ_NSF_fmnist/model.yaml
-            checkpoint_dir: runs/RQ_NSF_fmnist/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: fashion-mnist
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-          ood:
-            method_args:
-              cdf_calculator_args:
-                encoding_model_args:
-                  computation_batch_size: 7
         - base_model:
             config_dir: runs/RQ_NSF_cifar10/model.yaml
             checkpoint_dir: runs/RQ_NSF_cifar10/checkpoints/de_nf_best_valid.pt
@@ -165,6 +165,46 @@ sweep_configuration:
               cdf_calculator_args:
                 encoding_model_args:
                   computation_batch_size: 1
+        - base_model:
+            config_dir: runs/RQ_NSF_mnist/model.yaml
+            checkpoint_dir: runs/RQ_NSF_mnist/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: mnist
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+          ood:
+            method_args:
+              cdf_calculator_args:
+                encoding_model_args:
+                  computation_batch_size: 7
+        - base_model:
+            config_dir: runs/RQ_NSF_fmnist/model.yaml
+            checkpoint_dir: runs/RQ_NSF_fmnist/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: fashion-mnist
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+          ood:
+            method_args:
+              cdf_calculator_args:
+                encoding_model_args:
+                  computation_batch_size: 7
         
     - sweep: True
       sweep_identifier: ood_picker

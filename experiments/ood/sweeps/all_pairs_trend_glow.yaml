@@ -31,7 +31,7 @@ base_config:
     # for reproducibility
     seed: 10
   ood:
-    # bypass_visualization: True
+    bypass_visualization: True
     pick_single: False
     use_dataloader: True
     seed: 100
@@ -42,8 +42,9 @@ base_config:
       # loader buffers 
       # each buffered loader will have 4 batches
       loader_buffer_size: 10
+      # limit the loader for fast run (optional)
       loader_limit: 2
-      
+
       # Compressing the trends for memory usage
       compress_trend: True
       compression_bucket_size: 200
@@ -52,17 +53,22 @@ base_config:
       visualization_args:
         with_std: False
 
-      cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
       cdf_calculator_args:
         encoding_model_class: ood.methods.latent_r2.EncodingFlow
         encoding_model_args:
           use_functorch: True
           use_forward_mode: True
-          use_vmap: False
+          use_vmap: True
           verbose: 0
+        
+        # filter the eigenvalues
+        filtering:
+          function_descriptor: |
+            import torch
+            def func_topk(cent, rad):
+              return rad < rad.topk(20)[0][-1]
 
-        atol: 0.000001
-        lim: 10000
+          function_of_interest: func_topk
 
         verbose: 0
       
@@ -71,42 +77,34 @@ base_config:
       
 
 sweep_configuration:
-  ood:
-    method_args:
-      cdf_calculator_args:
-        dy__upsert:
-        - sweep: True
-          sweep_identifier: A_filtering
-          sweep_alias:
-          - keep_top_20
-          - no_filter
-          - filter_small_0.01
-          values:
-          - filtering:
-              function_descriptor: |
-                import torch
-                def func_topk(cent, rad):
-                  return rad < rad.topk(20)[0][-1]
-
-              function_of_interest: func_topk
-
-          - filtering: null
-
-          - filtering:
-              function_descriptor: |
-                import torch
-
-                def func_threshold(cent, rad):
-                  return rad < 0.01
-
-              function_of_interest: func_threshold
 
   dy__upsert:
+    - sweep: true
+      sweep_identifier: A_latent_volume
+      sweep_alias:
+      - rectangle
+      - ellipsoid
+      values:
+      - ood:
+          method_args:
+            cdf_calculator_class: ood.methods.latent_r2.CDFParallelogramCalculator
+            cdf_calculator_args:
+              eps: 0.00001
+            visualization_args:
+              visualize_log: True
+      - ood:
+          method_args:
+            cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
+            cdf_calculator_args:
+              atol: 0.000001
+              lim: 10000
+            visualization_args:
+              visualize_log: False
     - sweep: True
       sweep_identifier: radius_range
       sweep_alias:
-      - close_range
       - holistic
+      - close_range
       values:
       - ood:
           method_args:
@@ -119,9 +117,51 @@ sweep_configuration:
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
+        - flow_mnist_Glow
+        - flow_fmnist_Glow
         - flow_cifar10_Glow
         - flow_svhn_Glow
       values:
+        - base_model:
+            config_dir: runs/Glow_mnist/model.yaml
+            checkpoint_dir: runs/Glow_mnist/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: mnist
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+          ood:
+            method_args:
+              cdf_calculator_args:
+                encoding_model_args:
+                  computation_batch_size: 7
+        - base_model:
+            config_dir: runs/Glow_fmnist/model.yaml
+            checkpoint_dir: runs/Glow_fmnist/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: fashion-mnist
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 32
+                valid_batch_size: 32
+                test_batch_size: 32
+          ood:
+            method_args:
+              cdf_calculator_args:
+                encoding_model_args:
+                  computation_batch_size: 7
         - base_model:
             config_dir: runs/Glow_cifar10/model.yaml
             checkpoint_dir: runs/Glow_cifar10/checkpoints/de_nf_best_valid.pt
@@ -162,6 +202,7 @@ sweep_configuration:
               cdf_calculator_args:
                 encoding_model_args:
                   computation_batch_size: 1
+        
         
     - sweep: True
       sweep_identifier: ood_picker

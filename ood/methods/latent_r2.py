@@ -8,12 +8,14 @@ from chi2comb import ChiSquared, chi2comb_cdf
 from tqdm import tqdm
 import wandb
 import dypy as dy
+from scipy.stats import norm
+from scipy.special import logsumexp
 
 def buffer_loader(loader, buffer_size, limit=None):
     # tekes in a torch dataloader and returns an iterable where each
     # iteration returns a list of buffer_size batches
     for i, batch in enumerate(loader):
-        if limit is not None and i // buffer_size > limit:
+        if limit is not None and i // buffer_size >= limit:
             break
         if i % buffer_size == 0:
             if i != 0:
@@ -173,6 +175,149 @@ class CDFCalculator:
         if self.verbose > 1:
             print("Calculating the mean CDF...")
         return np.mean(self.calculate_single_cdf(r, loader, use_cache))
+    
+    def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> float:
+        raise NotImplementedError("You must implement a calculate_log_cdf method for your model.")
+    
+    def calculate_mean_log_cdf(self, r, loader, use_cache: bool = False) -> float:
+        if self.verbose > 1:
+            print("Calculating the mean CDF...")
+        return np.mean(self.calculate_single_log_cdf(r, loader, use_cache))
+        
+    def calculate_mean(self, loader, use_cache=False):
+        raise NotImplementedError("You must implement a calculate_mean method for your model.")
+    
+class CDFParallelogramCalculator(CDFCalculator):
+    def __init__(
+        self,
+        *args,
+        filtering: th.Optional[th.Union[th.Dict[str, str], str]] = None,
+        eps: float = 1e-6,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        
+        # used for log correction
+        self.eps = eps
+        
+        if filtering is None:
+            self.filtering = lambda cent, rad: torch.zeros_like(rad, dtype=torch.bool)
+        elif isinstance(filtering, str):
+            self.filtering = dy.eval(filtering)
+        elif isinstance(filtering, dict):
+            self.filtering = dy.eval_function(**filtering)
+        else:
+            raise ValueError("filtering should be either a string or a dictionary.")
+    
+    def calculate_ellipsoids(self, loader):
+        """
+        This function takes in a loader of the form
+        [
+            (x_batch_1, _, _),
+            (x_batch_2, _, _),
+            ...,
+            (x_batch_n, _, _)
+        ]
+        where each x_batch_i is a batch of data points.
+        
+        This function calculates the ellipsoids for each of the data points in the batch.
+        And optimizes some of the computations by doing either vmap or batching if specified.
+        After that, it returns the centers and radii of the ellipsoids in the following format.
+        
+        centers = [centers_batch_1, centers_batch_2, ..., centers_batch_n]
+        radii = [radii_batch_1, radii_batch_2, ..., radii_batch_n]
+        
+        Where each of the centers_batch_i and radii_batch_i 
+        have the shape (batch_size, latent_dim)
+        """
+        centers = []
+        radii = []
+        
+        jax, z_values = self.encoding_model.calculate_jacobian(loader)
+        
+        if self.verbose > 1:
+            iterable = tqdm(zip(jax, z_values))
+            iterable.set_description("Calculating the ellipsoids")
+        else:
+            iterable = zip(jax, z_values)
+        
+        for jac, z in iterable: 
+            ellipsoids = torch.matmul(jac.transpose(1, 2), jac)
+            
+            L, Q = torch.linalg.eigh(ellipsoids)
+            # Each row of L would contain the scales of the non-central chi-squared distribution
+            center = torch.matmul(Q.transpose(1, 2), z.unsqueeze(-1)).squeeze(-1)
+            
+            centers.append(center.cpu().detach())
+            radii.append(L.cpu().detach())
+            
+        return centers, radii
+      
+    def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
+        # You should implement your own function here
+        return np.exp(self.calculate_single_log_cdf(r, loader, use_cache))
+    
+    def calculate_mean_cdf(self, r, loader, use_cache: bool = False) -> float:
+        single_log_cdfs = self.calculate_single_log_cdf(r, loader, use_cache)
+        return np.exp(logsumexp(single_log_cdfs) - np.log(len(single_log_cdfs)))
+     
+    def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> float:
+        if not use_cache:
+            self.centers, self.radii = self.calculate_ellipsoids(loader)
+        if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
+            raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
+        centers, radii = self.centers, self.radii
+        def _check_r_primitive():
+            if isinstance(r, float):
+                return True
+            if isinstance(r, int):
+                return True
+        if self.verbose > 1:
+            print("Calculating the single CDFs...")
+            if _check_r_primitive():
+                print(f"\tr = {r}")
+            
+        if not use_cache or not hasattr(self, 'rects'):
+            # if it is not cached, then we should calculate the rects
+            self.rects = []
+            for c_batch, rad_batch in zip(centers, radii):
+                for c, rad in zip(c_batch, rad_batch):
+                    rects_ = []
+                    if self.filtering is not None:
+                        filter_out = self.filtering(c, rad) 
+                    for i in range(len(rad)):
+                        c_i = c[i]
+                        r_i = rad[i]
+                        
+                        if not filter_out[i]:
+                            rects_.append([c_i, r_i])
+                            
+                    if len(rects_) == 0:
+                        raise Exception("Filtering too strict: no coordinates remain!")
+                    self.rects.append(np.array(rects_))
+        
+        
+        if self.verbose > 1:
+            rng_rects = tqdm(self.rects)
+            rng_rects.set_description("Calculating the CDFs for each of the rects!")
+        else:
+            rng_rects = self.rects
+                
+        log_cdfs = []
+        if _check_r_primitive():
+            for rect in rng_rects:
+                diff = norm.cdf(rect[:, 0] + r / rect[:, 1]) - norm.cdf(rect[:, 0] - r / rect[:, 1])
+                log_cdfs.append(np.log(diff + self.eps).sum())
+        else:
+            for r_single, rect in zip(r, rng_rects):
+                diff = norm.cdf(rect[:, 0] + r_single / rect[:, 1]) - norm.cdf(rect[:, 0] - r_single / rect[:, 1])
+                log_cdfs.append(np.log(diff + self.eps).sum())
+                
+        return np.array(log_cdfs)
+        
+    def calculate_mean(self, loader, use_cache=False):
+        raise NotImplementedError("You must implement a calculate_mean method for your CDF calculator.")
+    
 
 class CDFElliposoidCalculator(CDFCalculator):
     """
@@ -336,6 +481,10 @@ class CDFElliposoidCalculator(CDFCalculator):
                 
         return np.array(cdfs)
 
+    def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> float:
+        # TODO: This is not a good implementation. It should be optimized.
+        return np.log(self.calculate_single_cdf(r, loader, use_cache))
+    
     def calculate_mean(self, loader, use_cache=False):
         if not use_cache:
             self.centers, self.radii = self.calculate_ellipsoids(loader)
@@ -448,6 +597,8 @@ class CDFTrend(CDFBaseMethod):
         include_reference: bool = False,
         
         compress_trend: bool = False,
+        compression_bucket_size: th.Optional[int] = None,
+        
         loader_buffer_size: int = 60,
         loader_limit: th.Optional[int] = None,
     ):
@@ -482,8 +633,17 @@ class CDFTrend(CDFBaseMethod):
         self.include_reference = include_reference
         
         self.loader_buffer_size = loader_buffer_size
-        self.compress_trend = compress_trend
         self.loader_limit = loader_limit
+        
+        
+        self.compress_trend = compress_trend
+        self.compression_bucket_size = compression_bucket_size
+        
+        if 'visualize_log' in self.visualization_args:
+            self.visualize_log = self.visualization_args.pop('visualize_log')
+        else:
+            self.visualize_log = False
+            
     
     def run(self):
         # This function first calculates the ellipsoids for each datapoint in the loader self.x_loader
@@ -494,37 +654,64 @@ class CDFTrend(CDFBaseMethod):
         
         def get_trend(loader):
             
-            # display if verbose is set
-            if self.verbose > 1:
-                radii_range = tqdm(self.radii)
-                radii_range.set_description("Calculating the trend of the average cdf")
-            else:
-                radii_range = self.radii
-                
+               
             # split the loader and calculate the trend
-            trend = []
+            trend = [] # This is the final trend
+            trend_so_far = None # The is the cumulative uncompressed trend
             inner_loader_idx = 0
             for inner_loader in buffer_loader(loader, self.loader_buffer_size, limit=self.loader_limit):
-                first = True  
-                inner_loader_idx += 1
-                inner_trend = []
                 
+                inner_loader_idx += 1
+                # display if verbose is set
                 if self.verbose > 1:
-                    tot = min(self.loader_limit, (len(loader) + self.loader_buffer_size - 1) // self.loader_buffer_size)
-                    radii_range.set_description(f"Calculating buffer [{inner_loader_idx}/{tot}]")
+                    radii_range = tqdm(self.radii)
                     
+                    tot = (len(loader) + self.loader_buffer_size - 1) // self.loader_buffer_size
+                    if self.loader_limit is not None:
+                        tot = min(tot, self.loader_limit)
+                        
+                    radii_range.set_description(f"Calculating cdf for buffer [{inner_loader_idx}/{tot}]")
+                else:
+                    radii_range = self.radii
+                
+                inner_trend = []    
+                first = True  
                 for r in radii_range:
-                    inner_trend.append(self.cdf_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=not first))
+                    if self.visualize_log:
+                        inner_trend.append(self.cdf_calculator.calculate_single_log_cdf(r, loader=inner_loader, use_cache=not first))
+                    else:
+                        inner_trend.append(self.cdf_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=not first))
                     first = False
                 inner_trend = np.stack(inner_trend).T
                 
-                if self.compress_trend:
-                    # replace each column of trend with its mean
-                    inner_trend = np.mean(inner_trend, axis=0).reshape(1, -1)
+                if trend_so_far is None:
+                    trend_so_far = inner_trend
+                else:
+                    trend_so_far = np.concatenate([trend_so_far, inner_trend], axis=0)
                 
-                trend.append(inner_trend)
+                if self.compress_trend and trend_so_far.shape[0] >= self.compression_bucket_size:
+                    # replace each column of trend with its mean
+                    for l in range(0, trend_so_far.shape[0], self.compression_bucket_size):
+                        r = l + self.compression_bucket_size
+                        if r <= trend_so_far.shape[0]:
+                            trend.append(np.mean(trend_so_far[l:r], axis=0))
+                            
+                    if r == trend_so_far.shape[0]:
+                        trend_so_far = None
+                    else:
+                        trend_so_far = trend_so_far[r - self.compression_bucket_size:]
             
-            return np.concatenate(trend, axis=0)
+            if trend_so_far is not None:
+                if self.compress_trend:
+                    cmp_size = min(self.compression_bucket_size, trend_so_far.shape[0])
+                else:
+                    cmp_size = 1
+                # replace each column of trend with its mean
+                for l in range(0, trend_so_far.shape[0], cmp_size):
+                    r = min(l + cmp_size, trend_so_far.shape[0])
+                    trend.append(np.mean(trend_so_far[l:r], axis=0))
+            
+            return np.stack(trend, axis=0)
         
         if self.verbose > 0:
             print("Calculating trend ...")
@@ -545,8 +732,8 @@ class CDFTrend(CDFBaseMethod):
             t_values=self.radii,
             reference_scores=reference_trend,
             x_label="r",
-            y_label="CDF(R^2(r^2))",
-            title="Trend of the average cdf",
+            y_label=f"{'log P' if self.visualize_log else 'P'}(R < r)",
+            title=f"Trend of the average {'log_cdf' if self.visualize_log else 'cdf'}",
             **self.visualization_args,
         )
         
