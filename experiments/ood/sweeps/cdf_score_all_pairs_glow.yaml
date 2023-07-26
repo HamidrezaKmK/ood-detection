@@ -29,11 +29,20 @@ base_config:
     # for reproducibility
     seed: 10
   ood:
+    # for faster execution
+    bypass_visualization: True
+    
     pick_single: False
     use_dataloader: True
     seed: 100
     method: ood.methods.latent_r2.CDFScore
     method_args:
+      # loader buffers 
+      # each buffered loader will have 4 batches
+      loader_buffer_size: 10
+      # limit the loader for fast run (optional)
+      loader_limit: 2
+      
       verbose: 1
       visualization_args:
         bincount: 100
@@ -42,11 +51,10 @@ base_config:
       cdf_calculator_args:
         encoding_model_class: ood.methods.latent_r2.EncodingFlow
         encoding_model_args:
-          loader_limit: 10
           use_functorch: True
           use_forward_mode: True
-          use_vmap: False
-          verbose: 2
+          use_vmap: True
+          verbose: 0
         verbose: 0
 
 sweep_configuration:
@@ -96,18 +104,62 @@ sweep_configuration:
           metric_args:
             r: 3400
     dy__upsert:
+      - sweep: true
+        sweep_identifier: manifold_dimension
+        sweep_alias:
+        - top5
+        - top10
+        - top20
+        values:
+        - ood:
+            method_args:
+              cdf_calculator_args:
+                filtering:
+                  # filter the eigenvalues
+                
+                  function_descriptor: |
+                    import torch
+                    def func_top5(cent, rad):
+                      return rad < rad.topk(5)[0][-1]
+
+                  function_of_interest: func_top5
+        - ood:
+            method_args:
+              cdf_calculator_args:
+                filtering:
+                  # filter the eigenvalues
+                
+                  function_descriptor: |
+                    import torch
+                    def func_top10(cent, rad):
+                      return rad < rad.topk(10)[0][-1]
+
+                  function_of_interest: func_top10
+        
+        - ood:
+            method_args:
+              cdf_calculator_args:
+                filtering:
+                  # filter the eigenvalues
+                
+                  function_descriptor: |
+                    import torch
+                    def func_top20(cent, rad):
+                      return rad < rad.topk(20)[0][-1]
+
+                  function_of_interest: func_top20
       # optimize computation batch size as well
       - sweep: True
-        sweep_identifier: in_distribution_model
+        sweep_identifier: B_in_distribution_model
         sweep_alias:
-          - flow_mnist_RQ_NSF
-          - flow_fmnist_RQ_NSF
-          - flow_cifar10_RQ_NSF
-          - flow_svhn_RQ_NSF
+          - flow_mnist_Glow
+          - flow_fmnist_Glow
+          - flow_cifar10_Glow
+          - flow_svhn_Glow
         values:
           - base_model:
-              config_dir: runs/RQ_NSF_mnist/model.yaml
-              checkpoint_dir: runs/RQ_NSF_mnist/checkpoints/de_nf_best_valid.pt
+              config_dir: runs/Glow_mnist/model.yaml
+              checkpoint_dir: runs/Glow_mnist/checkpoints/de_nf_best_valid.pt
             data:
               in_distribution:
                 dataloader_args:
@@ -126,8 +178,8 @@ sweep_configuration:
                   encoding_model_args:
                     computation_batch_size: 7
           - base_model:
-              config_dir: runs/RQ_NSF_fmnist/model.yaml
-              checkpoint_dir: runs/RQ_NSF_fmnist/checkpoints/de_nf_best_valid.pt
+              config_dir: runs/Glow_fmnist/model.yaml
+              checkpoint_dir: runs/Glow_fmnist/checkpoints/de_nf_best_valid.pt
             data:
               in_distribution:
                 dataloader_args:
@@ -146,8 +198,8 @@ sweep_configuration:
                   encoding_model_args:
                     computation_batch_size: 7
           - base_model:
-              config_dir: runs/RQ_NSF_cifar10/model.yaml
-              checkpoint_dir: runs/RQ_NSF_cifar10/checkpoints/de_nf_best_valid.pt
+              config_dir: runs/Glow_cifar10/model.yaml
+              checkpoint_dir: runs/Glow_cifar10/checkpoints/de_nf_best_valid.pt
             data:
               in_distribution:
                 dataloader_args:
@@ -166,8 +218,8 @@ sweep_configuration:
                   encoding_model_args:
                     computation_batch_size: 1
           - base_model:
-              config_dir: runs/RQ_NSF_svhn/model.yaml
-              checkpoint_dir: runs/RQ_NSF_svhn/checkpoints/de_nf_best_valid.pt
+              config_dir: runs/Glow_svhn/model.yaml
+              checkpoint_dir: runs/Glow_svhn/checkpoints/de_nf_best_valid.pt
             data:
               in_distribution:
                 dataloader_args:

@@ -491,7 +491,10 @@ class CDFElliposoidCalculator(CDFCalculator):
         scores = []
         for c_batch, rad_batch in zip(self.centers, self.radii):
             for c, rad in zip(c_batch, rad_batch):
-                scores.append(np.sum(rad.numpy() * (1 + c.numpy()**2)))
+                filter_out = self.filtering(c, rad).numpy()
+                # turn filter_out into float
+                msk = (1.0 - filter_out.astype(np.float32))
+                scores.append(np.sum(msk * rad.numpy() * (1 + c.numpy()**2)))
         return np.array(scores)
     
 

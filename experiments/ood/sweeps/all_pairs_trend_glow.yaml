@@ -43,7 +43,7 @@ base_config:
       # each buffered loader will have 4 batches
       loader_buffer_size: 10
       # limit the loader for fast run (optional)
-      loader_limit: 2
+      loader_limit: 10
 
       # Compressing the trends for memory usage
       compress_trend: True
@@ -60,15 +60,6 @@ base_config:
           use_forward_mode: True
           use_vmap: True
           verbose: 0
-        
-        # filter the eigenvalues
-        filtering:
-          function_descriptor: |
-            import torch
-            def func_topk(cent, rad):
-              return rad < rad.topk(20)[0][-1]
-
-          function_of_interest: func_topk
 
         verbose: 0
       
@@ -80,18 +71,56 @@ sweep_configuration:
 
   dy__upsert:
     - sweep: true
-      sweep_identifier: A_latent_volume
+      sweep_identifier: manifold_dimension
       sweep_alias:
-      - rectangle
-      - ellipsoid
+      - top5
+      - top10
+      - top20
       values:
       - ood:
           method_args:
-            cdf_calculator_class: ood.methods.latent_r2.CDFParallelogramCalculator
             cdf_calculator_args:
-              eps: 0.00001
-            visualization_args:
-              visualize_log: True
+              filtering:
+                # filter the eigenvalues
+              
+                function_descriptor: |
+                  import torch
+                  def func_top5(cent, rad):
+                    return rad < rad.topk(5)[0][-1]
+
+                function_of_interest: func_top5
+      - ood:
+          method_args:
+            cdf_calculator_args:
+              filtering:
+                # filter the eigenvalues
+              
+                function_descriptor: |
+                  import torch
+                  def func_top10(cent, rad):
+                    return rad < rad.topk(10)[0][-1]
+
+                function_of_interest: func_top10
+      
+      - ood:
+          method_args:
+            cdf_calculator_args:
+              filtering:
+                # filter the eigenvalues
+              
+                function_descriptor: |
+                  import torch
+                  def func_top20(cent, rad):
+                    return rad < rad.topk(20)[0][-1]
+
+                function_of_interest: func_top20
+
+    - sweep: true
+      sweep_identifier: A_latent_volume
+      sweep_alias:
+      - ellipsoid
+      # - rectangle
+      values:
       - ood:
           method_args:
             cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
@@ -100,6 +129,13 @@ sweep_configuration:
               lim: 10000
             visualization_args:
               visualize_log: False
+      # - ood:
+      #     method_args:
+      #       cdf_calculator_class: ood.methods.latent_r2.CDFParallelogramCalculator
+      #       cdf_calculator_args:
+      #         eps: 0.00001
+      #       visualization_args:
+      #         visualize_log: True
     - sweep: True
       sweep_identifier: radius_range
       sweep_alias:
