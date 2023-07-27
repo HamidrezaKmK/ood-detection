@@ -1,6 +1,7 @@
 """
 utility functions being used for latent_r2 models
 """
+import torch
 
 def buffer_loader(loader, buffer_size, limit=None):
     # tekes in a torch dataloader and returns an iterable where each
@@ -33,16 +34,19 @@ def stack_back_iterables(reference_iterable, *chunky_iterables):
     cumul_current = [0 for _ in chunky_iterables]
     
     for b in reference_iterable:
-        cumul_ret += len(b)
+        cumul_ref += len(b)
         
         for i, current_loader in enumerate(chunky_iterables):
+            # if current_loader is not iterable, then make it iterable
+            current_loader = iter(current_loader) 
+            
             intermediate = []
             while cumul_current[i] < cumul_ref:
-                t = current_loader.next()
+                t = next(current_loader)
                 intermediate.append(t)
                 cumul_current[i] += len(t)
             if len(intermediate) > 0:
-                stacked_back_iterables[i].append(torch.stack(intermediate))
+                stacked_back_iterables[i].append(torch.cat(intermediate))
 
-    return *stacked_back_iterables
+    return stacked_back_iterables
         

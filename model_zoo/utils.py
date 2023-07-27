@@ -1,7 +1,9 @@
 import torch
 from torch.utils.data import DataLoader
 import functools
-
+import dypy as dy
+import typing as th
+import yaml
 
 def batch_or_dataloader(agg_func=torch.cat):
     def decorator(batch_fn):
@@ -31,3 +33,36 @@ def batch_or_dataloader(agg_func=torch.cat):
         return batch_fn_wrapper
 
     return decorator
+
+def load_model_with_checkpoints(
+    config,
+    device: th.Optional[str] = None,
+):
+    model_conf = None
+    # load the model and load the corresponding checkpoint
+    if 'config_dir' in config:
+        filename = config['config_dir']
+        with open(filename, 'r') as f:
+            model_conf = yaml.load(f, Loader=yaml.FullLoader)
+    # if the model is directly given in the yaml, then overwrite the model_conf
+    if 'model' in config:
+        model_conf = config['model']
+    # if the config is still None, then raise an error   
+    if model_conf is None:
+        raise ValueError("model configuration should be either given in the yaml or in the config_dir")
+    
+    # Instantiate the model
+    # change the device of the model to device
+    
+    if not device:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = dy.eval(model_conf['class_path'])(**model_conf['init_args']).to(device)
+    # load the model weights from the checkpoint
+    if config['checkpoint_dir'] is not None:
+        model.load_state_dict(torch.load(config['checkpoint_dir'])['module_state_dict'])
+        
+    
+    # set to evaluation mode to get rid of any randomness happening in the 
+    # architecture such as dropout
+    model.eval()
+    return model

@@ -19,6 +19,7 @@ from model_zoo.datasets import get_loaders
 import yaml
 import traceback
 import typing as th
+from model_zoo.utils import load_model_with_checkpoints
 
 @dataclass
 class OODConfig:
@@ -146,31 +147,10 @@ def run_ood(config: dict):
     ###################
     # (1) Model setup #
     ###################
-    model_conf = None
-    # load the model and load the corresponding checkpoint
-    if 'config_dir' in config['base_model']:
-        filename = config['base_model']['config_dir']
-        with open(filename, 'r') as f:
-            model_conf = yaml.load(f, Loader=yaml.FullLoader)
-    # if the model is directly given in the yaml, then overwrite the model_conf
-    if 'model' in config['base_model']:
-        model_conf = config['base_model']['model']
-    # if the config is still None, then raise an error   
-    if model_conf is None:
-        raise ValueError("model configuration should be either given in the yaml or in the config_dir")
-    # Instantiate the model
-    model = dy.eval(model_conf['class_path'])(**model_conf['init_args'])
-    # load the model weights from the checkpoint
-    checkpoint_dir = config["base_model"]["checkpoint_dir"]
-    # TODO: This is a bit jankey -- fix it later on!
-    model.load_state_dict(torch.load(checkpoint_dir)['module_state_dict'])
-    # change the device of the model to device
+    
+    model = load_model_with_checkpoints(config=config['base_model'])
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
-    # set to evaluation mode to get rid of any randomness happening in the 
-    # architecture such as dropout
-    model.eval()
-    
     ##################
     # (1) Data setup #
     ##################

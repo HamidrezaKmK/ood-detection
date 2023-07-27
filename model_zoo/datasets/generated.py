@@ -7,7 +7,85 @@ import torch
 import torch.nn.functional as f
 
 from .supervised_dataset import SupervisedDataset
+from model_zoo.utils import load_model_with_checkpoints
+from model_zoo.density_estimator import DensityEstimator
+from model_zoo import TwoStepDensityEstimator
+from functools import lru_cache
 
+import typing as th
+import os
+from tqdm import tqdm
+
+import PIL
+
+class DGMGeneratedDataset(torch.utils.data.Dataset):
+    """Base class for generated datasets"""
+
+    item_cache_size = 10000
+    
+    def __init__(
+        self, 
+        data_root: str,
+        identifier: str,
+        model_loading_config: th.Dict[str, th.Any],
+        length: th.Optional[int] = None,
+        seed: th.Optional[int] = None,
+        generation_batch_size: int = 10,
+        device: str = "cpu",
+    ):
+        self.data_path = os.path.join(data_root, identifier)
+        if not os.path.exists(self.data_path):
+            os.makedirs(self.data_path)
+            # get the model and generate all the data and save it
+            model: th.Union[DensityEstimator, TwoStepDensityEstimator] = load_model_with_checkpoints(model_loading_config, device=device)
+            
+            if seed is not None:    
+                np.random.seed(seed)
+                torch.manual_seed(seed)
+            rng = tqdm(range(0, length, generation_batch_size))
+            rng.set_description("Generating data")
+            for i in rng:
+                t = min(i + generation_batch_size, length)
+                data = model.sample(t).detach().cpu().numpy()
+                for j, sample in enumerate(data):
+                    img_dir = os.path.join(self.data_path, f"{i + j + 1}.png")
+                    # save that sample in image format in img_dir
+                    im = PIL.Image.fromarray(sample)
+                    im.save(img_dir)
+        else:
+            print("Using existing data cached ...")
+            # get the length of the dataset
+            self.length = len(os.listdir(self.data_path))
+                    
+                        
+    def __len__(self):
+        return self.length
+
+    def to(self, device):
+        return self
+    
+    @lru_cache(maxsize=item_cache_size)
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.data_path, f"{idx + 1}.png")
+        X = PIL.Image.open(img_path)
+        # NOTE: if the dgm model is class conditional, then we can also generate the class labels here
+        #       and return the sample conditioned on that specific class
+        return X, None, idx
+
+def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str] = None):
+    if identifier is None:
+        checkpoint_dir = dgm_args['model_loading_config']['checkpoint_dir']
+        # split checkpoint_dir according to the os path separator
+        separated = checkpoint_dir.split('/')
+        identifier = '_'.join(separated)
+        # replace dots with underscores
+        identifier = identifier.replace('.', '_')
+        
+    train_dset = DGMGeneratedDataset(data_root, identifier=identifier, **dgm_args)
+    valid_dset = train_dset
+    test_dset = train_dset
+    return train_dset, valid_dset, test_dset
+     
 class Sphere(SupervisedDataset):
     """Sample from a Gaussian distribution projected to a sphere"""
 

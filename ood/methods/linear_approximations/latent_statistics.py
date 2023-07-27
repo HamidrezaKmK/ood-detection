@@ -11,6 +11,7 @@ import numpy as np
 from tqdm import tqdm
 from scipy.stats import norm
 from scipy.special import logsumexp
+from .utils import stack_back_iterables
 
 class LatentStatsCalculator:
     def __init__(
@@ -39,18 +40,48 @@ class LatentStatsCalculator:
             print("Calculating the mean CDF...")
         return np.mean(self.calculate_single_cdf(r, loader, use_cache))
     
-    def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> float:
+    def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
+        """
+        This function calculates the log_cdf of your latent random variable at point 'r'
+        for each of the samples in the data loader and returns a list of the cdfs.
+        
+        The reason this function exists is that sometimes it is easier to calculate the
+        log_cdf rather than the cdf in a more accurate manner.
+        
+        If you have multiple runs of this function on same loader but different 'r' values,
+        then set use_cache to True for the rest of the runs because this will signigicanlty
+        streamline the computation.
+        """
         raise NotImplementedError("You must implement a calculate_log_cdf method for your model.")
     
     def calculate_mean_log_cdf(self, r, loader, use_cache: bool = False) -> float:
+        
         if self.verbose > 1:
             print("Calculating the mean CDF...")
         return np.mean(self.calculate_single_log_cdf(r, loader, use_cache))
         
     def calculate_mean(self, loader, use_cache=False):
+        """
+        This function calculates the mean of the latent variable in consideration. This is typically
+        a fast and easy to compute function.
+        
+        If you have multiple runs of this function on same loader but different 'r' values,
+        then set use_cache to True for the rest of the runs because this will signigicanlty
+        streamline the computation.
+        """
         raise NotImplementedError("You must implement a calculate_mean method for your model.")
     
     def sample(self, r, loader, n_samples: int = 1, use_cache: bool = False):
+        """
+        This function takes in a loader and a distance measure 'r'. 
+        It then flattens the loader out and returns n_samples per each element
+        in the loader. Each of the elements are a samples that are drawn with distance
+        'r' from the correpsonding element in the loader.
+        
+        If you have multiple runs of this function on same loader but different 'r' values,
+        then set use_cache to True for the rest of the runs because this will signigicanlty
+        streamline the computation.
+        """
         raise NotImplementedError("You must implement a sample method for your model.")
 
 def calculate_ellipsoids(
@@ -85,7 +116,7 @@ def calculate_ellipsoids(
     if return_rotations:
         rotations = []
     
-    jax, z_values = stats_calculator.encoding_model.calculate_jacobian(loader, stack_back=stack_back)
+    jax, z_values = stats_calculator.encoding_model.calculate_jacobian(loader, stack_back=False)
     
     if stats_calculator.verbose > 1:
         iterable = tqdm(zip(jax, z_values))
@@ -113,10 +144,11 @@ def calculate_ellipsoids(
         radii.append(L.cpu().detach())
     
     # return the rotations that cauesed the centers to be what they are too
+    all_ret = [centers, radii]
     if return_rotations:
-        return centers, radii, rotations
+        return all_ret + [rotations]
     
-    return centers, radii
+    return stack_back_iterables(loader, *all_ret) if stack_back else all_ret
     
 class ParallelogramStatsCalculator(LatentStatsCalculator):
     def __init__(

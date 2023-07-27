@@ -183,3 +183,5 @@ experiments/sweeps/checkpoints-*
 
 # dysweep
 dysweep_logs
+
+hamid_notebook.ipynb

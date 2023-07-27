@@ -5,6 +5,7 @@ that can be used for ood detection.
 import torch
 from tqdm import tqdm
 import typing as th
+from utils import stack_back_iterables
 
 class EncodingModel:
     """
@@ -114,16 +115,15 @@ class EncodingModel:
 
                 # Reshaping the jacobian to be of the shape (batch_size, latent_dim, latent_dim)
                 if self.use_vmap:
-                    jac_until_now = jac_until_now.reshape(z_s.shape[0], -1, z_s.numel() // z_s.shape[0])
-                    for j in range(jac_until_now.shape[0]):
-                        jax.append(jac_until_now[j, :, :])
+                    jac = jac_until_now.reshape(z_s.shape[0], -1, z_s.numel() // z_s.shape[0])
                 else:
                     jac_until_now = jac_until_now.reshape(z_s.shape[0], -1, z_s.shape[0], z_s.numel() // z_s.shape[0])
                     for j in range(jac_until_now.shape[0]):
-                        jax.append(jac_until_now[j, :, j, :])   
+                        jac.append(jac_until_now[j, :, j, :])
+                    jac = torch.stack(jac)
                 
                 z_values.append(z_s.cpu().detach())
-                    
+                jax.append(jac.cpu().detach())
                         
         return stack_back_iterables(loader, jax, z_values) if stack_back else jax, z_values
 
