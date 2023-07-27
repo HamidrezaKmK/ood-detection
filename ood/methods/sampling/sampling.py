@@ -10,7 +10,7 @@ of the probabilities, rather than mere likelihoods.
 
 import typing as th
 import torch
-from .base_method import OODBaseMethod
+from ..base_method import OODBaseMethod
 import dypy as dy
 import numpy as np
 import wandb
