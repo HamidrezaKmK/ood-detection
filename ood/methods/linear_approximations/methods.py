@@ -11,7 +11,7 @@ import dypy as dy
 from scipy.stats import norm
 from scipy.special import logsumexp
 from .utils import buffer_loader
-
+from .latent_statistics import LatentStatsCalculator
 
 class CDFBaseMethod(OODBaseMethod):
     """
@@ -34,8 +34,8 @@ class CDFBaseMethod(OODBaseMethod):
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
         # CDF calculator
-        cdf_calculator_class: th.Optional[str] = None,
-        cdf_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        latent_statistics_calculator_class: th.Optional[str] = None,
+        latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
         # for logging args
         verbose: int = 0,
@@ -51,8 +51,8 @@ class CDFBaseMethod(OODBaseMethod):
             logger (th.Optional[th.Any], optional): _description_. Defaults to None.
             in_distr_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
             verbose (int, optional): _description_. Defaults to 0.
-            cdf_calculator_class: (str) The class of the CDF calculator
-            cdf_calculator_args (dict) The arguments used for visualizing the cdf calculator
+            latent_statistics_calculator_class: (str) The class of the CDF calculator
+            latent_statistics_calculator_args (dict) The arguments used for visualizing the cdf calculator
         """
         super().__init__(
             x_loader=x_loader, 
@@ -63,11 +63,11 @@ class CDFBaseMethod(OODBaseMethod):
             in_distr_loader=in_distr_loader, 
         )
         
-        cdf_calculator_args = cdf_calculator_args or {}
-        if 'verbose' not in cdf_calculator_args:
-            cdf_calculator_args['verbose'] = verbose
+        latent_statistics_calculator_args = latent_statistics_calculator_args or {}
+        if 'verbose' not in latent_statistics_calculator_args:
+            latent_statistics_calculator_args['verbose'] = verbose
             
-        self.cdf_calculator: CDFCalculator = dy.eval(cdf_calculator_class)(likelihood_model, **(cdf_calculator_args or {}))
+        self.latent_statistics_calculator: LatentStatsCalculator = dy.eval(latent_statistics_calculator_class)(likelihood_model, **(latent_statistics_calculator_args or {}))
         
         if self.x is not None:    
             self.x_batch = self.x.unsqueeze(0)
@@ -98,8 +98,8 @@ class CDFTrend(CDFBaseMethod):
         
         
         # CDF calculator
-        cdf_calculator_class: th.Optional[str] = None,
-        cdf_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        latent_statistics_calculator_class: th.Optional[str] = None,
+        latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
         # for logging args
         verbose: int = 0,
@@ -130,7 +130,7 @@ class CDFTrend(CDFBaseMethod):
                 visualize_trend function. Defaults to None which is an empty dict.
             include_reference (bool, optional): If set to True, then the training data trend will also be visualized.
         """
-        self.cdf_calculator: CDFCalculator
+        self.latent_statistics_calculator: LatentStatsCalculator
         
         super().__init__(
             likelihood_model=likelihood_model,
@@ -139,8 +139,8 @@ class CDFTrend(CDFBaseMethod):
             x_loader=x_loader,
             logger=logger,
             in_distr_loader=in_distr_loader,
-            cdf_calculator_class=cdf_calculator_class,
-            cdf_calculator_args=cdf_calculator_args,
+            latent_statistics_calculator_class=latent_statistics_calculator_class,
+            latent_statistics_calculator_args=latent_statistics_calculator_args,
             verbose=verbose,
         )
         
@@ -196,9 +196,9 @@ class CDFTrend(CDFBaseMethod):
                 first = True  
                 for r in radii_range:
                     if self.visualize_log:
-                        inner_trend.append(self.cdf_calculator.calculate_single_log_cdf(r, loader=inner_loader, use_cache=not first))
+                        inner_trend.append(self.latent_statistics_calculator.calculate_single_log_cdf(r, loader=inner_loader, use_cache=not first))
                     else:
-                        inner_trend.append(self.cdf_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=not first))
+                        inner_trend.append(self.latent_statistics_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=not first))
                     first = False
                 inner_trend = np.stack(inner_trend).T
                 
@@ -272,8 +272,8 @@ class CDFScore(CDFBaseMethod):
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
         # CDF calculator
-        cdf_calculator_class: th.Optional[str] = None,
-        cdf_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        latent_statistics_calculator_class: th.Optional[str] = None,
+        latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
         # for logging args
         verbose: int = 0,
@@ -314,8 +314,8 @@ class CDFScore(CDFBaseMethod):
             x_loader=x_loader,
             logger=logger,
             in_distr_loader=in_distr_loader,
-            cdf_calculator_class=cdf_calculator_class,
-            cdf_calculator_args=cdf_calculator_args,
+            latent_statistics_calculator_class=latent_statistics_calculator_class,
+            latent_statistics_calculator_args=latent_statistics_calculator_args,
             verbose=verbose,
         )
         self.metric_name = metric_name
@@ -334,7 +334,7 @@ class CDFScore(CDFBaseMethod):
         """
         scores = []
         for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
-            scores.append(self.cdf_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=False))
+            scores.append(self.latent_statistics_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=False))
         return np.concatenate(scores)
     
     def _find_r_then_cdf(
@@ -388,7 +388,7 @@ class CDFScore(CDFBaseMethod):
                 elif self.verbose == 1:
                     rng.set_description(f"Binary Searching iteration no.{iter + 1}")
                 
-                if self.cdf_calculator.calculate_mean_cdf(mid, loader=inner_loader, use_cache=not first) > cdf_threshold:
+                if self.latent_statistics_calculator.calculate_mean_cdf(mid, loader=inner_loader, use_cache=not first) > cdf_threshold:
                     r_r = mid
                 else:
                     r_l = mid
@@ -413,7 +413,7 @@ class CDFScore(CDFBaseMethod):
         
         scores = []
         for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
-            T = sum([x.shape[0] for x, _, _ in inner_loader])
+            T = sum([x.shape[0] for x in inner_loader])
            
             r_l = np.zeros(T)
             r_r = np.ones(T) * 1e12
@@ -431,7 +431,7 @@ class CDFScore(CDFBaseMethod):
                     rng.set_description(f"Binary Searching iteration no.{iter + 1}")
                     
                 mid = (r_l + r_r) / 2.0
-                single_cdfs = self.cdf_calculator.calculate_single_cdf(mid, loader=inner_loader, use_cache=not first)
+                single_cdfs = self.latent_statistics_calculator.calculate_single_cdf(mid, loader=inner_loader, use_cache=not first)
                 first = False
                 r_l = np.where(single_cdfs > q, r_l, mid)
                 r_r = np.where(single_cdfs > q, mid, r_r)
@@ -448,7 +448,7 @@ class CDFScore(CDFBaseMethod):
         """
         scores = []
         for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
-            scores.append(self.cdf_calculator.calculate_mean(loader=inner_loader))
+            scores.append(self.latent_statistics_calculator.calculate_mean(loader=inner_loader))
         return np.concatenate(scores)
     
     def run(self):

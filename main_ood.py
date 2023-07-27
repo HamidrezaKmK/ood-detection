@@ -52,7 +52,11 @@ def plot_likelihood_ood_histogram(
     def list_all_scores(dloader: torch.utils.data.DataLoader):
         log_probs = []
         for tmp in dloader:
-            x, y, _ = tmp
+            x = tmp
+            # print("-------")
+            # print(x.device)
+            # print(model.device)
+            
             t = model.log_prob(x).cpu().detach()
             # turn t into a list of floats
             t = t.flatten()
@@ -159,12 +163,14 @@ def run_ood(config: dict):
         device=device,
         shuffle=False,
         data_root='data/',
+        unsupervised=True,
     )
     ood_train_loader, _, ood_test_loader = get_loaders(
         **config["data"]["out_of_distribution"]["dataloader_args"],
         device=device,
         shuffle=False,
         data_root='data/',
+        unsupervised=True,
     )
     
     # in_loader is the loader that is used for the in-distribution data
@@ -202,10 +208,17 @@ def run_ood(config: dict):
     # you can set to visualize or bypass the visualization for speedup!
     if 'bypass_visualization' not in config['ood'] or not config['ood']['bypass_visualization']:
         # get 9 random samples from the in distribution dataset
-        in_samples = in_loader.dataset.x[np.random.randint(
-            len(in_loader.dataset), size=9)]
-        out_samples = out_loader.dataset.x[np.random.randint(
-            len(out_loader.dataset), size=9)]
+        sample_set = np.random.randint(len(in_loader.dataset), size=9)
+        in_samples = []
+        for s in sample_set:
+            in_samples.append(in_loader.dataset[s])
+        sample_set = np.random.randint(len(out_loader.dataset), size=9)
+        out_samples = []
+        for s in sample_set:
+            out_samples.append(out_loader.dataset[s])
+        in_samples = torch.stack(in_samples)
+        out_samples = torch.stack(out_samples)
+
         in_samples = torchvision.utils.make_grid(in_samples, nrow=3)
         out_samples = torchvision.utils.make_grid(out_samples, nrow=3)
         
@@ -214,16 +227,17 @@ def run_ood(config: dict):
         wandb.log({"data/out_of_distribution samples": [wandb.Image(
             out_samples, caption="out of distribution samples")]})
         
-        # generate 9 samples from the model
-        with torch.no_grad():
-            # set torch seed for reproducibility
-            if config["ood"]["seed"] is not None:
-                torch.manual_seed(config["ood"]["seed"])
-            samples = model.sample(9)
-            samples = torchvision.utils.make_grid(samples, nrow=3)
-            wandb.log(
-                {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
-        
+        # generate 9 samples from the model if bypass sampling is not set to True
+        if 'bypass_samples_visualization' not in config['ood'] or not config['ood']['bypass_samples_visualization']:
+            with torch.no_grad():
+                # set torch seed for reproducibility
+                if config["ood"]["seed"] is not None:
+                    torch.manual_seed(config["ood"]["seed"])
+                samples = model.sample(9)
+                samples = torchvision.utils.make_grid(samples, nrow=3)
+                wandb.log(
+                    {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
+            
         img_array = plot_likelihood_ood_histogram(
             model,
             in_loader,
@@ -250,7 +264,7 @@ def run_ood(config: dict):
         np.random.seed(config["ood"]["seed"])
     idx = np.random.randint(len(out_loader))
     for _ in range(idx + 1):
-        x, _, _ = next(iter(out_loader))
+        x = next(iter(out_loader))
 
     if config["ood"]["pick_single"]:
         # pick a single image the selected batch

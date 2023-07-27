@@ -1,9 +1,9 @@
 base_model:
   # A directory containing the configuration used for instantiating the likelihood model itself
-  config_dir: runs/RQ_NSF_cifar10/model.yaml
+  config_dir: runs/RQ_NSF_fmnist/model.yaml
   # A directory containing the model weights of the likelihood model to work with a good fit one
   # This is produced by running the single step training models
-  checkpoint_dir: runs/RQ_NSF_cifar10/checkpoints/de_nf_latest.pt
+  checkpoint_dir: runs/RQ_NSF_fmnist/checkpoints/de_nf_latest.pt
 data:
   # specify the datasets and dataloader configurations for the in and out of distribution data.
   in_distribution:
@@ -15,16 +15,16 @@ data:
       test_batch_size: 16
       dgm_args:
         model_loading_config:
-          config_dir: runs/RQ_NSF_cifar10/model.yaml
+          config_dir: runs/RQ_NSF_fmnist/model.yaml
           # A directory containing the model weights of the likelihood model to work with a good fit one
           # This is produced by running the single step training models
-          checkpoint_dir: runs/RQ_NSF_cifar10/checkpoints/de_nf_latest.pt
+          checkpoint_dir: runs/RQ_NSF_fmnist/checkpoints/de_nf_latest.pt
         seed: 10
         length: 1000
 
   out_of_distribution:
     dataloader_args:
-      dataset: cifar10
+      dataset: mnist
       make_valid_loader: false
       train_batch_size: 16
       valid_batch_size: 16
@@ -32,6 +32,7 @@ data:
   # for reproducibility
   seed: 10
 ood:
+  bypass_samples_visualization: True
   pick_single: False
   use_dataloader: True
   seed: 10

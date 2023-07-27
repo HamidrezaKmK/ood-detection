@@ -58,10 +58,10 @@ class EncodingModel:
         """
         This function takes in a loader of the form
         [
-            (x_batch_1, _, _),
-            (x_batch_2, _, _),
+            (x_batch_1),
+            (x_batch_2),
             ...,
-            (x_batch_n, _, _)
+            (x_batch_n)
         ]
         where each x_batch_i is a batch of data points.
         
@@ -79,7 +79,7 @@ class EncodingModel:
         jax = []
         z_values = []
            
-        for x_batch, _, _ in loader_decorated:
+        for x_batch in loader_decorated:
             
             jac = []
             # encode to obtain the latent representation in the Gaussian space

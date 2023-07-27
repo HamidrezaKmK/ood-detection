@@ -15,10 +15,11 @@ from functools import lru_cache
 import typing as th
 import os
 from tqdm import tqdm
+import shutil
 
 import PIL
 
-class DGMGeneratedDataset(torch.utils.data.Dataset):
+class DGMGeneratedDataset(SupervisedDataset):
     """Base class for generated datasets"""
 
     item_cache_size = 10000
@@ -34,8 +35,8 @@ class DGMGeneratedDataset(torch.utils.data.Dataset):
         device: str = "cpu",
     ):
         self.data_path = os.path.join(data_root, identifier)
-        if not os.path.exists(self.data_path):
-            os.makedirs(self.data_path)
+        
+        def generate_all():
             # get the model and generate all the data and save it
             model: th.Union[DensityEstimator, TwoStepDensityEstimator] = load_model_with_checkpoints(model_loading_config, device=device)
             
@@ -45,32 +46,64 @@ class DGMGeneratedDataset(torch.utils.data.Dataset):
             rng = tqdm(range(0, length, generation_batch_size))
             rng.set_description("Generating data")
             for i in rng:
-                t = min(i + generation_batch_size, length)
-                data = model.sample(t).detach().cpu().numpy()
+                r = min(i + generation_batch_size, length)
+                data = model.sample(r - i).detach().cpu().permute(0, 2, 3, 1).numpy()
                 for j, sample in enumerate(data):
                     img_dir = os.path.join(self.data_path, f"{i + j + 1}.png")
                     # save that sample in image format in img_dir
-                    im = PIL.Image.fromarray(sample)
+                    if sample.shape[-1] == 1:
+                        im = PIL.Image.fromarray(sample[:, :, 0].astype(np.uint8), mode="L")
+                    elif sample.shape[-1] == 3:
+                        im = PIL.Image.fromarray(sample.astype(np.uint8))
+                    else:
+                        raise ValueError("Invalid number of channels: ", sample.shape[-1])
                     im.save(img_dir)
-        else:
-            print("Using existing data cached ...")
-            # get the length of the dataset
-            self.length = len(os.listdir(self.data_path))
+            self.length = length
                     
+        if not os.path.exists(self.data_path):
+            os.makedirs(self.data_path)
+            generate_all()
+            
+        else:
+            # get the length of the dataset
+            if length != len(os.listdir(self.data_path)):
+                # delete all the content of the folder
+                shutil.rmtree(self.data_path)
+                os.mkdir(self.data_path)
+                generate_all()
+            else:
+                print("Using existing data cached ...")
+                self.length = len(os.listdir(self.data_path))
+        
+        self.cached_indices = {}
+        
+        self.device = device
                         
     def __len__(self):
         return self.length
 
     def to(self, device):
+        # uncache all the outputs
+        if device != self.device:
+            self.cached_indices = {}
+            self.device = device
+
         return self
     
-    @lru_cache(maxsize=item_cache_size)
     def __getitem__(self, idx):
-        img_path = os.path.join(self.data_path, f"{idx + 1}.png")
-        X = PIL.Image.open(img_path)
-        # NOTE: if the dgm model is class conditional, then we can also generate the class labels here
-        #       and return the sample conditioned on that specific class
-        return X, None, idx
+        if idx not in self.cached_indices:
+            img_path = os.path.join(self.data_path, f"{idx + 1}.png")
+            X = PIL.Image.open(img_path)
+            # turn X into a numpy array of type float
+            X = np.array(X).astype(np.float32)
+            if len(X.shape) == 2:
+                X = X[:, :, None]
+            # turn X into a tensor
+            X = torch.from_numpy(X).float().permute(2, 0, 1).to(self.device)
+            # NOTE: if the dgm model is class conditional, then we can also generate the class labels here
+            #       and return the sample conditioned on that specific class
+            self.cached_indices[idx] = X, None, idx
+        return self.cached_indices[idx]
 
 def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str] = None):
     if identifier is None:

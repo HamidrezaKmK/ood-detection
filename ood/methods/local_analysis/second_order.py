@@ -103,7 +103,7 @@ class HessianSpectrumMonitor(OODBaseMethod):
             if ind < lm:
                 x = current_batch[real_ind]
             else:
-                current_batch, _, _ = next(tt)
+                current_batch = next(tt)
                 real_ind = ind - lm
                 lm += len(current_batch)
                 x = current_batch[real_ind]

@@ -7,7 +7,7 @@ from .supervised_dataset import SupervisedDataset
 
 import typing as th
 
-    
+from .unsupervised_dataset import UnSupervisedDataset
     
 def get_loader(dset, device, batch_size, drop_last, shuffle=True):
     return DataLoader(
@@ -16,7 +16,7 @@ def get_loader(dset, device, batch_size, drop_last, shuffle=True):
         shuffle=shuffle,
         drop_last=drop_last,
         num_workers=0,
-        pin_memory=False
+        pin_memory=False,
     )
     
 def get_loaders(
@@ -30,6 +30,7 @@ def get_loaders(
     make_test_loader: bool = True,
     shuffle: bool = True,
     dgm_args: th.Optional[th.Dict[str, th.Any]] = None,
+    unsupervised: bool = False,
 ):
     if dataset in ["celeba", "mnist", "fashion-mnist", "cifar10", "svhn"]:
         train_dset, valid_dset, test_dset = get_image_datasets(dataset, data_root, make_valid_loader)
@@ -43,6 +44,11 @@ def get_loaders(
     else:
         raise ValueError(f"Unknown dataset {dataset}")
     
+    if unsupervised:
+        train_dset = UnSupervisedDataset(train_dset)
+        valid_dset = UnSupervisedDataset(valid_dset)
+        test_dset = UnSupervisedDataset(test_dset)
+        
     train_loader = get_loader(train_dset, device, train_batch_size, drop_last=True, shuffle=shuffle)
     valid_loader = get_loader(valid_dset, device, valid_batch_size, drop_last=False, shuffle=False) if make_valid_loader else None
     test_loader = get_loader(test_dset, device, test_batch_size, drop_last=False, shuffle=False) if make_test_loader else None

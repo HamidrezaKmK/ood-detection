@@ -94,10 +94,10 @@ def calculate_ellipsoids(
     """
     This function takes in a loader of the form
     [
-        (x_batch_1, _, _),
-        (x_batch_2, _, _),
+        (x_batch_1),
+        (x_batch_2),
         ...,
-        (x_batch_n, _, _)
+        (x_batch_n)
     ]
     where each x_batch_i is a batch of data points.
     
