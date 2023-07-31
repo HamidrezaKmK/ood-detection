@@ -4,15 +4,18 @@ import torch
 from typing import Any, Tuple
 from .supervised_dataset import SupervisedDataset
 from functools import cached_property
+import requests
 
 SUPPORTED_IMAGE_DATASETS = [
     "celeba", 
     "mnist", 
     "fashion-mnist", 
     "cifar10", 
+    "cifar100",
     "svhn",
     "omniglot",
     "emnist-minus-mnist",
+    "tiny-imagenet",
 ]
 
 SUPPORTED_GENERATED_DATASETS = [
@@ -59,7 +62,7 @@ class TrainerReadyDataset(torch.utils.data.Dataset):
     def __getitem__(self, index: int):
         ret = self.dset[index]
         if not isinstance(ret, tuple):
-            return ret, None, index
+            return ret, -1, index
         else:
             return ret[0], ret[1], index
     
@@ -93,3 +96,31 @@ class OmitLabels(torch.utils.data.Dataset):
     def to(self, device):
         self.dset = self.dset.to(device)
         return self
+
+
+def download_file_from_google_drive(id, destination):
+    URL = "https://docs.google.com/uc?export=download"
+
+    session = requests.Session()
+
+    response = session.get(URL, params = { 'id' : id }, stream = True)
+    token = get_confirm_token(response)
+
+    if token:
+        params = { 'id' : id, 'confirm' : token }
+        response = session.get(URL, params = params, stream = True)
+
+    save_response_content(response, destination)    
+
+def get_confirm_token(response):
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            return value
+
+    return None
+
+def save_response_content(response, destination):
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk: # filter out keep-alive new chunks
+                f.write(chunk)

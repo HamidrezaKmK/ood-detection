@@ -13,6 +13,7 @@ from nflows.nn import nets as nets
 import copy
 import math
 
+ 
 class ConfigurableCouplingTransform(Transform):
     """
     A wrapper for the nflow coupling transforms that

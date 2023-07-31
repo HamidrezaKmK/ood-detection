@@ -30,3 +30,6 @@ curlgoogle
 # This is the library we are using for the computation of the CDF of generalized chi-square distribution
 # TODO: The library is somewhat unreliable and deos not work on new distributions of Python3.10+
 chi2comb
+
+# for LSUN
+lmdb
