@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from .utils import batch_or_dataloader
 import dypy as dy
-
+from dysweep import dysweep_run_resume
 
 class TwoStepDensityEstimator(nn.Module):
 
@@ -198,11 +198,13 @@ class TwoStepComponent(nn.Module):
             return (1, *self.data_shape)
 
     def _data_transform(self, data):
-       
+        # print("1", data)
         if self.flatten:
             data = data.flatten(start_dim=1)
+        # print("2", data)
         if self.denoising_sigma is not None and self.training:
             data = data + torch.randn_like(data) * self.denoising_sigma
+        # print("3", data)
         if self.dequantize:
             data = data + torch.rand_like(data)
         if self.scale_data:

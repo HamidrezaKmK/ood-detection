@@ -95,87 +95,6 @@ class ConfigurableCouplingTransform(Transform):
         return self._value.inverse(inputs, context=context)
         
 
-class RQCouplingTransform(PiecewiseRationalQuadraticCouplingTransform):
-    """
-    A coupling transform that can be described using a set of primitives
-    
-    This class is created for the sole purpose of being able to describe a
-    coupling transform using a set of primitives in a configuration file.
-    """
-    def __init__(
-        self,
-        net: th.Dict[str, th.Any],
-        mask: th.Dict[str, th.Any],
-        **kwargs,
-    ):
-        """
-        Args:
-            net:
-                class_path: The class of network which is being used
-                            Note that the class constructor must have the first
-                            two arguments as in_features and out_features
-                init_args: The arguments to be passed to the class constructor besides
-                            in_features and out_features
-            mask:
-                dim: The dimension of the mask
-                mask_function: The function that is used for determining the mask
-                                it follows the standard dypy FunctionDescriptor format.
-                flip: Whether to flip the mask or not
-        """
-        if 'class_path' not in net:
-            raise ValueError("net must have a class_path")
-        if 'init_args' not in net:
-            raise ValueError("net must have init_args")
-        
-        if 'activation' in net['init_args'] and isinstance(net['init_args']['activation'], str):
-            net['init_args']['activation'] = dy.eval(net['init_args']['activation'])
-                
-        # define a transform_net_create_fn
-        def create_resnet(in_features, out_features):
-            return dy.eval(net['class_path'])(in_features, out_features, **net['init_args'])
-                
-        real_mask = torch.ones(mask['dim'])
-        if 'mask_function' in mask:
-            if isinstance(mask['mask_function'], str):
-                mask_function = dy.eval(mask['mask_function'])
-            elif isinstance(mask['mask_function'], dict):
-                mask_function = dy.eval_function(**mask['mask_function'])
-        else:
-            mask_function = lambda ind: ind % 2 == 0
-        
-        for i in range(mask['dim']):
-            real_mask[i] = real_mask[i] * -1 if mask_function(i) else real_mask[i]
-        
-        if 'flip' in mask and mask['flip']:
-            real_mask = real_mask * -1
-            
-        return super().__init__(
-            mask=real_mask,
-            transform_net_create_fn=create_resnet,
-            **kwargs,
-        )
-
-class RescalingTransform(Transform):
-    """
-    This class performs elementwise rescaling.
-    This is performed via dividing every pixel or element
-    by a constant `rescaling_factor`.
-    """
-    def __init__(self, rescaling_factor: float = 256.):
-        super().__init__()
-        self.rescaling_factor = 1.0 / rescaling_factor
-    
-    def forward(self, inputs, context=None):
-        dims = list(range(1, len(inputs.shape)))
-        
-        # make an all ones vector of dimension inputs.shape[0] with the same device and dtype as inputs
-        return self.rescaling_factor * inputs, torch.sum(torch.ones_like(inputs), dim=dims) * math.log(self.rescaling_factor) 
-    
-    def inverse(self, inputs, context=None):
-        dims = list(range(1, len(inputs.shape)))
-        
-        return 1.0 / self.rescaling_factor * inputs, -torch.sum(torch.ones_like(inputs), dim=dims) * math.log(self.rescaling_factor)
-    
 class LogitTransform(Transform):
     """Base class for all transform objects."""
     def __init__(self, alpha=0.05, eps=1e-6):
@@ -321,15 +240,6 @@ class NormalizingFlow(DensityEstimator):
         if self.logit_transform:
             self.transform = CompositeTransform([LogitTransform(), self.transform])
             self.logit_transform = False
-        
-        # rescaling is part of the transforms, then include it in the flow transforms
-        if self.scale_data:
-            # TODO: the rescaling factor part is janky! Fix it!
-            self.transform = CompositeTransform([
-                RescalingTransform(rescaling_factor=255. + self.dequantize), 
-                self.transform
-            ])
-            self.scale_data = False
             
         # Setup the actual flow underneath
         self._nflow = Flow(
@@ -338,9 +248,17 @@ class NormalizingFlow(DensityEstimator):
         )
     
     def sample(self, n_samples):
-        # TODO: batch in parent class
-        samples = self._nflow.sample(n_samples)
-        return self._inverse_data_transform(samples)
+        if n_samples == -1:
+            with torch.no_grad():
+                single_sample = self.sample(1)
+                latent_sample = self._nflow.transform_to_noise(single_sample)
+                z_0 = torch.zeros_like(latent_sample)
+                real_sample, _ = self._nflow._transform.inverse(z_0)
+            return real_sample
+        else:
+            # TODO: batch in parent class
+            samples = self._nflow.sample(n_samples)
+            return self._inverse_data_transform(samples)
 
     @batch_or_dataloader()
     def log_prob(self, x):

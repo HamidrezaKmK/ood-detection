@@ -1,6 +1,6 @@
 data:
-  dataset: mnist
-  make_valid_loader: false
+  dataset: omniglot
+  make_valid_loader: true
   train_batch_size: 128
   valid_batch_size: 128
   test_batch_size: 128
@@ -73,7 +73,7 @@ model:
           num_channels: 4
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
-          coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+          coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
           net:
             class_path: nflows.nn.nets.resnet.ConvResidualNet
             init_args:
@@ -85,6 +85,9 @@ model:
           mask:
             dim: 4
             flip: True
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
           features: 4 # Apply activation normalization to all the channels
@@ -93,7 +96,7 @@ model:
           num_channels: 4
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
-          coupling_transform_cls: nflows.transforms.AffineCouplingTransform 
+          coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
           net:
             class_path: nflows.nn.nets.resnet.ConvResidualNet
             init_args:
@@ -105,6 +108,9 @@ model:
           mask:
             dim: 4
             flip: False
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
     - class_path: nflows.transforms.conv.OneByOneConvolution
       init_args: 
         num_channels: 4
@@ -126,7 +132,7 @@ model:
           num_channels: 8
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
-          coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+          coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform 
           net:
             class_path: nflows.nn.nets.resnet.ConvResidualNet
             init_args:
@@ -138,6 +144,9 @@ model:
           mask:
             dim: 8
             flip: True
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
           features: 8 # Apply activation normalization to all the channels
@@ -146,7 +155,7 @@ model:
           num_channels: 8
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
-          coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+          coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
           net:
             class_path: nflows.nn.nets.resnet.ConvResidualNet
             init_args:
@@ -158,6 +167,9 @@ model:
           mask:
             dim: 8
             flip: False
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
     - class_path: nflows.transforms.conv.OneByOneConvolution
       init_args: 
         num_channels: 8
@@ -176,7 +188,7 @@ model:
           features: 196 # Apply activation normalization to all the channels
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
-          coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+          coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
           net:
             class_path: nflows.nn.nets.resnet.ConvResidualNet
             init_args:
@@ -188,12 +200,15 @@ model:
           mask:
             dim: 196
             flip: True
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
       - class_path: nflows.transforms.normalization.ActNorm
         init_args:
           features: 196 # Apply activation normalization to all the channels
       - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
         init_args: 
-          coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+          coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
           net:
             class_path: nflows.nn.nets.resnet.ConvResidualNet
             init_args:
@@ -205,6 +220,9 @@ model:
           mask:
             dim: 196
             flip: False
+          tails: linear
+          num_bins: 2
+          tail_bound: 1.0
     - class_path: nflows.transforms.conv.OneByOneConvolution
       init_args: 
         num_channels: 196
