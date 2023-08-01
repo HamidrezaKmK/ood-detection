@@ -1,8 +1,10 @@
-# This sweep contains all the flow models trained on grayscale images with size [1 x 28 x 28]
+# This sweep contains the training configuration of all the flow models 
+# trained on a colorful image of size [3 x 32 x 32]
 project: training-dgms
 entity: dgm-l6
-sweep_name: grayscale_flows
+sweep_name: colorful_flows
 count: 10000
+delete_checkpoints: False
 
 # Change the name of the run to [flow_type]_[dataset_type]_[previous_run_name]
 run_name_changer:
@@ -54,7 +56,7 @@ base_config:
     init_args:
       # Data transform args (they are here because they might influence log_prob)
       flatten: False
-      data_shape: [1, 28, 28]
+      data_shape: [3, 32, 32]
       denoising_sigma: null
       dequantize: True
       scale_data: True
@@ -69,26 +71,27 @@ base_config:
       base_distribution:
         class_path: nflows.distributions.StandardNormal
         init_args:
-          shape: [784]
+          shape: [3072]
       
-
+      
+      # The actual transformations of the flow
       transform:
       ######################################################################### 
       ###### First level
       - class_path: nflows.transforms.reshape.SqueezeTransform
         init_args:
-          factor: 2 # turns the image into [4, 14, 14]
+          factor: 2 # turns the image into [12, 16, 16]
       - repeat_n: 3
         content:
         - class_path: nflows.transforms.normalization.ActNorm
           init_args:
-            features: 4 # Apply activation normalization to all the channels
+            features: 12 # Apply activation normalization to all the channels
         - class_path: nflows.transforms.conv.OneByOneConvolution
           init_args: 
-            num_channels: 4
+            num_channels: 12
         - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
           init_args: 
-            # this will be sweeped upon
+            # set in the sweeps
             coupling_transform_cls: null
             net:
               class_path: nflows.nn.nets.resnet.ConvResidualNet
@@ -99,17 +102,17 @@ base_config:
                 dropout_probability: 0.2
                 use_batch_norm: False
             mask:
-              dim: 4
+              dim: 12
               flip: True
         - class_path: nflows.transforms.normalization.ActNorm
           init_args:
-            features: 4 # Apply activation normalization to all the channels
+            features: 12 # Apply activation normalization to all the channels
         - class_path: nflows.transforms.conv.OneByOneConvolution
           init_args: 
-            num_channels: 4
+            num_channels: 12
         - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
           init_args: 
-            # this will be sweeped upon
+            # set in the sweep
             coupling_transform_cls: null
             net:
               class_path: nflows.nn.nets.resnet.ConvResidualNet
@@ -120,30 +123,30 @@ base_config:
                 dropout_probability: 0.2
                 use_batch_norm: False
             mask:
-              dim: 4
+              dim: 12
               flip: False
       - class_path: nflows.transforms.conv.OneByOneConvolution
         init_args: 
-          num_channels: 4
+          num_channels: 12
         multiscale:
-          transform_output_shape: [4, 14, 14]
+          transform_output_shape: [12, 16, 16]
       ###########################################################################
       ##### Second Level
       # squeeze
       - class_path: nflows.transforms.reshape.SqueezeTransform
         init_args:
-          factor: 2 # turns the image into [8, 7, 7]
+          factor: 2 # turns the image into [24, 8, 8]
       - repeat_n: 3
         content:
         - class_path: nflows.transforms.normalization.ActNorm
           init_args:
-            features: 8 # Apply activation normalization to all the channels
+            features: 24 # Apply activation normalization to all the channels
         - class_path: nflows.transforms.conv.OneByOneConvolution
           init_args: 
-            num_channels: 8
+            num_channels: 24
         - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
           init_args: 
-            # this will be sweeped upon
+            # set in the sweeps
             coupling_transform_cls: null
             net:
               class_path: nflows.nn.nets.resnet.ConvResidualNet
@@ -154,17 +157,17 @@ base_config:
                 dropout_probability: 0.2
                 use_batch_norm: False
             mask:
-              dim: 8
+              dim: 24
               flip: True
         - class_path: nflows.transforms.normalization.ActNorm
           init_args:
-            features: 8 # Apply activation normalization to all the channels
+            features: 24 # Apply activation normalization to all the channels
         - class_path: nflows.transforms.conv.OneByOneConvolution
           init_args: 
-            num_channels: 8
+            num_channels: 24
         - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
           init_args: 
-            # this will be sweeped upon
+            # set in the sweeps
             coupling_transform_cls: null
             net:
               class_path: nflows.nn.nets.resnet.ConvResidualNet
@@ -175,27 +178,27 @@ base_config:
                 dropout_probability: 0.2
                 use_batch_norm: False
             mask:
-              dim: 8
+              dim: 24
               flip: False
       - class_path: nflows.transforms.conv.OneByOneConvolution
         init_args: 
-          num_channels: 8
+          num_channels: 24
         multiscale:
-          transform_output_shape: [8, 7, 7]
+          transform_output_shape: [24, 8, 8]
       ###########################################################################
       ##### Third Level
       # squeeze
       - class_path: nflows.transforms.reshape.SqueezeTransform
         init_args:
-          factor: 7 # turns the image into [196, 1, 1]
+          factor: 8 # turns the image into [768, 1, 1]
       - repeat_n: 2
         content:
         - class_path: nflows.transforms.normalization.ActNorm
           init_args:
-            features: 196 # Apply activation normalization to all the channels
+            features: 768 # Apply activation normalization to all the channels
         - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
           init_args: 
-            # this will be sweeped upon
+            # set in the sweeps
             coupling_transform_cls: null
             net:
               class_path: nflows.nn.nets.resnet.ConvResidualNet
@@ -206,14 +209,14 @@ base_config:
                 dropout_probability: 0.2
                 use_batch_norm: False
             mask:
-              dim: 196
+              dim: 768
               flip: True
         - class_path: nflows.transforms.normalization.ActNorm
           init_args:
-            features: 196 # Apply activation normalization to all the channels
+            features: 768 # Apply activation normalization to all the channels
         - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
           init_args: 
-            # this will be sweeped upon
+            # set in the sweeps
             coupling_transform_cls: null
             net:
               class_path: nflows.nn.nets.resnet.ConvResidualNet
@@ -224,22 +227,24 @@ base_config:
                 dropout_probability: 0.2
                 use_batch_norm: False
             mask:
-              dim: 196
-              flip: False
+              dim: 768
+              flip: false
       - class_path: nflows.transforms.conv.OneByOneConvolution
         init_args: 
-          num_channels: 196
+          num_channels: 768
         multiscale:
-          transform_output_shape: [196, 1, 1]
+          transform_output_shape: [768, 1, 1]
+    
 
 sweep_configuration:
   data:
     dataset:
+      sweep_identifier: B_dataset
       sweep: True
-      values: ['fashion-mnist', 'omniglot', 'mnist', 'emnist-minus-mnist', 'emnist']
+      values: ['celeba-small', 'cifar10', 'cifar100', 'tiny-imagenet', 'svhn', 'celeba']
   dy__upsert:
   - sweep: True
-    sweep_identifier: 'flow_type'
+    sweep_identifier: A_flow_type
     sweep_alias:
     - glow
     - rq_nsf

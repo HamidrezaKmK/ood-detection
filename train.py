@@ -20,6 +20,7 @@ from model_zoo.datasets.loaders import get_loaders
 from dataclasses import dataclass
 from pprint import pprint
 from dysweep import parse_dictionary_onto_dataclass
+import traceback
 
 @dataclass
 class ModelConfig:
@@ -112,8 +113,12 @@ def run(args, checkpoint_dir=None):
     trainer.train()
 
 def dysweep_compatible_run(config, checkpoint_dir):
-    args = parse_dictionary_onto_dataclass(config, TrainingConfig)
-    run(args, checkpoint_dir)
+    try:
+        args = parse_dictionary_onto_dataclass(config, TrainingConfig)
+        run(args, checkpoint_dir)
+    except Exception as e:
+        print(traceback.format_exc())
+        return False
     
 if __name__ == "__main__":
     # Setup a parser for the configurations according to the above dataclasses

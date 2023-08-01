@@ -50,6 +50,7 @@ class Writer:
         make_subdir, 
         tag_group, 
         type: th.Literal['tensorboard', 'wandb'] = 'tensorboard',
+        redirect_streams: bool = False,
         **kwargs
     ):
         if make_subdir:
@@ -72,16 +73,17 @@ class Writer:
         self.logdir = logdir
 
         self._tag_group = tag_group
+        
+        if redirect_streams:
+            sys.stdout = Tee(
+                primary_file=self._STDOUT,
+                secondary_file=open(os.path.join(logdir, "stdout"), "a")
+            )
 
-        sys.stdout = Tee(
-            primary_file=self._STDOUT,
-            secondary_file=open(os.path.join(logdir, "stdout"), "a")
-        )
-
-        sys.stderr = Tee(
-            primary_file=self._STDERR,
-            secondary_file=open(os.path.join(logdir, "stderr"), "a")
-        )
+            sys.stderr = Tee(
+                primary_file=self._STDERR,
+                secondary_file=open(os.path.join(logdir, "stderr"), "a")
+            )
 
     def write_scalar(self, tag, scalar_value, global_step=None):
         if self.type == 'tensorboard':

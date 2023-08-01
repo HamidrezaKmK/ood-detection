@@ -146,10 +146,9 @@ def run_ood(config: dict):
     # (1) Model setup #
     ###################
     
-    # TODO: fix!
-    # model = load_model_with_checkpoints(config=config['base_model'])
+    model = load_model_with_checkpoints(config=config['base_model'])
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    # model.to(device)
+    model.to(device)
     
     ##################
     # (1) Data setup #
