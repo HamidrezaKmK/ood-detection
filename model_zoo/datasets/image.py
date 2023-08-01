@@ -19,7 +19,14 @@ class CelebATinyCropped(Dataset):
     CelebA Dataset cropped with Haar-Cascade face detector. 
     Zenodo. https://doi.org/10.5281/zenodo.5561092
     """
-    def __init__(self, root: str, role: str = 'train', valid_fraction: float = 0.1, seed: int = 0):
+    def __init__(
+        self, 
+        root: str, 
+        role: str = 'train', 
+        valid_fraction: float = 0.1, 
+        seed: int = 0,
+        device: str = "cpu",
+    ):
         self.root = root 
         
         if not os.path.exists(root):
@@ -65,7 +72,7 @@ class CelebATinyCropped(Dataset):
         
         self.cached_values = {}
         
-        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+        self.device = device
 
     def __len__(self):
         return len(self.all_image_files)
@@ -102,7 +109,14 @@ class CelebA(Dataset):
     The built-in PyTorch dataset for CelebA is outdated.
     """
 
-    def __init__(self, root: str, role: str = "train", valid_fraction: float = 0.1, seed: int = 0):
+    def __init__(
+        self, 
+        root: str, 
+        role: str = "train",
+        valid_fraction: float = 0.1, 
+        seed: int = 0,
+        device: str = "cpu",
+    ):
         self.celeba_dataset = torchvision.datasets.CelebA(
             root=root,
             split=role,
@@ -116,7 +130,7 @@ class CelebA(Dataset):
         self.root = Path(root)
         self.role = role
         
-        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+        self.device = device
         
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         return self.celeba_dataset[index][0].to(self.device), self.celeba_dataset[index][1].to(self.device)
@@ -145,9 +159,10 @@ class EMNIST(Dataset):
         valid_fraction: float = 0.1, 
         seed: int = 0,
         classes_to_ignore: int = 0, 
+        device: str = "cpu",
     ):
         
-        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+        self.device = device
         self.classes_to_ignore = classes_to_ignore
         # Download and load the EMNIST dataset
         self.emnist_dataset = torchvision.datasets.EMNIST(
@@ -209,6 +224,7 @@ class EMNISTMinusMNIST(EMNIST):
         role: str = "train", 
         valid_fraction: float = 0.1, 
         seed: int = 0,
+        device: str = "cpu",
     ):
         super().__init__(
             root=root,
@@ -216,17 +232,18 @@ class EMNISTMinusMNIST(EMNIST):
             valid_fraction=valid_fraction,
             seed=seed,
             classes_to_ignore=10,
+            device=device,
         )
     
     
 class Omniglot(Dataset):
-    def __init__(self, root, role, valid_fraction, seed: int = 0):
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
         self.omniglot = torchvision.datasets.Omniglot(
             root=root, 
             background=True, 
             download=True
         )
-        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+        self.device = device
         # shuffle the dataset deterministically according to the splitting seed
         
         with torch.random.fork_rng():
@@ -288,7 +305,7 @@ class Omniglot(Dataset):
 
 # NOTE: this is incomplete
 class LSUN(Dataset):
-    def __init__(self, root, role, valid_fraction, seed: int = 0):
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
         self.omniglot = torchvision.datasets.LSUN(
             root=root, 
             classes={'train':'train', 'valid':'val', 'test':'test'}[role],
@@ -298,7 +315,7 @@ class LSUN(Dataset):
             ]),
             download=True,
         )
-        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+        self.device = device
         # shuffle the dataset deterministically according to the splitting seed
         
         self.cached_values = {}
@@ -337,7 +354,7 @@ class LSUN(Dataset):
         return self
     
 class TinyImageNet(Dataset):
-    def __init__(self, root, role, valid_fraction, seed: int = 0):
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
         #self, root_dir, n_images, train_or_test, transform=None, ):
         """
         Args:
@@ -408,7 +425,7 @@ class TinyImageNet(Dataset):
             
         self.cached_values = {}
         
-        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+        self.device = device
 
     def __len__(self):
         return len(self.all_image_files)
@@ -439,7 +456,7 @@ class TinyImageNet(Dataset):
             
         return self.cached_values[idx]
 
-def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: int = 0):
+def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: int = 0, device: str = "cpu"):
     data_dir = os.path.join(data_root, dataset_name)
 
     data_class = {
@@ -452,9 +469,9 @@ def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: i
     }[dataset_name]
 
     
-    train_dset = data_class(root=data_dir, role="train", valid_fraction=valid_fraction, seed=seed)
-    valid_dset = data_class(root=data_dir, role="valid", valid_fraction=valid_fraction, seed=seed)
-    test_dset = data_class(root=data_dir, role="test", valid_fraction=valid_fraction, seed=seed)
+    train_dset = data_class(root=data_dir, role="train", valid_fraction=valid_fraction, seed=seed, device=device)
+    valid_dset = data_class(root=data_dir, role="valid", valid_fraction=valid_fraction, seed=seed, device=device)
+    test_dset = data_class(root=data_dir, role="test", valid_fraction=valid_fraction, seed=seed, device=device)
 
     return train_dset, valid_dset, test_dset
 

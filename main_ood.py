@@ -235,7 +235,7 @@ def run_ood(config: dict):
                     # set torch seed for reproducibility
                     if config["ood"]["seed"] is not None:
                         with torch.random.fork_rng():
-                            if device == "cuda":
+                            if device.startswith("cuda"):
                                 torch.cuda.manual_seed(config["ood"]["seed"])
                             torch.manual_seed(config["ood"]["seed"])
                             log_samples()
@@ -256,7 +256,7 @@ def run_ood(config: dict):
                 
         if config["ood"]["seed"] is not None:
             with torch.random.fork_rng():    
-                if device == "cuda":
+                if device.startswith("cuda"):
                     torch.cuda.manual_seed(config["ood"]["seed"])
                     torch.manual_seed(config["ood"]["seed"])
                 log_histograms()
@@ -299,7 +299,7 @@ def run_ood(config: dict):
     method_args["in_distr_loader"] = in_train_loader
     
     with torch.random.fork_rng():
-        if device == "cuda":
+        if device.startswith("cuda"):
             torch.cuda.manual_seed(config["ood"]["seed"])
         torch.manual_seed(config["ood"]["seed"])
         method = dy.eval(config["ood"]["method"])(**method_args)
