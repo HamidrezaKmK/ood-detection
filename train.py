@@ -17,10 +17,7 @@ from model_zoo import (
    get_evaluator, Writer
 )
 from model_zoo.datasets.loaders import get_loaders
-from dataclasses import fields
-from dataclasses import dataclass, is_dataclass
-from typing import get_type_hints, get_origin, get_args
-import traceback
+from dataclasses import dataclass
 from pprint import pprint
 from dysweep import parse_dictionary_onto_dataclass
 

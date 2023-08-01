@@ -1,0 +1,60 @@
+base_model:
+  # A directory containing the configuration used for instantiating the likelihood model itself
+  config_dir: runs/RQ_NSF_cifar10/model.yaml
+  # A directory containing the model weights of the likelihood model to work with a good fit one
+  # This is produced by running the single step training models
+  checkpoint_dir: runs/RQ_NSF_cifar10/checkpoints/de_nf_latest.pt
+data:
+  # specify the datasets and dataloader configurations for the in and out of distribution data.
+  in_distribution:
+    dataloader_args:
+      dataset: cifar10
+      make_valid_loader: false
+      train_batch_size: 16
+      valid_batch_size: 16
+      test_batch_size: 16
+
+  out_of_distribution:
+    dataloader_args:
+      dataset: celeba
+      make_valid_loader: false
+      train_batch_size: 16
+      valid_batch_size: 16
+      test_batch_size: 16
+  # for reproducibility
+  seed: 10
+ood:
+  bypass_samples_visualization: True
+  pick_single: False
+  use_dataloader: True
+  seed: 10
+  # The OOD detection method in use
+  method: ood.methods.latent_r2.CDFTrend
+  method_args:
+    verbose: 2
+    
+    cdf_calculator_class: ood.methods.latent_r2.CDFElliposoidCalculator
+    cdf_calculator_args:
+      encoding_model_class: ood.methods.latent_r2.EncodingFlow
+      encoding_model_args:
+        computation_batch_size: 1
+        loader_limit: 10
+        use_functorch: True
+        use_forward_mode: True
+        use_vmap: False
+        verbose: 2
+
+      verbose: 0
+    
+    include_reference: True
+    
+    visualization_args:
+      with_std: False
+
+    radii_range: [0, 25000]
+    radii_n: 100
+
+logger:
+  project: ood-detection-single-runs
+  entity: dgm-l6
+  name: flow_cifar10_vs_svhn

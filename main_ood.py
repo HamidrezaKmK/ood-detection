@@ -1,7 +1,6 @@
 """
 The main file used for OOD detection.
 """
-import sys
 import copy
 from PIL import Image
 import io
@@ -14,9 +13,7 @@ from jsonargparse import ArgumentParser, ActionConfigFile
 import wandb
 from dataclasses import dataclass
 from random_word import RandomWords
-import os
 from model_zoo.datasets import get_loaders
-import yaml
 import traceback
 import typing as th
 from model_zoo.utils import load_model_with_checkpoints
@@ -53,9 +50,6 @@ def plot_likelihood_ood_histogram(
         log_probs = []
         for tmp in dloader:
             x = tmp
-            # print("-------")
-            # print(x.device)
-            # print(model.device)
             
             t = model.log_prob(x).cpu().detach()
             # turn t into a list of floats
@@ -152,9 +146,11 @@ def run_ood(config: dict):
     # (1) Model setup #
     ###################
     
-    model = load_model_with_checkpoints(config=config['base_model'])
+    # TODO: fix!
+    # model = load_model_with_checkpoints(config=config['base_model'])
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
+    # model.to(device)
+    
     ##################
     # (1) Data setup #
     ##################
@@ -172,6 +168,7 @@ def run_ood(config: dict):
         data_root='data/',
         unsupervised=True,
     )
+    
     
     # in_loader is the loader that is used for the in-distribution data
     if not 'pick_loader' in config['data']['in_distribution']:

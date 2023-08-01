@@ -7,13 +7,95 @@ import torch
 from torch.utils.data import Dataset
 import torchvision.datasets
 import torchvision.transforms as transforms
-from torch.utils.data import random_split
 from model_zoo.datasets.supervised_dataset import SupervisedDataset
-from functools import lru_cache
 import numpy as np
 import glob
-from .utils import download_file_from_google_drive
 
+class CelebATinyCropped(Dataset):
+    """
+    Dataset taken from 
+    
+    Kist, Andreas M. (2021, October 11). 
+    CelebA Dataset cropped with Haar-Cascade face detector. 
+    Zenodo. https://doi.org/10.5281/zenodo.5561092
+    """
+    def __init__(self, root: str, role: str = 'train', valid_fraction: float = 0.1, seed: int = 0):
+        self.root = root 
+        
+        if not os.path.exists(root):
+            print("Downloading CelebA dataset (clean and small version) ...")
+            url = 'https://zenodo.org/record/5561092/files/celeba_5000_clean.zip?download=1'
+            
+            # Send HTTP request to the specified URL and save the response from server in a response object called r
+            import requests
+            r = requests.get(url)
+            file_path = "celeba_5000_clean.zip"
+            # Open the zip file in the write-binary mode
+            with open(file_path, 'wb') as f:
+                f.write(r.content)
+                
+            # now unzip
+            from zipfile import ZipFile
+            # Use ZipFile to extract
+            with ZipFile(file_path, 'r') as zip_ref:
+                zip_ref.extractall(self.root)
+            os.remove(file_path)
+        
+        self.image_paths = []
+        # list all the files with .jpg extension
+        self.all_image_files = glob.glob(os.path.join(self.root, 'celeba_5000_clean', '*.jpg'))
+        
+        np.random.seed(seed)
+        randperm = np.random.permutation(len(self.all_image_files))
+        train_len = int(0.9 * (1 - valid_fraction) * len(self.all_image_files))
+        valid_len = int(0.9 * valid_fraction * len(self.all_image_files))
+        if role == 'train':
+            self.all_image_files = [self.all_image_files[i] for i in randperm[:train_len]]
+        elif role == 'valid':
+            self.all_image_files = [self.all_image_files[i] for i in randperm[train_len:train_len + valid_len]]
+        elif role == 'test':
+            self.all_image_files = [self.all_image_files[i] for i in randperm[train_len + valid_len:]]
+        else:
+            raise ValueError(f"Unknown role {role}")
+        
+        self.transform = transforms.Compose([
+            transforms.Resize((32, 32)),
+            transforms.ToTensor(),
+        ])
+        
+        self.cached_values = {}
+        
+        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+
+    def __len__(self):
+        return len(self.all_image_files)
+
+    def to(self, device):
+        if device != self.device:
+            self.cached_values = {}
+        self.device = device
+        return self
+    
+    def get_data_min(self):
+        return 0.0
+    
+    def get_data_max(self):
+        return 255.0
+    
+    def get_data_shape(self):
+        return (3, 32, 32)
+    
+    def __getitem__(self, idx):
+        if idx not in self.cached_values:
+            
+            img_name = self.all_image_files[idx]
+            image = PIL.Image.open(img_name).convert('RGB')
+            if self.transform is not None:
+                image = self.transform(image)
+            self.cached_values[idx] = torch.clamp(image.to(self.device) * 255, min=0, max=255)
+            
+        return self.cached_values[idx]
+    
 class CelebA(Dataset):
     """
     CelebA PyTorch dataset
@@ -21,59 +103,52 @@ class CelebA(Dataset):
     """
 
     def __init__(self, root: str, role: str = "train", valid_fraction: float = 0.1, seed: int = 0):
-        if not os.path.exists(root):
-            print("Downloading CelebA dataset ...")
-            os.makedirs(root)
-            download_file_from_google_drive('0B7EVK8r0v71pTUZsaXdaSnZBZzg', root)
-            # not unzip the file root/img_align_celeba.zip
-            import zipfile
-            with zipfile.ZipFile(os.path.join(root ,'img_align_celeba.zip'), 'r') as zip_ref:
-                zip_ref.extractall(root)
+        self.celeba_dataset = torchvision.datasets.CelebA(
+            root=root,
+            split=role,
+            download=True,
+            transform = transforms.Compose([
+                transforms.Resize((32, 32)),
+                transforms.ToTensor(),
+            ])
+        )
                 
         self.root = Path(root)
         self.role = role
         
-        self.transform = transforms.Compose([
-            transforms.Resize((32, 32)),
-            transforms.ToTensor(),
-        ])
-
-        celeb_path = lambda x: self.root / x
-
-        role_map = {
-            "train": 0,
-            "valid": 1,
-            "test": 2,
-            "all": None,
-        }
-        splits_df = pd.read_csv(celeb_path("list_eval_partition.csv"))
-        self.filename = splits_df[splits_df["partition"] == role_map[self.role]]["image_id"].tolist()
-
+        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
+        
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        img_path = (self.root / "img_align_celeba" /
-                    "img_align_celeba" / self.filename[index])
-        X = PIL.Image.open(img_path)
-        X = self.transform(X)
-
-        return X, 0
+        return self.celeba_dataset[index][0].to(self.device), self.celeba_dataset[index][1].to(self.device)
 
     def __len__(self) -> int:
-        return len(self.filename)
+        return len(self.celeba_dataset)
+    
+    def get_data_min(self):
+        return 0.0
+    
+    def get_data_max(self):
+        return 255.0
+    
+    def get_data_shape(self):
+        return (3, 32, 32)
     
     def to(self, device):
+        self.device = device
         return self
     
-class EMNISTMinusMNIST(Dataset):
+class EMNIST(Dataset):
     def __init__(
         self, 
         root: str, 
         role: str = "train", 
         valid_fraction: float = 0.1, 
-        seed: int = 0
+        seed: int = 0,
+        classes_to_ignore: int = 0, 
     ):
         
         self.device = "cpu" if not torch.cuda.is_available() else "cuda"
-        
+        self.classes_to_ignore = classes_to_ignore
         # Download and load the EMNIST dataset
         self.emnist_dataset = torchvision.datasets.EMNIST(
             root, 
@@ -83,7 +158,7 @@ class EMNISTMinusMNIST(Dataset):
         )
 
         # Get the indices of examples that are not digits (i.e., their labels are not between 0 and 9)
-        self.indices = [i for i in range(len(self.emnist_dataset)) if self.emnist_dataset[i][1] >= 10]
+        self.indices = [i for i in range(len(self.emnist_dataset)) if self.emnist_dataset[i][1] >= self.classes_to_ignore]
         
         # shuffle indices with a fixed seed
         np.random.seed(seed)
@@ -118,7 +193,7 @@ class EMNISTMinusMNIST(Dataset):
         image, label = self.emnist_dataset[self.indices[index]]
         image = 255.0 * self.transforms(image)
         # Subtract 10 from the label, so that labels start from 0 (not a necessary step, but often useful)
-        return image.to(self.device), label - 10
+        return image.to(self.device), label - self.classes_to_ignore
 
     def __len__(self):
         return len(self.indices)
@@ -126,6 +201,22 @@ class EMNISTMinusMNIST(Dataset):
     def to(self, device):
         self.device = device
         return self
+
+class EMNISTMinusMNIST(EMNIST):
+    def __init__(
+        self, 
+        root: str, 
+        role: str = "train", 
+        valid_fraction: float = 0.1, 
+        seed: int = 0,
+    ):
+        super().__init__(
+            root=root,
+            role=role,
+            valid_fraction=valid_fraction,
+            seed=seed,
+            classes_to_ignore=10,
+        )
     
     
 class Omniglot(Dataset):
@@ -303,18 +394,16 @@ class TinyImageNet(Dataset):
                     all_image_files.extend(image_files)
             else:
                 image_files = glob.glob(os.path.join(self.root_dir, "tiny-imagenet-200", fold, 'images', '*.JPEG'))
+                
                 all_image_files.extend(image_files)
         self.all_image_files = all_image_files
         
-        # print("all files:")
-        # print(self.all_image_files)
-        # print(">><<")
         np.random.seed(seed)
         randperm = np.random.permutation(len(self.all_image_files))
         train_split = int((1 - valid_fraction) * len(self.all_image_files))
         if role == 'train':
             self.all_image_files = [self.all_image_files[i] for i in randperm[:train_split]]
-        else:
+        elif role == 'valid':
             self.all_image_files = [self.all_image_files[i] for i in randperm[train_split:]]
             
         self.cached_values = {}
@@ -346,7 +435,7 @@ class TinyImageNet(Dataset):
             image = PIL.Image.open(img_name).convert('RGB')
             if self.transform is not None:
                 image = self.transform(image)
-            self.cached_values[idx] = torch.clamp(image.to(self.device) * 255, 255)
+            self.cached_values[idx] = torch.clamp(image.to(self.device) * 255, min=0, max=255)
             
         return self.cached_values[idx]
 
@@ -355,8 +444,10 @@ def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: i
 
     data_class = {
         'celeba': CelebA,
+        'celeba-small': CelebATinyCropped,
         'omniglot': Omniglot,
         'emnist-minus-mnist': EMNISTMinusMNIST,
+        'emnist': EMNIST,
         "tiny-imagenet": TinyImageNet,
     }[dataset_name]
 
@@ -389,7 +480,7 @@ def get_raw_image_tensors(dataset_name, train, data_root):
         dataset = torchvision.datasets.CIFAR100(root=data_dir, train=train, download=True)
         images = torch.tensor(dataset.data).permute((0, 3, 1, 2))
         labels = torch.tensor(dataset.targets)
-
+    
     elif dataset_name == "svhn":
         dataset = torchvision.datasets.SVHN(root=data_dir, split="train" if train else "test", download=True)
         images = torch.tensor(dataset.data)
