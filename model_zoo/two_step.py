@@ -136,7 +136,6 @@ class TwoStepComponent(nn.Module):
                 self.optimizer.epoch = trainer.epoch
             
             if self.optimizer.epoch != trainer.epoch:
-                print("Calling step on lr_scheduler")
                 self.lr_scheduler.step()
                 self.optimizer.epoch = trainer.epoch
         else:
