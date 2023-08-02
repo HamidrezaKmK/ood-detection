@@ -146,6 +146,6 @@ if __name__ == "__main__":
         "-c", "--config", action=ActionConfigFile, help="Path to a configuration file in json or yaml format."
     )
     # add an argument called gpu_core_index which is an integer defaulting to -1 in parser
-    parser.add_argument("--gpu_core_index", type=int, default=-1)
+    parser.add_argument("--gpu_core_index", type=int, default=-1, help="The gpu core to use when training on multiple gpus")
     args = parser.parse_args()
     run(args, gpu_index=args.gpu_core_index)
