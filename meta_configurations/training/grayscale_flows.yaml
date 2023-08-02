@@ -40,7 +40,7 @@ base_config:
       test_metrics: [loss]
 
     sample_freq: 1 # logs the samples after every two epochs
-    max_epochs: 400
+    max_epochs: 2
     early_stopping_metric: loss
     max_bad_valid_epochs: 30
     max_grad_norm: 1.0

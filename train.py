@@ -129,7 +129,7 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
     # The actual training loop
     trainer.train()
 
-def dysweep_compatible_run(config, checkpoint_dir, gpu_index: int = -1, sth_else: int = 10):
+def dysweep_compatible_run(config, checkpoint_dir, gpu_index: int = -1):
     args = parse_dictionary_onto_dataclass(config, TrainingConfig)
     run(args, checkpoint_dir, gpu_index)
     
@@ -145,5 +145,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c", "--config", action=ActionConfigFile, help="Path to a configuration file in json or yaml format."
     )
+    # add an argument called gpu_core_index which is an integer defaulting to -1 in parser
+    parser.add_argument("--gpu_core_index", type=int, default=-1)
     args = parser.parse_args()
-    run(args)
+    run(args, gpu_index=args.gpu_core_index)
