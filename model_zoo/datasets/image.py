@@ -133,7 +133,7 @@ class CelebA(Dataset):
         self.device = device
         
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        return self.celeba_dataset[index][0].to(self.device), self.celeba_dataset[index][1].to(self.device)
+        return 255 * self.celeba_dataset[index][0].to(self.device), self.celeba_dataset[index][1].to(self.device)
 
     def __len__(self) -> int:
         return len(self.celeba_dataset)
