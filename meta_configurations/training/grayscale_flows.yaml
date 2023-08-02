@@ -29,6 +29,10 @@ base_config:
       class_path: torch.optim.AdamW
       init_args:
         lr: 0.001
+      lr_scheduler:
+        class_path: torch.optim.lr_scheduler.ExponentialLR
+        init_args:
+          gamma: 0.99
     writer:
       tag_group: flow
       type: wandb
@@ -40,7 +44,7 @@ base_config:
       test_metrics: [loss]
 
     sample_freq: 1 # logs the samples after every two epochs
-    max_epochs: 2
+    max_epochs: 400
     early_stopping_metric: loss
     max_bad_valid_epochs: 30
     max_grad_norm: 1.0
