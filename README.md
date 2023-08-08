@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 You should set your environment variables for the root directory of data and the root directory of models with the following:
 
-```
+```bash
 dotenv set MODEL_DIR <root-path-to-model-configurations-and-weights>
 dotenv set DATA_DIR <root-path-to-data-directory>
 ```
