@@ -4,6 +4,9 @@ import functools
 import dypy as dy
 import typing as th
 import yaml
+import json
+import os
+from pprint import pprint
 
 def batch_or_dataloader(agg_func=torch.cat):
     def decorator(batch_fn):
@@ -37,32 +40,52 @@ def batch_or_dataloader(agg_func=torch.cat):
 def load_model_with_checkpoints(
     config,
     device: th.Optional[str] = None,
+    eval_mode: bool = True,
+    root: str ='.',
 ):
+        
     model_conf = None
     # load the model and load the corresponding checkpoint
     if 'config_dir' in config:
         filename = config['config_dir']
-        with open(filename, 'r') as f:
-            model_conf = yaml.load(f, Loader=yaml.FullLoader)
-    # if the model is directly given in the yaml, then overwrite the model_conf
-    if 'model' in config:
+        extension = filename.split('.')[-1]
+        
+        if 'yaml' in extension:
+            with open(os.path.join(root, filename), 'r') as f:
+                model_conf = yaml.load(f, Loader=yaml.FullLoader)
+        elif 'json' in extension:
+            # load the json file into a dictionary
+            with open(os.path.join(root, filename), 'r') as f:
+                model_conf = json.load(f)
+        
+        # if it is an entire training configuration, then it contains
+        # model configuration as a child node:
+        if 'model' in model_conf:
+            model_conf = model_conf['model']
+    elif 'model' in config:     
+        # if the model is directly given in the yaml, then overwrite the model_conf
         model_conf = config['model']
+        
     # if the config is still None, then raise an error   
     if model_conf is None:
         raise ValueError("model configuration should be either given in the yaml or in the config_dir")
     
     # Instantiate the model
     # change the device of the model to device
-    
     if not device:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     model = dy.eval(model_conf['class_path'])(**model_conf['init_args']).to(device)
+    
     # load the model weights from the checkpoint
     if config['checkpoint_dir'] is not None:
-        model.load_state_dict(torch.load(config['checkpoint_dir'])['module_state_dict'])
-        
+        model.load_state_dict(torch.load(os.path.join(root, config['checkpoint_dir']))['module_state_dict'])
     
-    # set to evaluation mode to get rid of any randomness happening in the 
-    # architecture such as dropout
-    model.eval()
+    if eval_mode:
+        # set to evaluation mode to get rid of any randomness happening in the 
+        # architecture such as dropout
+        # also remove all the training stuff
+        model.eval()
+    else:
+        raise NotImplementedError("load_training_info is not implemented yet")
+        
     return model

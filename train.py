@@ -5,7 +5,8 @@ This file is based on jsonargparse and can be run using the following scheme
 python train.py -c config.yaml
 
 """
-
+from dotenv import load_dotenv
+import os
 import torch
 import typing as th
 import jsonargparse
@@ -54,15 +55,31 @@ class TrainingConfig:
     trainer: th.Optional[TrainerConfig] = None
     data: th.Optional[th.Dict[str, th.Any]] = None
 
-def run(args, checkpoint_dir=None):
+def run(args, checkpoint_dir=None, gpu_index: int = -1):
     
-    # setup device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    # Load the environment variables
+    load_dotenv()
+    
+    # Set the data directory if it is specified in the environment
+    # variables, otherwise, set to './data'
+    if 'DATA_DIR' in os.environ:
+        data_root = os.environ['DATA_DIR']
+    else:
+        data_root = './data'
+        
+    # setup device if the GPU index is set in the environment
+    if torch.cuda.is_available():
+        if gpu_index == -1:
+            device = "cuda"
+        else:
+            device = f"cuda:{gpu_index}"
+    else:
+        device = "cpu"
+        
     # Get the loaders from the configuration
     train_loader, valid_loader, test_loader = get_loaders(
         device=device,
-        data_root='./data',
+        data_root=data_root,
         train_ready=True,
         **args.data,
     )
@@ -112,13 +129,9 @@ def run(args, checkpoint_dir=None):
     # The actual training loop
     trainer.train()
 
-def dysweep_compatible_run(config, checkpoint_dir):
-    try:
-        args = parse_dictionary_onto_dataclass(config, TrainingConfig)
-        run(args, checkpoint_dir)
-    except Exception as e:
-        print(traceback.format_exc())
-        return False
+def dysweep_compatible_run(config, checkpoint_dir, gpu_index: int = -1):
+    args = parse_dictionary_onto_dataclass(config, TrainingConfig)
+    run(args, checkpoint_dir, gpu_index)
     
 if __name__ == "__main__":
     # Setup a parser for the configurations according to the above dataclasses
@@ -132,5 +145,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c", "--config", action=ActionConfigFile, help="Path to a configuration file in json or yaml format."
     )
+    # add an argument called gpu_core_index which is an integer defaulting to -1 in parser
+    parser.add_argument("--gpu_core_index", type=int, default=-1, help="The gpu core to use when training on multiple gpus")
     args = parser.parse_args()
-    run(args)
+    run(args, gpu_index=args.gpu_core_index)

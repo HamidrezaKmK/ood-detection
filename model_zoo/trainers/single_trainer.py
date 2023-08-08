@@ -217,7 +217,7 @@ class SingleTrainer(BaseTrainer):
     """Class for training single module"""
 
     def train_single_batch(self, batch):
-        loss_dict = self.module.train_batch(batch, max_grad_norm=self.max_grad_norm)
+        loss_dict = self.module.train_batch(batch, max_grad_norm=self.max_grad_norm, trainer=self)
 
         if self.iteration % self._STEPS_PER_LOSS_WRITE == 0:
             for k, v in loss_dict.items():
