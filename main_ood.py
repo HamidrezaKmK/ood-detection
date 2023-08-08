@@ -17,6 +17,8 @@ from model_zoo.datasets import get_loaders
 import traceback
 import typing as th
 from model_zoo.utils import load_model_with_checkpoints
+from dotenv import load_dotenv
+import os
 
 @dataclass
 class OODConfig:
@@ -145,26 +147,41 @@ def run_ood(config: dict):
     ###################
     # (1) Model setup #
     ###################
+    load_dotenv()
     
-    model = load_model_with_checkpoints(config=config['base_model'])
+    if 'MODEL_DIR' in os.environ:
+        model_root = os.environ['MODEL_DIR']
+    else:
+        model_root = '.'
+        
+    model = load_model_with_checkpoints(config=config['base_model'], root=model_root)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
     
     ##################
     # (1) Data setup #
     ##################
+    # Load the environment variables
+    
+    # Set the data directory if it is specified in the environment
+    # variables, otherwise, set to './data'
+    if 'DATA_DIR' in os.environ:
+        data_root = os.environ['DATA_DIR']
+    else:
+        data_root = './data'
+        
     in_train_loader, _, in_test_loader = get_loaders(
         **config["data"]["in_distribution"]["dataloader_args"],
         device=device,
         shuffle=False,
-        data_root='data/',
+        data_root=data_root,
         unsupervised=True,
     )
     ood_train_loader, _, ood_test_loader = get_loaders(
         **config["data"]["out_of_distribution"]["dataloader_args"],
         device=device,
         shuffle=False,
-        data_root='data/',
+        data_root=data_root,
         unsupervised=True,
     )
     
@@ -234,11 +251,10 @@ def run_ood(config: dict):
                             {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
                     # set torch seed for reproducibility
                     if config["ood"]["seed"] is not None:
-                        with torch.random.fork_rng():
-                            if device.startswith("cuda"):
-                                torch.cuda.manual_seed(config["ood"]["seed"])
-                            torch.manual_seed(config["ood"]["seed"])
-                            log_samples()
+                        if device.startswith("cuda"):
+                            torch.cuda.manual_seed(config["ood"]["seed"])
+                        torch.manual_seed(config["ood"]["seed"])
+                        log_samples()
                     else:
                         log_samples()
                         
@@ -254,12 +270,11 @@ def run_ood(config: dict):
             wandb.log({"likelihood_ood_histogram": [wandb.Image(
                 img_array, caption="Histogram of log likelihoods")]})
                 
-        if config["ood"]["seed"] is not None:
-            with torch.random.fork_rng():    
-                if device.startswith("cuda"):
-                    torch.cuda.manual_seed(config["ood"]["seed"])
-                    torch.manual_seed(config["ood"]["seed"])
-                log_histograms()
+        if config["ood"]["seed"] is not None:  
+            if device.startswith("cuda"):
+                torch.cuda.manual_seed(config["ood"]["seed"])
+                torch.manual_seed(config["ood"]["seed"])
+            log_histograms()
         else:
             log_histograms()
                 
@@ -298,13 +313,12 @@ def run_ood(config: dict):
     
     method_args["in_distr_loader"] = in_train_loader
     
-    with torch.random.fork_rng():
-        if device.startswith("cuda"):
-            torch.cuda.manual_seed(config["ood"]["seed"])
-        torch.manual_seed(config["ood"]["seed"])
-        method = dy.eval(config["ood"]["method"])(**method_args)
-        # Call the run function of the given method
-        method.run()
+    if device.startswith("cuda"):
+        torch.cuda.manual_seed(config["ood"]["seed"])
+    torch.manual_seed(config["ood"]["seed"])
+    method = dy.eval(config["ood"]["method"])(**method_args)
+    # Call the run function of the given method
+    method.run()
 
 def dysweep_run(config, checkpoint_dir):
     """
