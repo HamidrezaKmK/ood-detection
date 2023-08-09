@@ -152,7 +152,7 @@ def run_ood(config: dict):
     if 'MODEL_DIR' in os.environ:
         model_root = os.environ['MODEL_DIR']
     else:
-        model_root = '.'
+        model_root = './runs'
         
     model = load_model_with_checkpoints(config=config['base_model'], root=model_root)
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -269,14 +269,15 @@ def run_ood(config: dict):
             )
             wandb.log({"likelihood_ood_histogram": [wandb.Image(
                 img_array, caption="Histogram of log likelihoods")]})
-                
-        if config["ood"]["seed"] is not None:  
-            if device.startswith("cuda"):
-                torch.cuda.manual_seed(config["ood"]["seed"])
-                torch.manual_seed(config["ood"]["seed"])
-            log_histograms()
-        else:
-            log_histograms()
+        
+        if "bypass_visualize_histogram" not in config['ood'] or not config['ood']['bypass_visualize_histogram']:
+            if config["ood"]["seed"] is not None:  
+                if device.startswith("cuda"):
+                    torch.cuda.manual_seed(config["ood"]["seed"])
+                    torch.manual_seed(config["ood"]["seed"])
+                log_histograms()
+            else:
+                log_histograms()
                 
     
     #########################################

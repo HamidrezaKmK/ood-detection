@@ -5,7 +5,7 @@ that can be used for ood detection.
 import torch
 from tqdm import tqdm
 import typing as th
-from utils import stack_back_iterables
+from .utils import stack_back_iterables
 
 class EncodingModel:
     """
@@ -81,7 +81,6 @@ class EncodingModel:
            
         for x_batch in loader_decorated:
             
-            jac = []
             # encode to obtain the latent representation in the Gaussian space
             z = self.encode(x_batch)
             
@@ -118,6 +117,7 @@ class EncodingModel:
                     jac = jac_until_now.reshape(z_s.shape[0], -1, z_s.numel() // z_s.shape[0])
                 else:
                     jac_until_now = jac_until_now.reshape(z_s.shape[0], -1, z_s.shape[0], z_s.numel() // z_s.shape[0])
+                    jac = []
                     for j in range(jac_until_now.shape[0]):
                         jac.append(jac_until_now[j, :, j, :])
                     jac = torch.stack(jac)

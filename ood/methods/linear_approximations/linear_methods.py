@@ -13,15 +13,23 @@ from scipy.special import logsumexp
 from .utils import buffer_loader
 from .latent_statistics import LatentStatsCalculator
 
-class CDFBaseMethod(OODBaseMethod):
+class LatentBaseMethod(OODBaseMethod):
     """
-    This class is the base class that employs an ellipsoid calculator.
+    This class encompasses all of the methods that require a latent_statistics_calculator 
+    to operate and depend on some linear approximation of the generative model at hand. 
     
-    All the methods that rely on these computations should inherit from this class.
-    For example, the EllipsoidTrend method inherits this one and uses the average
-    R^2 trend to detect or visualize OOD data. On the other hand, EllipsoidScore summarizes
-    information from R^2 into a specific score and then uses that score plus thresholding
-    to calculate OOD data.
+    This includes:
+    
+    1.  The models that approximate the ambient ball measures 
+        using latent ellipsoids in the Gaussian latent space.
+        In turn, these methods might create a trend, or they might
+        just calculate a score based on that particular latent statistic.
+    
+    2.  The models that approximate the convolution with a Gaussian with a
+        pre-specified standard deviation.
+        
+    The main theme in common with these methods is that due to the linear approximation,
+    these methods can calculate some data-space statistics in the latent space.
     """
     def __init__(
         self,
@@ -33,7 +41,7 @@ class CDFBaseMethod(OODBaseMethod):
         logger: th.Optional[th.Any] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
-        # CDF calculator
+        # statistics calculator
         latent_statistics_calculator_class: th.Optional[str] = None,
         latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
@@ -43,16 +51,19 @@ class CDFBaseMethod(OODBaseMethod):
         """
         Args:
             likelihood_model (torch.nn.Module): The likelihood model with initialized parameters that work best for generation.
-            metric_name (str): The class of the metric in use.
-            metric_args (th.Optional[th.Dict[str, th.Any]], optional): The instantiation arguments for the metric. Defaults to None which means empty dict.
             x (th.Optional[torch.Tensor], optional): If the OOD detection task is only aimed for single point, this is the point.
-            x_batch (th.Optional[torch.Tensor], optional): _description_. Defaults to None.
-            x_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
-            logger (th.Optional[th.Any], optional): _description_. Defaults to None.
-            in_distr_loader (th.Optional[torch.utils.data.DataLoader], optional): _description_. Defaults to None.
-            verbose (int, optional): _description_. Defaults to 0.
-            latent_statistics_calculator_class: (str) The class of the CDF calculator
-            latent_statistics_calculator_args (dict) The arguments used for visualizing the cdf calculator
+            x_batch (th.Optional[torch.Tensor], optional): If the OOD detection task is aimed for a single batch.
+            x_loader (th.Optional[torch.utils.data.DataLoader], optional): If the OOD detection methods is to be applied on the entire
+                dataloader.
+            logger (th.Optional[th.Any], optional): This is the logger being used.
+            in_distr_loader (th.Optional[torch.utils.data.DataLoader], optional): This is the dataloader pertaining to the training data,
+                in OOD detection, we have access to the training data itself and our method might do some relevant computations on that.
+            verbose (int, optional): This controls the logging in our model:   
+                (0) No logging
+                (1) Partial logging
+                (2) Many logs
+            latent_statistics_calculator_class: (str) The class of the latent statistics calculator
+            latent_statistics_calculator_args (dict) The arguments used for visualizing the latent statistics calculator
         """
         super().__init__(
             x_loader=x_loader, 
@@ -78,7 +89,7 @@ class CDFBaseMethod(OODBaseMethod):
         
         self.verbose = verbose
         
-class CDFTrend(CDFBaseMethod):
+class RadiiTrend(LatentBaseMethod):
     """
     Instead of evaluating the OOD data using a single score visualization,
     these methods evaluate the OOD data by visualizing the trend of the scores.
@@ -97,7 +108,7 @@ class CDFTrend(CDFBaseMethod):
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
         
-        # CDF calculator
+        # Latent statistics calculator
         latent_statistics_calculator_class: th.Optional[str] = None,
         latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
@@ -162,6 +173,11 @@ class CDFTrend(CDFBaseMethod):
         else:
             self.visualize_log = False
             
+    def calculate_radius_score(self, r, loader, use_cache: bool = False): 
+        raise NotImplementedError("no calculate score defined!")
+    
+    def get_radius_score_name(self):
+        return "score"
     
     def run(self):
         # This function first calculates the ellipsoids for each datapoint in the loader self.x_loader
@@ -188,17 +204,20 @@ class CDFTrend(CDFBaseMethod):
                     if self.loader_limit is not None:
                         tot = min(tot, self.loader_limit)
                         
-                    radii_range.set_description(f"Calculating cdf for buffer [{inner_loader_idx}/{tot}]")
+                    radii_range.set_description(f"Calculating score for buffer [{inner_loader_idx}/{tot}]")
                 else:
                     radii_range = self.radii
                 
                 inner_trend = []    
                 first = True  
                 for r in radii_range:
-                    if self.visualize_log:
-                        inner_trend.append(self.latent_statistics_calculator.calculate_single_log_cdf(r, loader=inner_loader, use_cache=not first))
-                    else:
-                        inner_trend.append(self.latent_statistics_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=not first))
+                    inner_trend.append(
+                        self.latent_statistics_calculator.calculate_statistics(
+                            r, 
+                            loader=inner_loader, 
+                            use_cache=not first
+                        )
+                    )
                     first = False
                 inner_trend = np.stack(inner_trend).T
                 
@@ -250,12 +269,13 @@ class CDFTrend(CDFBaseMethod):
             t_values=self.radii,
             reference_scores=reference_trend,
             x_label="r",
-            y_label=f"{'log P' if self.visualize_log else 'P'}(R < r)",
-            title=f"Trend of the average {'log_cdf' if self.visualize_log else 'cdf'}",
+            y_label=self.latent_statistics_calculator.get_name(),
+            title=f"Trend of the average {self.latent_statistics_calculator.get_name()}",
             **self.visualization_args,
         )
-        
-class CDFScore(CDFBaseMethod):
+
+
+class LatentScore(LatentBaseMethod):
     """
     This set of methods summarizes the trends observed from R^2 into a single
     score that is used for OOD detection. This score can be obtained by different
@@ -271,7 +291,7 @@ class CDFScore(CDFBaseMethod):
         logger: th.Optional[th.Any] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
         
-        # CDF calculator
+        # Latent statistics arguments
         latent_statistics_calculator_class: th.Optional[str] = None,
         latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
@@ -326,7 +346,7 @@ class CDFScore(CDFBaseMethod):
         self.loader_limit = loader_limit
         self.loader_buffer_size = loader_buffer_size
         
-    def _predef_r_cdf(self, r: float):
+    def _predef_r_score(self, r: float):
         """
         Given a specific 'r', it first calculates the entailed generalized-chi-squared
         distribution from self.x_loader, and then, it calculates the CDF of each of the
@@ -334,13 +354,13 @@ class CDFScore(CDFBaseMethod):
         """
         scores = []
         for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
-            scores.append(self.latent_statistics_calculator.calculate_single_cdf(r, loader=inner_loader, use_cache=False))
+            scores.append(self.latent_statistics_calculator.calculate_statistics(r, loader=inner_loader, use_cache=False))
         return np.concatenate(scores)
     
-    def _find_r_then_cdf(
+    def _auto_r_score(
         self, 
         bn_search_limit: int = 100, 
-        cdf_threshold: float = 0.001, 
+        score_threshold: float = 0.001, 
         reference_loader_limit: th.Optional[int] = None
     ):
         """
@@ -388,7 +408,8 @@ class CDFScore(CDFBaseMethod):
                 elif self.verbose == 1:
                     rng.set_description(f"Binary Searching iteration no.{iter + 1}")
                 
-                if self.latent_statistics_calculator.calculate_mean_cdf(mid, loader=inner_loader, use_cache=not first) > cdf_threshold:
+                single_scores = self.latent_statistics_calculator.calculate_statistics(mid, loader=inner_loader, use_cache=not first)
+                if np.mean(single_scores) > score_threshold:
                     r_r = mid
                 else:
                     r_l = mid
@@ -401,9 +422,9 @@ class CDFScore(CDFBaseMethod):
         if self.verbose > 1:
             print(f"Found r = {auto_r}")
             
-        return self._predef_r_cdf(auto_r)
+        return self._predef_r_score(auto_r)
     
-    def _cdf_inv(self, q: float, bn_search_limit: int = 100):
+    def _score_inv(self, q: float, bn_search_limit: int = 100):
         """
         For each datapoint in self.x_loader, we calculate the CDF inverse of the
         entailed semantic distance from that datapoint. To calculate the inverse,
@@ -431,38 +452,23 @@ class CDFScore(CDFBaseMethod):
                     rng.set_description(f"Binary Searching iteration no.{iter + 1}")
                     
                 mid = (r_l + r_r) / 2.0
-                single_cdfs = self.latent_statistics_calculator.calculate_single_cdf(mid, loader=inner_loader, use_cache=not first)
+                single_scores = self.latent_statistics_calculator.calculate_statistics(mid, loader=inner_loader, use_cache=not first)
                 first = False
-                r_l = np.where(single_cdfs > q, r_l, mid)
-                r_r = np.where(single_cdfs > q, mid, r_r)
+                r_l = np.where(single_scores > q, r_l, mid)
+                r_r = np.where(single_scores > q, mid, r_r)
             scores.append(r_r)
-        return np.concatenate(scores)
-    
-    def _first_moment(self):
-        """
-        Calculate the first moment of the generalized chi-squared entailed by each data
-        point in a flattened manner.
-        
-        Returns:
-            np.ndarray: The average R^2.
-        """
-        scores = []
-        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
-            scores.append(self.latent_statistics_calculator.calculate_mean(loader=inner_loader))
         return np.concatenate(scores)
     
     def run(self):
         metric_name_to_func = {
-            "find-r-then-cdf": self._find_r_then_cdf,
-            "cdf-inv": self._cdf_inv,
-            "predef-r-cdf": self._predef_r_cdf,
-            "first-moment": self._first_moment,
+            "auto-r-score": self._auto_r_score,
+            "score-inv": self._score_inv,
+            "predef-r-score": self._predef_r_score,
         }
         x_label = {
-            "find-r-then-cdf": "CDF",
-            "cdf-inv": "CDF^{-1}",
-            "predef-r-cdf": "CDF",
-            "first-moment": "First Moment",
+            "auto-r-score": f"auto-{self.latent_statistics_calculator.get_name()}",
+            "score-inv": f"{self.latent_statistics_calculator.get_name()}^(-1)",
+            "predef-r-score": f"{self.latent_statistics_calculator.get_name()}",
         }
         scores = metric_name_to_func[self.metric_name](**self.metric_args)
         

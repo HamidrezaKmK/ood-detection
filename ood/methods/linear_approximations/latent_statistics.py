@@ -27,63 +27,12 @@ class LatentStatsCalculator:
         self.verbose = verbose
         self.encoding_model = dy.eval(encoding_model_class)(likelihood_model, **(encoding_model_args or {}))
     
-    def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
-        # You should implement your own function here
-        raise NotImplementedError("You must implement a calculate_single_cdf method for your model.")
-
-    def calculate_mean_cdf(self, r, loader, use_cache: bool = False) -> float:
+    def calculate_statistics(self, r, loader, use_cache: bool = False) -> np.ndarray:
         """
-        Passes the exact arguments to calculate_single_cdf and returns the mean of the cdfs
-        which will also represent a complex semantic distance CDF.
+        This function calculates some sort of latent statistics w.r.t a radius 'r'
         """
-        if self.verbose > 1:
-            print("Calculating the mean CDF...")
-        return np.mean(self.calculate_single_cdf(r, loader, use_cache))
+        raise NotImplementedError("You must implement a calculate_statistics function")
     
-    def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
-        """
-        This function calculates the log_cdf of your latent random variable at point 'r'
-        for each of the samples in the data loader and returns a list of the cdfs.
-        
-        The reason this function exists is that sometimes it is easier to calculate the
-        log_cdf rather than the cdf in a more accurate manner.
-        
-        If you have multiple runs of this function on same loader but different 'r' values,
-        then set use_cache to True for the rest of the runs because this will signigicanlty
-        streamline the computation.
-        """
-        raise NotImplementedError("You must implement a calculate_log_cdf method for your model.")
-    
-    def calculate_mean_log_cdf(self, r, loader, use_cache: bool = False) -> float:
-        
-        if self.verbose > 1:
-            print("Calculating the mean CDF...")
-        return np.mean(self.calculate_single_log_cdf(r, loader, use_cache))
-        
-    def calculate_mean(self, loader, use_cache=False):
-        """
-        This function calculates the mean of the latent variable in consideration. This is typically
-        a fast and easy to compute function.
-        
-        If you have multiple runs of this function on same loader but different 'r' values,
-        then set use_cache to True for the rest of the runs because this will signigicanlty
-        streamline the computation.
-        """
-        raise NotImplementedError("You must implement a calculate_mean method for your model.")
-    
-    def sample(self, r, loader, n_samples: int = 1, use_cache: bool = False):
-        """
-        This function takes in a loader and a distance measure 'r'. 
-        It then flattens the loader out and returns n_samples per each element
-        in the loader. Each of the elements are a samples that are drawn with distance
-        'r' from the correpsonding element in the loader.
-        
-        If you have multiple runs of this function on same loader but different 'r' values,
-        then set use_cache to True for the rest of the runs because this will signigicanlty
-        streamline the computation.
-        """
-        raise NotImplementedError("You must implement a sample method for your model.")
-
 def calculate_ellipsoids(
     stats_calculator: LatentStatsCalculator, 
     loader, 
@@ -177,13 +126,9 @@ class ParallelogramStatsCalculator(LatentStatsCalculator):
         # You should implement your own function here
         return np.exp(self.calculate_single_log_cdf(r, loader, use_cache))
     
-    def calculate_mean_cdf(self, r, loader, use_cache: bool = False) -> float:
-        single_log_cdfs = self.calculate_single_log_cdf(r, loader, use_cache)
-        return np.exp(logsumexp(single_log_cdfs) - np.log(len(single_log_cdfs)))
-     
     def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> float:
         if not use_cache:
-            self.centers, self.radii = self.calculate_ellipsoids(loader)
+            self.centers, self.radii = calculate_ellipsoids(self, loader)
         if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
             raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
         centers, radii = self.centers, self.radii
@@ -239,11 +184,15 @@ class ParallelogramStatsCalculator(LatentStatsCalculator):
         raise NotImplementedError("You must implement a calculate_mean method for your CDF calculator.")
     
 
+class ParallelogramLogCDF(ParallelogramStatsCalculator):
+    def calculate_statistics(self, r, loader, use_cache: bool = False):
+        return self.calculate_log_cdf(r, loader, use_cache)
+
 # TODO: implement a convolution-based approach
 class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
     pass
 
-class EllipsoidStatsCalculator(LatentStatsCalculator):
+class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
     """
     This is a class that is used in methods that use latent ellipsoids.
     For a likelihood model that has an encoding and a decoding into a Gaussian
@@ -312,7 +261,7 @@ class EllipsoidStatsCalculator(LatentStatsCalculator):
                 then the returned array would have size T.
         """
         if not use_cache:
-            self.centers, self.radii = self.calculate_ellipsoids(loader)
+            self.centers, self.radii = calculate_ellipsoids(self, loader)
         if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
             raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
         centers, radii = self.centers, self.radii
@@ -365,14 +314,10 @@ class EllipsoidStatsCalculator(LatentStatsCalculator):
                 cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0])
                 
         return np.array(cdfs)
-
-    def calculate_single_log_cdf(self, r, loader, use_cache: bool = False) -> float:
-        # TODO: This is not a good implementation. It should be optimized.
-        return np.log(self.calculate_single_cdf(r, loader, use_cache))
     
     def calculate_mean(self, loader, use_cache=False):
         if not use_cache:
-            self.centers, self.radii = self.calculate_ellipsoids(loader)
+            self.centers, self.radii = calculate_ellipsoids(self, loader)
         scores = []
         for c_batch, rad_batch in zip(self.centers, self.radii):
             for c, rad in zip(c_batch, rad_batch):
@@ -382,9 +327,12 @@ class EllipsoidStatsCalculator(LatentStatsCalculator):
                 scores.append(np.sum(msk * rad.numpy() * (1 + c.numpy()**2)))
         return np.array(scores)
 
+    def calculate_statistics(self, r, loader, use_cache: bool = False):
+        return self.calculate_single_cdf(r, loader, use_cache)
+    
     def sample(self, r, loader, n_samples, use_cache = False):
         if not use_cache:
-            self.centers, self.radii, self.rotations = self.calculate_ellipsoids(loader, return_rotations=True, stack_back=False)
+            self.centers, self.radii, self.rotations = calculate_ellipsoids(self, loader, return_rotations=True, stack_back=False)
         if not hasattr(self, 'centers') or not hasattr(self, 'radii') or not hasattr(self, 'rotations'):
             raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
         
@@ -432,7 +380,6 @@ class EllipsoidStatsCalculator(LatentStatsCalculator):
                 
         return ret
             
-            
-        
+             
 
         

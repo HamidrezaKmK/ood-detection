@@ -78,7 +78,7 @@ def load_model_with_checkpoints(
     
     # load the model weights from the checkpoint
     if config['checkpoint_dir'] is not None:
-        model.load_state_dict(torch.load(os.path.join(root, config['checkpoint_dir']))['module_state_dict'])
+        model.load_state_dict(torch.load(os.path.join(root, config['checkpoint_dir']), map_location='cpu')['module_state_dict'])
     
     if eval_mode:
         # set to evaluation mode to get rid of any randomness happening in the 
