@@ -12,6 +12,7 @@ from scipy.stats import norm
 from scipy.special import logsumexp
 from .utils import buffer_loader
 from .latent_statistics import LatentStatsCalculator
+import torchvision
 
 class LatentBaseMethod(OODBaseMethod):
     """
@@ -129,7 +130,8 @@ class RadiiTrend(LatentBaseMethod):
         compression_bucket_size: th.Optional[int] = None,
         
         loader_buffer_size: int = 60,
-        loader_limit: th.Optional[int] = None,
+        
+        sampling: bool = False,
     ):
         """
         Inherits from EllipsoidBaseMethod and adds the visualization of the trend.
@@ -162,16 +164,12 @@ class RadiiTrend(LatentBaseMethod):
         self.include_reference = include_reference
         
         self.loader_buffer_size = loader_buffer_size
-        self.loader_limit = loader_limit
         
         
         self.compress_trend = compress_trend
         self.compression_bucket_size = compression_bucket_size
         
-        if 'visualize_log' in self.visualization_args:
-            self.visualize_log = self.visualization_args.pop('visualize_log')
-        else:
-            self.visualize_log = False
+        self.sampling = sampling
             
     def calculate_radius_score(self, r, loader, use_cache: bool = False): 
         raise NotImplementedError("no calculate score defined!")
@@ -193,7 +191,7 @@ class RadiiTrend(LatentBaseMethod):
             trend = [] # This is the final trend
             trend_so_far = None # The is the cumulative uncompressed trend
             inner_loader_idx = 0
-            for inner_loader in buffer_loader(loader, self.loader_buffer_size, limit=self.loader_limit):
+            for inner_loader in buffer_loader(loader, self.loader_buffer_size):
                 
                 inner_loader_idx += 1
                 # display if verbose is set
@@ -201,8 +199,6 @@ class RadiiTrend(LatentBaseMethod):
                     radii_range = tqdm(self.radii)
                     
                     tot = (len(loader) + self.loader_buffer_size - 1) // self.loader_buffer_size
-                    if self.loader_limit is not None:
-                        tot = min(tot, self.loader_limit)
                         
                     radii_range.set_description(f"Calculating score for buffer [{inner_loader_idx}/{tot}]")
                 else:
@@ -211,14 +207,31 @@ class RadiiTrend(LatentBaseMethod):
                 inner_trend = []    
                 first = True  
                 for r in radii_range:
+                    
+                    if self.sampling:
+                        imgs = self.latent_statistics_calculator.sample(
+                            r, 
+                            loader=loader, 
+                            n_samples=9, 
+                            use_cache=not first,
+                        )
+                        for i, im in enumerate(imgs):
+                            # make a grid using torchvision
+                            img_grid = torchvision.utils.make_grid(im, nrow=3)
+                            wandb.log(
+                                {
+                                    f"trend/vicinity_samples/{i+1}": [wandb.Image(
+                                    img_grid, caption=f"samples with distance {r}")]
+                                }
+                            )
+                    first = False
                     inner_trend.append(
                         self.latent_statistics_calculator.calculate_statistics(
                             r, 
                             loader=inner_loader, 
-                            use_cache=not first
+                            use_cache=not first,
                         )
                     )
-                    first = False
                 inner_trend = np.stack(inner_trend).T
                 
                 if trend_so_far is None:
@@ -304,7 +317,6 @@ class LatentScore(LatentBaseMethod):
         metric_name: th.Optional[str] = None,
         metric_args: th.Optional[th.Dict[str, th.Any]] = None,
         
-        loader_limit: th.Optional[int] = None,
         loader_buffer_size: int = 60,
     ):
         """
@@ -343,7 +355,6 @@ class LatentScore(LatentBaseMethod):
 
         self.visualization_args = visualization_args or {}
         
-        self.loader_limit = loader_limit
         self.loader_buffer_size = loader_buffer_size
         
     def _predef_r_score(self, r: float):
@@ -353,7 +364,7 @@ class LatentScore(LatentBaseMethod):
         ellipsoids.
         """
         scores = []
-        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
+        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size):
             scores.append(self.latent_statistics_calculator.calculate_statistics(r, loader=inner_loader, use_cache=False))
         return np.concatenate(scores)
     
@@ -384,11 +395,6 @@ class LatentScore(LatentBaseMethod):
         """
         auto_r = 0
         idx = 0
-        
-        # use the loader_limit from the arguments if given
-        # otherwise, use the default loader_limit
-        if reference_loader_limit is None:
-            reference_loader_limit = self.loader_limit
             
         for inner_loader in buffer_loader(self.in_distr_loader, self.loader_buffer_size, limit=reference_loader_limit):
             r_l = 0.0
@@ -433,7 +439,7 @@ class LatentScore(LatentBaseMethod):
         """
         
         scores = []
-        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size, limit=self.loader_limit):
+        for inner_loader in buffer_loader(self.x_loader, self.loader_buffer_size):
             T = sum([x.shape[0] for x in inner_loader])
            
             r_l = np.zeros(T)

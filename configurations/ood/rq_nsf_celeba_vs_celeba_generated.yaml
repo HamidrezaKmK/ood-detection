@@ -16,11 +16,20 @@ data:
 
   out_of_distribution:
     dataloader_args:
-      dataset: svhn
+      dataset: dgm-generated
       make_valid_loader: false
       train_batch_size: 8
       valid_batch_size: 8
       test_batch_size: 8
+      dgm_args:
+        model_loading_config:
+          config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_celeba_bluesmen_xh8ca1pj_final/run_config.json
+          # A directory containing the model weights of the likelihood model to work with a good fit one
+          # This is produced by running the single step training models
+          checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_celeba_bluesmen_xh8ca1pj_final/checkpoints/de_nf_best_valid.pt
+        seed: 10
+        length: 1000
+
   # for reproducibility
   seed: 10
 ood:
@@ -59,4 +68,4 @@ ood:
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6
-  name: rq_nsf_celeba_vs_svhn
+  name: rq_nsf_celeba_vs_celeba_generated

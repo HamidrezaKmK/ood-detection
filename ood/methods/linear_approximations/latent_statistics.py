@@ -79,7 +79,7 @@ def calculate_ellipsoids(
         # turn the devices
         jac = jac.to(device)
         z = z.to(device)
-        
+            
         ellipsoids = torch.matmul(jac.transpose(1, 2), jac)
         
         L, Q = torch.linalg.eigh(ellipsoids)
@@ -185,6 +185,10 @@ class ParallelogramStatsCalculator(LatentStatsCalculator):
     
 
 class ParallelogramLogCDF(ParallelogramStatsCalculator):
+    
+    def get_name(self):
+        return "P(parallelogram)"
+    
     def calculate_statistics(self, r, loader, use_cache: bool = False):
         return self.calculate_log_cdf(r, loader, use_cache)
 
@@ -241,7 +245,8 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
         else:
             raise ValueError("filtering should be either a string or a dictionary.")
         
-    
+    def get_name(self):
+        return "P(R^2 < r^2)"
 
     def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
         """
@@ -342,44 +347,66 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
         ret = []
         # calculate the upper bound of the density values for a Gaussian distribution with 
         # dimesion latent_dim and covariance matrix I
+        idx = 0
         for cents, radiis, rots in zip(self.centers, self.radii, self.rotations):
             for cent, radii, rot in zip(cents, radiis, rots):
+                idx += 1
                 # turn everything into numpy arrays first
                 cent = cent.numpy()
                 radii = radii.numpy()
+                radii = np.where(radii > 0, radii, 1e-6)
                 rot = rot.numpy()
                 
                 # upper bound for rejection sampling
                 d = len(cent)
-                M = (2 * np.pi)**(d / 2)
                 samples = []
-                for _ in range(n_samples):
+                rng = tqdm(range(n_samples), desc=f"rejection sampling from batch {idx}")
+                for _ in rng:
                     accept = False
+                    try_count = 0
                     while not accept:
-                        # sample from the latent Gaussian distribution
-                        u = np.random.normal(size=len(cent))
-                        u = u / np.linalg.norm(u, ord=2)
-                        u = u / radii
+                        try_count += 1
+                        rng.set_description(f"rejection sampling from batch {idx} (try {try_count})")
                         
+                        # get a sample from a multivariate normal 
+                        # and reduce it to the level set of the ellipsoid
+                        u = np.random.multivariate_normal(
+                            mean=np.zeros_like(radii),
+                            cov=np.diag(radii),
+                        )
+                        u = u / np.sqrt(np.sum(u * u) * radii)
+                        
+                        # get the radius (this would most probably be on the perimeter with rad=r
+                        # due to high dimensionality)
                         rad = np.power(np.random.uniform(), 1.0 / d) * r
-                        # rotate the sample to the ellipsoid frame
+                        # rotate the sample back
                         z = np.matmul(rot.T, u * rad + cent)
+                        
                         # calculate the density of the sample
-                        prob = np.exp(-0.5 * np.sum(z**2)) / M
-                        # sample a uniform value
-                        choice = np.random.uniform()
+                        log_prob_sample = -0.5 * np.sum(z**2) - (d/2) * np.log(2 * np.pi)
+                        tt = np.where(np.abs(cent) - r > 0, np.abs(cent) - r, 0)
+                        log_density_upper_bound = -0.5 * np.sum(tt**2) - (d/2) * np.log(2 * np.pi)
+                        
+                        log_P_accept = log_prob_sample - log_density_upper_bound
+                        log_choice = np.log(np.random.uniform())
                         # accept the sample if the uniform value is smaller than the density
-                        accept = choice < prob
+                        
+                        accept = log_choice < log_P_accept
                     
                     # turn z into a torch tensor
-                    sample_latent = torch.from_numpy(z).float().device(self.likelihood_model.device).unsqueeze(0)
+                    sample_latent = torch.from_numpy(z).float()
+                    sample_latent = sample_latent.to(self.likelihood_model.device).unsqueeze(0)
+                    
                     # map back to ambient space
-                    sample_ambient = self.encoding_model.decode(sample_latent)
-                    samples.append(sample_ambient)
-                ret.append(torch.stack(samples).detach().cpu())
+                    sample_ambient = self.encoding_model.decode(sample_latent).squeeze(0)
+                    samples.append(self.likelihood_model._inverse_data_transform(sample_ambient).detach().cpu())
+                ret.append(torch.stack(samples))
                 
         return ret
             
              
 
-        
+class FirstMomentEllipsoidsStatsCalculator(EllipsoidCDFStatsCalculator):
+    
+    def calculate_statistics(self, r, loader, use_cache: bool = False):
+        return self.calculate_mean(loader, use_cache)

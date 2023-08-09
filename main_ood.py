@@ -19,6 +19,7 @@ import typing as th
 from model_zoo.utils import load_model_with_checkpoints
 from dotenv import load_dotenv
 import os
+from tqdm import tqdm
 
 @dataclass
 class OODConfig:
@@ -48,9 +49,9 @@ def plot_likelihood_ood_histogram(
     """
     # create a function that returns a list of all the likelihoods when given
     # a dataloader
-    def list_all_scores(dloader: torch.utils.data.DataLoader):
+    def list_all_scores(dloader: torch.utils.data.DataLoader, description: str):
         log_probs = []
-        for tmp in dloader:
+        for tmp in tqdm(dloader, desc=f"Calculating likelihoods for {description}"):
             x = tmp
             
             t = model.log_prob(x).cpu().detach()
@@ -63,8 +64,8 @@ def plot_likelihood_ood_histogram(
         return log_probs
 
     # List the likelihoods for both dataloaders
-    in_distr_scores = list_all_scores(data_loader_in)
-    out_distr_scores = list_all_scores(data_loader_out)
+    in_distr_scores = list_all_scores(data_loader_in, "in distribution")
+    out_distr_scores = list_all_scores(data_loader_out, "out of distribution")
     
     # plot using matplotlib and then visualize the picture 
     # using W&B media.
@@ -89,7 +90,7 @@ def plot_likelihood_ood_histogram(
     return np.array(img)
 
 
-def run_ood(config: dict):
+def run_ood(config: dict, gpu_index: int = 0):
     """
     This function reads the OOD configurations
     (samples can be found in experiments/ood/single_runs)
@@ -155,7 +156,7 @@ def run_ood(config: dict):
         model_root = './runs'
         
     model = load_model_with_checkpoints(config=config['base_model'], root=model_root)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = f"cuda:{gpu_index}" if torch.cuda.is_available() else "cpu"
     model.to(device)
     
     ##################
@@ -195,8 +196,6 @@ def run_ood(config: dict):
         in_loader = in_test_loader
     elif config['data']['in_distribution']['pick_loader'] == 'train':
         in_loader = in_train_loader
-    else:
-        raise ValueError("pick_loader should be either test or train")
     
     # out_loader is the loader that is used for the out-of-distribution data
     if not 'pick_loader' in config['data']['out_of_distribution']:
@@ -207,8 +206,6 @@ def run_ood(config: dict):
         out_loader = ood_test_loader
     elif config['data']['out_of_distribution']['pick_loader'] == 'train':
         out_loader = ood_train_loader
-    else:
-        raise ValueError("pick_loader should be either test or train")
 
 
     ############################################################
@@ -305,6 +302,11 @@ def run_ood(config: dict):
         method_args["x"] = x[np.random.randint(x.shape[0])]
     elif "use_dataloader" in config["ood"] and config["ood"]["use_dataloader"]:
         method_args["x_loader"] = out_loader
+        if config["ood"].get("pick_count", 0) > 0:
+            t = min(config['ood']['pick_count'], len(out_loader))
+            method_args["x_loader"] = []
+            for _ in range(t):
+                method_args["x_loader"].append(next(iter(out_loader)))
     elif "pick_count" not in config["ood"]:
         raise ValueError("pick_count not in config when pick_single=False")
     else:
@@ -321,12 +323,12 @@ def run_ood(config: dict):
     # Call the run function of the given method
     method.run()
 
-def dysweep_run(config, checkpoint_dir):
+def dysweep_run(config, checkpoint_dir, gpu_index: int = 0):
     """
     Function compatible with dysweep
     """
     try:
-        run_ood(config)
+        run_ood(config, gpu_index=gpu_index)
     except Exception as e:
         print("Exception:\n", e)
         print(traceback.format_exc())
@@ -341,11 +343,20 @@ if __name__ == "__main__":
         fail_untyped=False,
         sub_configs=True,
     )
+    # add an argument to the parser pertaining to the gpu index
+    parser.add_argument(
+        '--gpu-index',
+        type=int,
+        help="The index of GPU being used",
+        default=0,
+    )
     parser.add_argument(
         "--config",
         action=ActionConfigFile,
         help="Path to the config file",
     )
+    
+    
     args = parser.parse_args()
     conf = {
         "base_model": args.base_model,
@@ -359,4 +370,4 @@ if __name__ == "__main__":
 
     wandb.init(config=conf, **args.logger)
 
-    run_ood(conf)
+    run_ood(conf, gpu_index=args.gpu_index)

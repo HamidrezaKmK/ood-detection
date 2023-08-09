@@ -11,6 +11,7 @@ from model_zoo.utils import load_model_with_checkpoints
 from model_zoo.density_estimator import DensityEstimator
 from model_zoo import TwoStepDensityEstimator
 from functools import lru_cache
+from dotenv import load_dotenv
 
 import typing as th
 import os
@@ -33,12 +34,17 @@ class DGMGeneratedDataset(SupervisedDataset):
         seed: th.Optional[int] = None,
         generation_batch_size: int = 10,
         device: str = "cpu",
+        model_root: th.Optional[str] = None,
     ):
         self.data_path = os.path.join(data_root, identifier)
-        
+        if model_root is None:
+            load_dotenv()
+            model_root = os.environ.get("MODEL_DIR", './runs/')
+            
         def generate_all():
             # get the model and generate all the data and save it
-            model: th.Union[DensityEstimator, TwoStepDensityEstimator] = load_model_with_checkpoints(model_loading_config, device=device)
+            model: th.Union[DensityEstimator, TwoStepDensityEstimator] = \
+                load_model_with_checkpoints(model_loading_config, device=device, root=model_root)
             
             if seed is not None:    
                 np.random.seed(seed)

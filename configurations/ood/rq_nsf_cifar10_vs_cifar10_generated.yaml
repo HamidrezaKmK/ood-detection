@@ -1,14 +1,14 @@
 base_model:
   # A directory containing the configuration used for instantiating the likelihood model itself
-  config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_celeba_bluesmen_xh8ca1pj_final/run_config.json
+  config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/run_config.json
   # A directory containing the model weights of the likelihood model to work with a good fit one
   # This is produced by running the single step training models
-  checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_celeba_bluesmen_xh8ca1pj_final/checkpoints/de_nf_best_valid.pt
+  checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/checkpoints/de_nf_best_valid.pt
 data:
   # specify the datasets and dataloader configurations for the in and out of distribution data.
   in_distribution:
     dataloader_args:
-      dataset: celeba
+      dataset: cifar10
       make_valid_loader: false
       train_batch_size: 8
       valid_batch_size: 8
@@ -16,11 +16,20 @@ data:
 
   out_of_distribution:
     dataloader_args:
-      dataset: svhn
+      dataset: dgm-generated
       make_valid_loader: false
       train_batch_size: 8
       valid_batch_size: 8
       test_batch_size: 8
+      dgm_args:
+        model_loading_config:
+          # A directory containing the configuration used for instantiating the likelihood model itself
+          config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/run_config.json
+          # A directory containing the model weights of the likelihood model to work with a good fit one
+          # This is produced by running the single step training models
+          checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/checkpoints/de_nf_best_valid.pt
+        seed: 10
+        length: 1000
   # for reproducibility
   seed: 10
 ood:
@@ -29,7 +38,7 @@ ood:
   pick_single: False
   use_dataloader: True
   # The number of batches to consider
-  pick_count: 5
+  pick_count: 10
   seed: 10
   # The OOD detection method in use
   method: ood.methods.linear_approximations.RadiiTrend
@@ -59,4 +68,4 @@ ood:
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6
-  name: rq_nsf_celeba_vs_svhn
+  name: rq_nsf_cifar10_vs_cifar10_generated

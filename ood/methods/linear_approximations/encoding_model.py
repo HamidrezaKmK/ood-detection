@@ -80,10 +80,12 @@ class EncodingModel:
         z_values = []
            
         for x_batch in loader_decorated:
-            
             # encode to obtain the latent representation in the Gaussian space
-            z = self.encode(x_batch)
+            x_batch_transformed = self.likelihood_model._data_transform(x_batch)
             
+            z = self.encode(x_batch_transformed)
+            # count the number of NaNs in z
+                
             # Since Jacobian computation is heavier than the normal batch_wise
             # computations, we have another level of batching here
             step = self.computation_batch_size
@@ -100,7 +102,12 @@ class EncodingModel:
                 
                 # Get a batch of latent representations
                 z_s = z[l:r]
-
+                
+                # check if z_s contains any NaN values
+                if torch.isnan(z_s).any():
+                    print(">> NaN values detected in the latent representation. Skipping this batch.")
+                    continue
+                
                 # Calculate the jacobian of the decode function
                 if self.use_functorch:
                     jac_fn = torch.func.jacfwd if self.use_forward_mode else torch.func.jacrev
@@ -139,16 +146,26 @@ class EncodingFlow(EncodingModel):
     """
     The EncodingModel implemented for the NormFlows in the model_zoo repository.
     """
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.error_count = 0
+        
     def encode(self, x):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters
         # self.likelihood_model.eval()
         with torch.no_grad():
             try:
+                # x = self.likelihood_model._data_transform(x)
                 z = self.likelihood_model._nflow.transform_to_noise(x)
             except ValueError as e:
-                z = self.likelihood_model._nflow.transform_to_noise(x.unsqueeze(0))
-                z = z.squeeze(0)
+                if self.error_count > 0:
+                    self.error_count = 0
+                    raise e
+                
+                self.error_count += 1
+                z = self.encode(x.unsqueeze(0)).squeeze(0)
+                
             return z
 
     def decode(self, z):
@@ -158,7 +175,12 @@ class EncodingFlow(EncodingModel):
         with torch.no_grad():
             try:
                 x, logdets = self.likelihood_model._nflow._transform.inverse(z)
+                # x = self.likelihood_model._inverse_data_transform(x)
             except ValueError as e:
-                x, logdets = self.likelihood_model._nflow._transform.inverse(z.unsqueeze(0))
-                x = x.squeeze(0)
+                if self.error_count > 0:
+                    self.error_count = 0
+                    raise e
+                
+                self.error_count += 1
+                x = self.decode(z.unsqueeze(0)).squeeze(0)
             return x
