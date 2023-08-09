@@ -29,11 +29,12 @@ ood:
   pick_single: False
   use_dataloader: True
   # The number of batches to consider
-  pick_count: 5
+  pick_count: 1
   seed: 10
   # The OOD detection method in use
   method: ood.methods.linear_approximations.RadiiTrend
   method_args:
+    sampling: True
     verbose: 2
     
     latent_statistics_calculator_class: ood.methods.linear_approximations.EllipsoidCDFStatsCalculator
@@ -53,7 +54,7 @@ ood:
     visualization_args:
       with_std: False
 
-    radii_range: [0, 250]
+    radii_range: [0, 0.001]
     radii_n: 100
 
 logger:
