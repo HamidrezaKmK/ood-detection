@@ -154,9 +154,12 @@ def run_ood(config: dict, gpu_index: int = 0):
         model_root = os.environ['MODEL_DIR']
     else:
         model_root = './runs'
-        
-    model = load_model_with_checkpoints(config=config['base_model'], root=model_root)
+
     device = f"cuda:{gpu_index}" if torch.cuda.is_available() else "cpu"
+    
+    model = load_model_with_checkpoints(config=config['base_model'], root=model_root, device=device)
+    
+    
     model.to(device)
     
     ##################
@@ -358,6 +361,9 @@ if __name__ == "__main__":
     
     
     args = parser.parse_args()
+    
+    print("Running on gpu index", args.gpu_index)
+    
     conf = {
         "base_model": args.base_model,
         "data": args.data,
