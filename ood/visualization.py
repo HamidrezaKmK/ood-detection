@@ -138,6 +138,7 @@ def visualize_trends(
         x_label (str, optional): The x-axis name of the trend. Defaults to 't-values'.
         y_label (str, optional): The y-axis name of the trend. Defaults to 'scores'.
     """
+    
     mean_scores = []
     mean_minus_std = []
     mean_plus_std = []
@@ -147,7 +148,9 @@ def visualize_trends(
     
     for _, i in zip(t_values, range(scores.shape[1])):
         scores_ = scores[:, i]
-        avg_scores = np.mean(scores_)
+        avg_scores = np.nanmean(scores_)
+        scores_ = np.where(np.isnan(scores_), avg_scores, scores_)
+        
         upper_scores = scores_[scores_ >= avg_scores]
         lower_scores = scores_[scores_ <= avg_scores]
         
@@ -157,7 +160,9 @@ def visualize_trends(
         
         if reference_scores is not None:
             reference_scores_ = reference_scores[:, i]
-            avg_scores = np.mean(reference_scores_)
+            avg_scores = np.nanmean(reference_scores_)
+            reference_scores_ = np.where(np.isnan(reference_scores_), avg_scores, reference_scores_)
+            
             upper_scores = reference_scores_[reference_scores_ >= avg_scores]
             lower_scores = reference_scores_[reference_scores_ <= avg_scores]
             mean_reference_scores.append(avg_scores)
@@ -202,6 +207,7 @@ def visualize_trends(
                 )
             })
         else:
+            
             # if no reference or no STD is given, there is no reason to
             # plot line series, we can simply plot a line plot
             table = wandb.Table(data = [[x, y] for x, y in zip(t_values, mean_scores)], columns = [x_label, y_label])

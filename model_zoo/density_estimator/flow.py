@@ -12,6 +12,7 @@ from pprint import pprint
 from nflows.nn import nets as nets
 import copy
 import math
+import wandb 
 
  
 class ConfigurableCouplingTransform(Transform):
@@ -263,9 +264,12 @@ class NormalizingFlow(DensityEstimator):
 
     @batch_or_dataloader()
     def log_prob(self, x):
+            
         # NOTE: Careful with log probability when using _data_transform()
         x = self._data_transform(x)
+        
         log_prob = self._nflow.log_prob(x)
+            
         # check if log_prob has nan values, otherwise print the maximum and minimum of log_prob
         if torch.isnan(log_prob).any():
             raise ValueError("log_prob has nan values")

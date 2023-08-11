@@ -12,6 +12,17 @@ from tqdm import tqdm
 from scipy.stats import norm
 from scipy.special import logsumexp
 from .utils import stack_back_iterables
+from scipy.stats import multivariate_normal
+
+def _check_primitive(r: th.Any):
+    """
+    A simple function that checks if an input type is numerical or not
+    """
+    if isinstance(r, float):
+        return True
+    if isinstance(r, int):
+        return True
+    return False
 
 class LatentStatsCalculator:
     def __init__(
@@ -132,14 +143,9 @@ class ParallelogramStatsCalculator(LatentStatsCalculator):
         if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
             raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
         centers, radii = self.centers, self.radii
-        def _check_r_primitive():
-            if isinstance(r, float):
-                return True
-            if isinstance(r, int):
-                return True
         if self.verbose > 1:
             print("Calculating the single CDFs...")
-            if _check_r_primitive():
+            if _check_primitive(r):
                 print(f"\tr = {r}")
             
         if not use_cache or not hasattr(self, 'rects'):
@@ -169,7 +175,7 @@ class ParallelogramStatsCalculator(LatentStatsCalculator):
             rng_rects = self.rects
                 
         log_cdfs = []
-        if _check_r_primitive():
+        if _check_primitive(r):
             for rect in rng_rects:
                 diff = norm.cdf(rect[:, 0] + r / rect[:, 1]) - norm.cdf(rect[:, 0] - r / rect[:, 1])
                 log_cdfs.append(np.log(diff + self.eps).sum())
@@ -188,13 +194,131 @@ class ParallelogramLogCDF(ParallelogramStatsCalculator):
     
     def get_name(self):
         return "P(parallelogram)"
+
+    def get_label(self):
+        return "log-CDF"
     
     def calculate_statistics(self, r, loader, use_cache: bool = False):
         return self.calculate_log_cdf(r, loader, use_cache)
 
+
 # TODO: implement a convolution-based approach
 class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
-    pass
+    def __init__(
+        self,
+        *args,
+        acceleration: int = 3,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.acceleration = acceleration
+        
+    def get_name(self):
+        return "[N(0, r . I) * p_theta] (x)"
+    
+    def get_label(self):
+        return "convolution"
+    
+    def calculate_statistics(self, r, loader, use_cache: bool = False) -> np.ndarray:
+        """
+        Given two loaders of radii and centers, this function calculates the
+        CDF of each of the entailed generalized chi-squared distributions.
+        If use_cache is set to true, then this means that centers and radii have been
+        cached from before and some of the computations can be optimized.
+        
+        Args:
+            r: Union(float, List[float]) 
+                r value(s) where the cdf is evaluated.
+            use_cache: (bool)
+                Whether to use the cached centers and radii or not.
+        Returns:
+            np.ndarray: The CDF of each of the ellipsoids when the entire loader
+                is flattened. In other words, if batch_i has size sz_i and T = sum(sz_i),
+                then the returned array would have size T.
+        """
+        # get the device from loader
+        # NOTE: This is jankey, but it works for now
+        cur = loader
+        while isinstance(cur, list):
+            cur = cur[0]
+        device = cur.device
+        
+        if not use_cache:
+            self.jax, self.z_values = self.encoding_model.calculate_jacobian(loader, stack_back=True, flatten=True)
+            
+            if self.verbose > 0:
+                rng = tqdm(self.jax, desc="calculating eigendecomposition of jacobians")
+            else:
+                rng = self.jax
+            self.jjt_eigs = []
+            for j in rng:
+                if self.acceleration > 0:
+                    j = j.to(device)
+                    self.jjt_eigs.append(torch.linalg.eigvalsh(torch.matmul(j, j.transpose(1, 2))).cpu())
+                else:
+                    self.jjt_eigs.append([0 for _ in range(j.shape[0])])
+                    
+        if not hasattr(self, 'jjt_eigs') or not hasattr(self, 'z_values') or not hasattr(self, 'jax'):
+            raise ValueError("You should first calculate the jacobians before calling this function.")
+            
+        
+        # if it is not cached, then we should calculate the chi2s
+        conv = []
+        cumul_l = 0
+        cumul_r = 0
+        
+        for x_batch, jjt_eigs_batch, jac_batch, z_batch in zip(loader, self.jjt_eigs, self.jax, self.z_values):
+            
+            # cumul_l and cumul_r are the cumulative left and right indices
+            cumul_r += len(x_batch)
+            if _check_primitive(r):
+                r_ = np.repeat(r, len(x_batch))
+            else:
+                r_ = r[cumul_l:cumul_r]
+            cumul_l += len(x_batch)
+            cumul_r += len(x_batch)
+                
+            for x, jjt_eigs, J, z, r in zip(x_batch, jjt_eigs_batch, jac_batch, z_batch, r_):
+                # compute the log density of a standard Gaussian distribution
+                # with mean zero and covariance matrix (J @ J.T + r * I)
+                
+                x = x.to(device)
+                jjt_eigs = jjt_eigs.to(device)
+                J = J.to(device)
+                z = z.to(device)
+                
+                if self.acceleration >= 3:
+                    d = len(z)
+                    log_pdf = -0.5 * d * np.log(2 * np.pi)
+                    log_pdf += - 0.5 * torch.sum(torch.log(jjt_eigs + r))
+                    conv.append(log_pdf.cpu().item())
+                elif self.acceleration >= 2:
+                    # implement using torch.distributions with the multivariate normal density function
+                    pass
+                elif self.acceleration >= 1:
+                    from torch.distributions.multivariate_normal import MultivariateNormal
+                    # x = x.flatten()
+                    # mean = (x - J @ z.unsqueeze(-1)).squeeze()
+                    # print("HI before!")
+                    d = len(z)
+                    cov = J @ J.T + r * torch.eye(J.shape[0], device=device) # Must be a positive-definite matrix
+                    log_pdf = -0.5 * d * np.log(2 * np.pi)
+                    log_pdf += - 0.5 * torch.logdet(cov)
+                    conv.append(log_pdf.cpu().item())
+                    
+                    # distribution = MultivariateNormal(mean, covariance_matrix=cov)
+                    # log_pdf_value = distribution.log_prob(x)
+                    # conv.append(log_pdf_value.cpu().item())
+                elif self.acceleration >= 0:
+                    J = J.cpu().numpy()
+                    x = x.cpu().numpy().reshape(-1, 1)
+                    z = z.cpu().numpy().reshape(-1, 1)
+                    d = J.shape[0]
+                    
+                    conv.append(multivariate_normal.logpdf(x, mean=(x - J @ z).reshape(-1), cov=J @ J.T + r * np.eye(d)))
+                
+        return np.array(conv)
+
 
 class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
     """
@@ -248,6 +372,9 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
     def get_name(self):
         return "P(R^2 < r^2)"
 
+    def get_label(self):
+        return "CDF"
+    
     def calculate_single_cdf(self, r, loader, use_cache: bool = False) -> np.ndarray:
         """
         Given two loaders of radii and centers, this function calculates the
@@ -270,14 +397,10 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
         if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
             raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
         centers, radii = self.centers, self.radii
-        def _check_r_primitive():
-            if isinstance(r, float):
-                return True
-            if isinstance(r, int):
-                return True
+        
         if self.verbose > 1:
             print("Calculating the single CDFs...")
-            if _check_r_primitive():
+            if _check_primitive(r):
                 print(f"\tr = {r}")
             
         if not use_cache or not hasattr(self, 'chi2s'):
@@ -309,7 +432,7 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
                 
         # self.chi2s contains a list of flattened chi2s
         cdfs = []
-        if _check_r_primitive():
+        if _check_primitive(r):
             for chi2s in rng_chi2s:
                 from chi2comb import chi2comb_cdf
                 cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0])
@@ -335,7 +458,7 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
     def calculate_statistics(self, r, loader, use_cache: bool = False):
         return self.calculate_single_cdf(r, loader, use_cache)
     
-    def sample(self, r, loader, n_samples, use_cache = False):
+    def sample(self, r, loader, n_samples, use_cache = False, rejection_sampling = False, disregard_radii: bool = False):
         if not use_cache:
             self.centers, self.radii, self.rotations = calculate_ellipsoids(self, loader, return_rotations=True, stack_back=False)
         if not hasattr(self, 'centers') or not hasattr(self, 'radii') or not hasattr(self, 'rotations'):
@@ -360,21 +483,21 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
                 # upper bound for rejection sampling
                 d = len(cent)
                 samples = []
-                rng = tqdm(range(n_samples), desc=f"rejection sampling from batch {idx}")
+                rng = tqdm(range(n_samples), desc=f"sampling from batch {idx}")
                 for _ in rng:
                     accept = False
                     try_count = 0
                     while not accept:
-                        try_count += 1
-                        rng.set_description(f"rejection sampling from batch {idx} (try {try_count})")
+                        if rejection_sampling:
+                            try_count += 1
+                            rng.set_description(f"rejection sampling from batch {idx} (try {try_count})")
                         
                         # get a sample from a multivariate normal 
                         # and reduce it to the level set of the ellipsoid
-                        u = np.random.multivariate_normal(
-                            mean=np.zeros_like(radii),
-                            cov=np.diag(radii),
-                        )
-                        u = u / np.sqrt(np.sum(u * u) * radii)
+                        u = np.random.normal(size=d)
+                        u = u / np.linalg.norm(u, ord=2)
+                        if not disregard_radii:
+                            u = u / radii
                         
                         # get the radius (this would most probably be on the perimeter with rad=r
                         # due to high dimensionality)
@@ -382,16 +505,19 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
                         # rotate the sample back
                         z = np.matmul(rot.T, u * rad + cent)
                         
-                        # calculate the density of the sample
-                        log_prob_sample = -0.5 * np.sum(z**2) - (d/2) * np.log(2 * np.pi)
-                        tt = np.where(np.abs(cent) - r > 0, np.abs(cent) - r, 0)
-                        log_density_upper_bound = -0.5 * np.sum(tt**2) - (d/2) * np.log(2 * np.pi)
-                        
-                        log_P_accept = log_prob_sample - log_density_upper_bound
-                        log_choice = np.log(np.random.uniform())
-                        # accept the sample if the uniform value is smaller than the density
-                        
-                        accept = log_choice < log_P_accept
+                        if not rejection_sampling:
+                            accept = True
+                        else:
+                            # calculate the density of the sample
+                            log_prob_sample = -0.5 * np.sum(z**2) - (d/2) * np.log(2 * np.pi)
+                            tt = np.where(np.abs(cent) - r > 0, np.abs(cent) - r, 0)
+                            log_density_upper_bound = -0.5 * np.sum(tt**2) - (d/2) * np.log(2 * np.pi)
+                            
+                            log_P_accept = log_prob_sample - log_density_upper_bound
+                            log_choice = np.log(np.random.uniform())
+                            # accept the sample if the uniform value is smaller than the density
+                            
+                            accept = log_choice < log_P_accept
                     
                     # turn z into a torch tensor
                     sample_latent = torch.from_numpy(z).float()

@@ -45,16 +45,18 @@ def plot_likelihood_ood_histogram(
         data_loader_in (torch.utils.data.DataLoader): A dataloader for the in-distribution data
         data_loader_out (torch.utils.data.DataLoader): A dataloader for the out-of-distribution data
         limit (int, optional): The limit of number of datapoints to consider for the histogram.
-                            Defaults to 1000.
+                            Defaults to None => no limit.
     """
     # create a function that returns a list of all the likelihoods when given
     # a dataloader
+    model.eval()
     def list_all_scores(dloader: torch.utils.data.DataLoader, description: str):
         log_probs = []
         for tmp in tqdm(dloader, desc=f"Calculating likelihoods for {description}"):
             x = tmp
             
-            t = model.log_prob(x).cpu().detach()
+            with torch.no_grad():
+                t = model.log_prob(x).cpu()
             # turn t into a list of floats
             t = t.flatten()
             t = t.tolist()
@@ -262,10 +264,12 @@ def run_ood(config: dict, gpu_index: int = 0):
                 wandb.log({"data/most_probable": [wandb.Image(model.sample(-1).squeeze(), caption="max likelihood")]})
         
         def log_histograms():
+            limit = config['ood'].get('histogram_limit', None)
             img_array = plot_likelihood_ood_histogram(
                 model,
                 in_loader,
                 out_loader,
+                limit=limit,
             )
             wandb.log({"likelihood_ood_histogram": [wandb.Image(
                 img_array, caption="Histogram of log likelihoods")]})
@@ -326,7 +330,7 @@ def run_ood(config: dict, gpu_index: int = 0):
     # Call the run function of the given method
     method.run()
 
-def dysweep_run(config, checkpoint_dir, gpu_index: int = 0):
+def dysweep_compatible_run(config, checkpoint_dir, gpu_index: int = 0):
     """
     Function compatible with dysweep
     """

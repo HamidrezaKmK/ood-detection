@@ -84,7 +84,17 @@ class DGMGeneratedDataset(SupervisedDataset):
         self.cached_indices = {}
         
         self.device = device
-                        
+    
+    def get_data_min(self):
+        return 0.0
+    
+    def get_data_max(self):
+        return 255.0
+    
+    def get_data_shape(self):
+        t = self.__getitem__(0)[0].shape
+        return t
+                   
     def __len__(self):
         return self.length
 

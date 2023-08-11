@@ -47,6 +47,6 @@ def stack_back_iterables(reference_iterable, *chunky_iterables):
                 cumul_current[i] += len(t)
             if len(intermediate) > 0:
                 stacked_back_iterables[i].append(torch.cat(intermediate))
-
-    return stacked_back_iterables
+            
+    return tuple(stacked_back_iterables)
         

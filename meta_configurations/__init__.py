@@ -54,3 +54,21 @@ def change_coupling_layers(conf, coupling_name: str, additional_args: th.Optiona
         return ret
     
     return conf
+
+def get_generated_config(conf: dict):
+    return {
+        'dataset': 'dgm-generated',
+        'dgm_args': {
+            'model_loading_config': conf['base_model'],
+            'seed': 10,
+            'length': 1000,
+        }
+    }
+
+def run_name_changer(conf, run_name):
+    ret = conf['data']['in_distribution']['dataloader_args']['dataset']
+    ret += '_vs_'
+    ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']
+    ret += f"_{conf['data']['out_of_distribution']['pick_loader']}"
+    ret += f"_{run_name}"
+    return ret

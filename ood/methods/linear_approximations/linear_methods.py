@@ -132,6 +132,7 @@ class RadiiTrend(LatentBaseMethod):
         loader_buffer_size: int = 60,
         
         sampling: bool = False,
+        sampling_args: th.Optional[th.Dict[str, th.Any]] = None,
     ):
         """
         Inherits from EllipsoidBaseMethod and adds the visualization of the trend.
@@ -170,6 +171,7 @@ class RadiiTrend(LatentBaseMethod):
         self.compression_bucket_size = compression_bucket_size
         
         self.sampling = sampling
+        self.sampling_args = sampling_args or {}
             
     def calculate_radius_score(self, r, loader, use_cache: bool = False): 
         raise NotImplementedError("no calculate score defined!")
@@ -200,7 +202,7 @@ class RadiiTrend(LatentBaseMethod):
                     
                     tot = (len(loader) + self.loader_buffer_size - 1) // self.loader_buffer_size
                         
-                    radii_range.set_description(f"Calculating score for buffer [{inner_loader_idx}/{tot}]")
+                    radii_range.set_description(f"Calculating scores for loader in buffer [{inner_loader_idx}/{tot}]")
                 else:
                     radii_range = self.radii
                 
@@ -214,6 +216,7 @@ class RadiiTrend(LatentBaseMethod):
                             loader=loader, 
                             n_samples=9, 
                             use_cache=not first,
+                            **self.sampling_args,
                         )
                         for i, im in enumerate(imgs):
                             # make a grid using torchvision
@@ -224,14 +227,16 @@ class RadiiTrend(LatentBaseMethod):
                                     img_grid, caption=f"samples with distance {r}")]
                                 }
                             )
-                    first = False
-                    inner_trend.append(
-                        self.latent_statistics_calculator.calculate_statistics(
-                            r, 
-                            loader=inner_loader, 
-                            use_cache=not first,
-                        )
+                        first = False
+                    single_scores = self.latent_statistics_calculator.calculate_statistics(
+                        r, 
+                        loader=inner_loader, 
+                        use_cache=not first,
                     )
+                    inner_trend.append(
+                        single_scores
+                    )
+                    first = False
                 inner_trend = np.stack(inner_trend).T
                 
                 if trend_so_far is None:
@@ -282,7 +287,7 @@ class RadiiTrend(LatentBaseMethod):
             t_values=self.radii,
             reference_scores=reference_trend,
             x_label="r",
-            y_label=self.latent_statistics_calculator.get_name(),
+            y_label=self.latent_statistics_calculator.get_label(),
             title=f"Trend of the average {self.latent_statistics_calculator.get_name()}",
             **self.visualization_args,
         )
@@ -472,9 +477,9 @@ class LatentScore(LatentBaseMethod):
             "predef-r-score": self._predef_r_score,
         }
         x_label = {
-            "auto-r-score": f"auto-{self.latent_statistics_calculator.get_name()}",
-            "score-inv": f"{self.latent_statistics_calculator.get_name()}^(-1)",
-            "predef-r-score": f"{self.latent_statistics_calculator.get_name()}",
+            "auto-r-score": f"auto-{self.latent_statistics_calculator.get_label()}",
+            "score-inv": f"{self.latent_statistics_calculator.get_label()}-inv",
+            "predef-r-score": f"{self.latent_statistics_calculator.get_label()}",
         }
         scores = metric_name_to_func[self.metric_name](**self.metric_args)
         

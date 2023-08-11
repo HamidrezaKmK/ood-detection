@@ -34,14 +34,10 @@ ood:
   # The OOD detection method in use
   method: ood.methods.linear_approximations.RadiiTrend
   method_args:
-    sampling: True
-    sampling_args:
-      rejection_sampling: False
-      disregard_radii: True
-      
+    sampling: False
     verbose: 2
     
-    latent_statistics_calculator_class: ood.methods.linear_approximations.EllipsoidCDFStatsCalculator
+    latent_statistics_calculator_class: ood.methods.linear_approximations.GaussianConvolutionStatsCalculator
     latent_statistics_calculator_args:
       encoding_model_class: ood.methods.linear_approximations.EncodingFlow
       encoding_model_args:
@@ -51,17 +47,18 @@ ood:
         use_vmap: False
         verbose: 2
 
-      verbose: 0
+      verbose: 1
+      acceleration: 1
     
     include_reference: False
     
     visualization_args:
       with_std: False
 
-    radii_range: [0, 0.001]
-    radii_n: 100
+    radii_range: [0, 0.1]
+    radii_n: 1000
 
 logger:
   project: ood-detection-single-runs
   entity: dgm-l6
-  name: rq_nsf_cifar10_vs_cifar10
+  name: rq_nsf_cifar10_vs_cifar10_conv

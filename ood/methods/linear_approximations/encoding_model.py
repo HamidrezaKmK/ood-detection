@@ -6,6 +6,7 @@ import torch
 from tqdm import tqdm
 import typing as th
 from .utils import stack_back_iterables
+import numpy as np
 
 class EncodingModel:
     """
@@ -54,7 +55,7 @@ class EncodingModel:
         """Encodes the input 'x' onto a standard Gaussian Latent Space."""
         raise NotImplementedError("You must implement an encode method for your model.")
     
-    def calculate_jacobian(self, loader, stack_back: bool = True):
+    def calculate_jacobian(self, loader, stack_back: bool = True, flatten: bool = True):
         """
         This function takes in a loader of the form
         [
@@ -93,6 +94,8 @@ class EncodingModel:
                 step = z.shape[0]
             
             progress = 0
+            half_len = None
+            
             for l in range(0, z.shape[0], step):
                 progress += 1
                 if self.verbose > 1:
@@ -121,19 +124,36 @@ class EncodingModel:
 
                 # Reshaping the jacobian to be of the shape (batch_size, latent_dim, latent_dim)
                 if self.use_vmap:
-                    jac = jac_until_now.reshape(z_s.shape[0], -1, z_s.numel() // z_s.shape[0])
+                    if flatten:
+                        jac = jac_until_now.reshape(z_s.shape[0], -1, z_s.numel() // z_s.shape[0])
+                    else:
+                        jac = jac_until_now
                 else:
-                    jac_until_now = jac_until_now.reshape(z_s.shape[0], -1, z_s.shape[0], z_s.numel() // z_s.shape[0])
+                    if flatten:
+                        jac_until_now = jac_until_now.reshape(z_s.shape[0], -1, z_s.shape[0], z_s.numel() // z_s.shape[0])
                     jac = []
+                    
+                    if half_len is None:
+                        half_len = 0
+                        while np.prod(jac_until_now.shape[:half_len]) != np.prod(jac_until_now.shape[half_len:]):
+                            half_len += 1
+                    
                     for j in range(jac_until_now.shape[0]):
-                        jac.append(jac_until_now[j, :, j, :])
+                        slice_indices = [j] + [slice(None)] * (half_len - 1) + [j] + [slice(None)] * (len(jac_until_now) - half_len - 1)
+                        jac.append(jac_until_now[tuple(slice_indices)])
                     jac = torch.stack(jac)
                 
+                if flatten:
+                    z_s = z_s.reshape(z_s.shape[0], -1)
+                    
                 z_values.append(z_s.cpu().detach())
                 jax.append(jac.cpu().detach())
-                        
-        return stack_back_iterables(loader, jax, z_values) if stack_back else jax, z_values
-
+        
+        if stack_back:
+            return stack_back_iterables(loader, jax, z_values)
+        else:
+            return jax, z_values
+        
 
 # TODO: Implement the VAE models here                
 class EncodingVAE(EncodingModel):
