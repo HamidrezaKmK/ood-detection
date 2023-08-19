@@ -221,10 +221,17 @@ class RadiiTrend(LatentBaseMethod):
                         for i, im in enumerate(imgs):
                             # make a grid using torchvision
                             img_grid = torchvision.utils.make_grid(im, nrow=3)
+                            with torch.no_grad():
+                                im_ = im.to(self.likelihood_model.device)
+                                # Replace all the NaN and inf values in im_ with 0
+                                im_ = torch.where(torch.isnan(im_), torch.zeros_like(im_), im_)
+                                im_ = torch.where(torch.isinf(im_), torch.zeros_like(im_), im_)
+                                log_probs = self.likelihood_model.log_prob(im_)
+                                log_probs = log_probs.cpu()
                             wandb.log(
                                 {
                                     f"trend/vicinity_samples/{i+1}": [wandb.Image(
-                                    img_grid, caption=f"samples with distance {r}")]
+                                    img_grid, caption=f"samples with distance {r}\nexpected log_prob: {log_probs.mean().item()}")]
                                 }
                             )
                         first = False
