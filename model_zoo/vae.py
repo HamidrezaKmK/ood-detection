@@ -6,6 +6,8 @@ from .generalized_autoencoder import GeneralizedAutoEncoder
 from .utils import batch_or_dataloader
 from .distributions import diagonal_gaussian_log_prob, diagonal_gaussian_entropy, diagonal_gaussian_sample
 
+class IAFVAE(GeneralizedAutoEncoder, DensityEstimator):
+    pass
 
 class GaussianVAE(GeneralizedAutoEncoder, DensityEstimator):
     model_type = "vae"
