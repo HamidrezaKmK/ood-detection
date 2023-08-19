@@ -6,6 +6,7 @@ from .supervised_dataset import SupervisedDataset
 import requests
 from tqdm import tqdm
 
+# The list of all the datasets that are currently supported:
 SUPPORTED_IMAGE_DATASETS = [
     "celeba-small", 
     "celeba",
