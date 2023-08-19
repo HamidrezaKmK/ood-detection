@@ -29,7 +29,7 @@ class LatentStatsCalculator:
         self,
         likelihood_model: torch.nn.Module,
         # Encoding and decoding model
-        encoding_model_class: th.Optional[str] = None, 
+        encoding_model_class: th.Optional[th.Union[str, type]] = None, 
         encoding_model_args: th.Optional[th.Dict[str, th.Any]] = None,
         # verbosity
         verbose: int = 0,
@@ -458,7 +458,15 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
     def calculate_statistics(self, r, loader, use_cache: bool = False):
         return self.calculate_single_cdf(r, loader, use_cache)
     
-    def sample(self, r, loader, n_samples, use_cache = False, rejection_sampling = False, disregard_radii: bool = False):
+    def sample(
+        self, 
+        r, 
+        loader, 
+        n_samples, 
+        use_cache = False, 
+        rejection_sampling = False, 
+        disregard_radii: bool = False
+    ):
         if not use_cache:
             self.centers, self.radii, self.rotations = calculate_ellipsoids(self, loader, return_rotations=True, stack_back=False)
         if not hasattr(self, 'centers') or not hasattr(self, 'radii') or not hasattr(self, 'rotations'):
@@ -471,7 +479,13 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
         # calculate the upper bound of the density values for a Gaussian distribution with 
         # dimesion latent_dim and covariance matrix I
         idx = 0
-        for cents, radiis, rots in zip(self.centers, self.radii, self.rotations):
+        
+        if self.verbose > 0:
+            outer_range = tqdm(zip(self.centers, self.radii, self.rotations), desc="sampling from ellipsoids", total=len(self.centers))
+        else:
+            outer_range = zip(self.centers, self.radii, self.rotations)
+            
+        for cents, radiis, rots in outer_range:
             for cent, radii, rot in zip(cents, radiis, rots):
                 idx += 1
                 # turn everything into numpy arrays first
@@ -483,7 +497,11 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
                 # upper bound for rejection sampling
                 d = len(cent)
                 samples = []
-                rng = tqdm(range(n_samples), desc=f"sampling from batch {idx}")
+                if self.verbose > 1:
+                    rng = tqdm(range(n_samples), desc=f"sampling from batch {idx}")
+                else:
+                    rng = range(n_samples)
+                    
                 for _ in rng:
                     accept = False
                     try_count = 0
