@@ -52,9 +52,7 @@ def plot_likelihood_ood_histogram(
     model.eval()
     def list_all_scores(dloader: torch.utils.data.DataLoader, description: str):
         log_probs = []
-        for tmp in tqdm(dloader, desc=f"Calculating likelihoods for {description}"):
-            x = tmp
-            
+        for x in tqdm(dloader, desc=f"Calculating likelihoods for {description}"):
             with torch.no_grad():
                 t = model.log_prob(x).cpu()
             # turn t into a list of floats
