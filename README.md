@@ -44,7 +44,7 @@ python main_ood.py --config configurations/ood/simple_rq_nsf_fmnist_mnist.yaml
 
 For more information on how to define these configurations, please check out our comments in the `yaml` files that we have provided alongside our configuration [guide](./configurations/README.md).
 
-## Performing sweeps
+## Performing Sweeps and Group Experiments
 
 We use [dysweep](https://github.com/HamidrezaKmK/dysweep) for grouping together our experiments and performing sweeps. All the sweep configurations lie in [ood-meta](./meta_configurations/ood/) for OOD-detection-related configuration groups, and [training-meta](./meta_configurations/training/) for training-related configuration groups. To create a sweep, you can run the following:
 
