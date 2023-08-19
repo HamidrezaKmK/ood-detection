@@ -7,6 +7,7 @@ from tqdm import tqdm
 import typing as th
 from .utils import stack_back_iterables
 import numpy as np
+import functools
 
 class EncodingModel:
     """
@@ -116,7 +117,7 @@ class EncodingModel:
                     jac_fn = torch.func.jacfwd if self.use_forward_mode else torch.func.jacrev
                     if self.use_vmap:
                         # optimized implementation with vmap, however, it does not work as of yet
-                        jac_until_now = torch.func.vmap(jac_fn(self.decode))(z_s)
+                        jac_until_now = torch.func.vmap(jac_fn(functools.partial(self.decode, batchwise=False)))(z_s)
                     else:
                         jac_until_now = jac_fn(self.decode)(z_s)
                 else:
@@ -139,7 +140,7 @@ class EncodingModel:
                             half_len += 1
                     
                     for j in range(jac_until_now.shape[0]):
-                        slice_indices = [j] + [slice(None)] * (half_len - 1) + [j] + [slice(None)] * (len(jac_until_now) - half_len - 1)
+                        slice_indices = [j] + [slice(None)] * (half_len - 1) + [j] + [slice(None)] * (len(jac_until_now.shape) - half_len - 1)
                         jac.append(jac_until_now[tuple(slice_indices)])
                     jac = torch.stack(jac)
                 
@@ -170,37 +171,25 @@ class EncodingFlow(EncodingModel):
         super().__init__(*args, **kwargs)
         self.error_count = 0
         
-    def encode(self, x):
+    def encode(self, x, batchwise: bool = True):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters
         # self.likelihood_model.eval()
         with torch.no_grad():
-            try:
-                # x = self.likelihood_model._data_transform(x)
+            if batchwise:
                 z = self.likelihood_model._nflow.transform_to_noise(x)
-            except ValueError as e:
-                if self.error_count > 0:
-                    self.error_count = 0
-                    raise e
-                
-                self.error_count += 1
-                z = self.encode(x.unsqueeze(0)).squeeze(0)
-                
-            return z
+            else:
+                z = self.likelihood_model._nflow.transform_to_noise(x.unsqueeze(0)).squeeze(0)
+        return z
 
-    def decode(self, z):
+    def decode(self, z, batchwise: bool = True):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters
         # self.likelihood_model.eval()
         with torch.no_grad():
-            try:
+            if batchwise:
                 x, logdets = self.likelihood_model._nflow._transform.inverse(z)
-                # x = self.likelihood_model._inverse_data_transform(x)
-            except ValueError as e:
-                if self.error_count > 0:
-                    self.error_count = 0
-                    raise e
-                
-                self.error_count += 1
-                x = self.decode(z.unsqueeze(0)).squeeze(0)
-            return x
+            else:
+                x, logdets = self.likelihood_model._nflow._transform.inverse(z.unsqueeze(0))
+                x = x.squeeze(0)
+        return x
