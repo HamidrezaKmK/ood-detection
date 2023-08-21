@@ -401,13 +401,9 @@ class TinyImageNet(Dataset):
         all_image_files = []
         for fold in folds:
             if fold == 'train':
-                # /h/hamidk/ood-detection/data/tiny-imagenet/tiny-imagenet/tiny-imagenet-200
-                # print("root", os.path.join(self.root_dir, "tiny-imagenet-200", fold, '*'))
                 subfolders = glob.glob(os.path.join(self.root_dir, "tiny-imagenet-200", fold, '*'))
-                # print("Subfolders", subfolders)
                 for f in subfolders:
                     image_files = glob.glob(os.path.join(f, 'images/', '*.JPEG'))
-                    # print(len(image_files))
                     all_image_files.extend(image_files)
             else:
                 image_files = glob.glob(os.path.join(self.root_dir, "tiny-imagenet-200", fold, 'images', '*.JPEG'))
