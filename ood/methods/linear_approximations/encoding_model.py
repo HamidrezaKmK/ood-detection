@@ -175,21 +175,21 @@ class EncodingFlow(EncodingModel):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters
         # self.likelihood_model.eval()
-        with torch.no_grad():
-            if batchwise:
-                z = self.likelihood_model._nflow.transform_to_noise(x)
-            else:
-                z = self.likelihood_model._nflow.transform_to_noise(x.unsqueeze(0)).squeeze(0)
+        # with torch.no_grad():
+        if batchwise:
+            z = self.likelihood_model._nflow.transform_to_noise(x)
+        else:
+            z = self.likelihood_model._nflow.transform_to_noise(x.unsqueeze(0)).squeeze(0)
         return z
 
     def decode(self, z, batchwise: bool = True):
         # turn off the gradient for faster computation
         # because we don't need to change the model parameters
         # self.likelihood_model.eval()
-        with torch.no_grad():
-            if batchwise:
-                x, logdets = self.likelihood_model._nflow._transform.inverse(z)
-            else:
-                x, logdets = self.likelihood_model._nflow._transform.inverse(z.unsqueeze(0))
-                x = x.squeeze(0)
+        # with torch.no_grad():
+        if batchwise:
+            x, logdets = self.likelihood_model._nflow._transform.inverse(z)
+        else:
+            x, logdets = self.likelihood_model._nflow._transform.inverse(z.unsqueeze(0))
+            x = x.squeeze(0)
         return x
