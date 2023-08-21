@@ -17,34 +17,45 @@ class EncodingModel:
     And for a VAE model, that would be running the encoder and the decoder.
 
     Moreover, this class has a set of knobs designed for optimizing the computation
-    of the Jacobian.
+    of the Jacobian and heavily uses functorch functionalities if specified.
     """
     def __init__(
         self,
         likelihood_model: torch.nn.Module,
-        # These are computation-related knobs
-        # For example, with use_functorch and use_forward_mode
-        # you can specify how to compute the Jacobian
-        # With computation_batch_size you determine how large your jacobian batch
-        # is going to be
         use_vmap: bool = False,
         use_functorch: bool = True,
         use_forward_mode: bool = True,
-        computation_batch_size: th.Optional[int] = None,
+        chunk_size: th.Optional[int] = None,
         # verbosity
         verbose: int = 0,
     ) -> None:
+        """
+        likelihood_model:   The likelihood model that is used for the encoding and decoding, it is of type
+                            torch.nn.Module
+        use_vmap:           Whether to use the vmap function of functorch or not.
+        use_functorch:      Whether to use functorch or not. If set to False, then the torch.autograd.functional
+        use_forward_mode:   Whether to use the forward mode or the reverse mode of functorch.
+        chunk_size:         The size of the chunks to be used for the computation of the Jacobian. If set to None,
+                            then the whole batch is used for the computation of the Jacobian.
+        verbose:            The verbosity level of the computation. If set to 0, then no progress bar is shown.  
+                            if verbose > 0, then a progress bar is shown for the computation of the Jacobian. 
+        """
         
         self.likelihood_model = likelihood_model
         
         # Set the model to evaluation mode if its not already!
         # This is because we need the model to act in a deterministic way
         self.likelihood_model.eval()
-        
+        # iterate over all the parameters of likelihood_model and turn off their gradients
+        # this is because we assume that we don't want to change the parameters of the model
+        # and do any training anymore
+        for param in self.likelihood_model.parameters():
+            param.requires_grad = False
+            
         self.use_functorch = use_functorch
         self.use_forward_mode = use_forward_mode
         self.use_vmap = use_vmap
-        self.computation_batch_size = computation_batch_size
+        self.chunk_size = chunk_size
         
         self.verbose = verbose
     
@@ -56,7 +67,11 @@ class EncodingModel:
         """Encodes the input 'x' onto a standard Gaussian Latent Space."""
         raise NotImplementedError("You must implement an encode method for your model.")
     
-    def calculate_jacobian(self, loader, stack_back: bool = True, flatten: bool = True):
+    def calculate_jacobian(
+        self, 
+        loader, 
+        flatten: bool = True
+    ):
         """
         This function takes in a loader of the form
         [
@@ -70,10 +85,13 @@ class EncodingModel:
         This function calculates the encoding of each of the datapoints,
         then using the latent representation, calculates the Jacobian of
         the decoded function. This is done batch-wise to optimize the computation.
+        
+        Args:
+            loader:     The loader of the data points.
         """
     
-        
-        if self.verbose > 1:
+        # set a progress bar if verbose > 0
+        if self.verbose > 0:
             loader_decorated = tqdm(loader)
         else:
             loader_decorated = loader
@@ -82,6 +100,7 @@ class EncodingModel:
         z_values = []
            
         for x_batch in loader_decorated:
+            
             # encode to obtain the latent representation in the Gaussian space
             x_batch_transformed = self.likelihood_model._data_transform(x_batch)
             
@@ -90,8 +109,8 @@ class EncodingModel:
                 
             # Since Jacobian computation is heavier than the normal batch_wise
             # computations, we have another level of batching here
-            step = self.computation_batch_size
-            if self.computation_batch_size is None:
+            step = self.chunk_size
+            if self.chunk_size is None:
                 step = z.shape[0]
             
             progress = 0
@@ -124,7 +143,7 @@ class EncodingModel:
                     jac_until_now = torch.autograd.functional.jacobian(self.decode, z_s)
 
                 # Reshaping the jacobian to be of the shape (batch_size, latent_dim, latent_dim)
-                if self.use_vmap:
+                if self.use_vmap and self.use_functorch:
                     if flatten:
                         jac = jac_until_now.reshape(z_s.shape[0], -1, z_s.numel() // z_s.shape[0])
                     else:
@@ -143,17 +162,14 @@ class EncodingModel:
                         slice_indices = [j] + [slice(None)] * (half_len - 1) + [j] + [slice(None)] * (len(jac_until_now.shape) - half_len - 1)
                         jac.append(jac_until_now[tuple(slice_indices)])
                     jac = torch.stack(jac)
-                
                 if flatten:
                     z_s = z_s.reshape(z_s.shape[0], -1)
-                    
                 z_values.append(z_s.cpu().detach())
                 jax.append(jac.cpu().detach())
+
         
-        if stack_back:
-            return stack_back_iterables(loader, jax, z_values)
-        else:
-            return jax, z_values
+        # return jax, z_values 
+        return stack_back_iterables(loader, jax, z_values)
         
 
 # TODO: Implement the VAE models here                

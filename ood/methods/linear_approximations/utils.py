@@ -32,21 +32,28 @@ def stack_back_iterables(reference_iterable, *chunky_iterables):
     stacked_back_iterables = [[] for _ in chunky_iterables]
     cumul_ref = 0
     cumul_current = [0 for _ in chunky_iterables]
+    current_loaders = [iter(current_loader) for current_loader in chunky_iterables]
     
     for b in reference_iterable:
         cumul_ref += len(b)
         
-        for i, current_loader in enumerate(chunky_iterables):
+        for i, current_loader in enumerate(current_loaders):
+            # if i == 1:
+            #     for tt in current_loader:
+            #         print(tt)
+            #     print("(())")
             # if current_loader is not iterable, then make it iterable
-            current_loader = iter(current_loader) 
             
             intermediate = []
             while cumul_current[i] < cumul_ref:
                 t = next(current_loader)
+                
+                
                 intermediate.append(t)
                 cumul_current[i] += len(t)
             if len(intermediate) > 0:
-                stacked_back_iterables[i].append(torch.cat(intermediate))
+                intermediate = torch.cat(intermediate)
+                stacked_back_iterables[i].append(intermediate)
             
     return tuple(stacked_back_iterables)
         

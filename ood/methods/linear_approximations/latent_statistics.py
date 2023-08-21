@@ -48,7 +48,6 @@ def calculate_ellipsoids(
     stats_calculator: LatentStatsCalculator, 
     loader, 
     return_rotations: bool = False, 
-    stack_back: bool = False, 
     device = None
 ):
     """
@@ -76,7 +75,7 @@ def calculate_ellipsoids(
     if return_rotations:
         rotations = []
     
-    jax, z_values = stats_calculator.encoding_model.calculate_jacobian(loader, stack_back=False)
+    jax, z_values = stats_calculator.encoding_model.calculate_jacobian(loader)
     
     if stats_calculator.verbose > 1:
         iterable = tqdm(zip(jax, z_values))
@@ -108,7 +107,7 @@ def calculate_ellipsoids(
     if return_rotations:
         return all_ret + [rotations]
     
-    return stack_back_iterables(loader, *all_ret) if stack_back else all_ret
+    return stack_back_iterables(loader, *all_ret)
     
 class ParallelogramStatsCalculator(LatentStatsCalculator):
     def __init__(
@@ -244,7 +243,7 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
         device = cur.device
         
         if not use_cache:
-            self.jax, self.z_values = self.encoding_model.calculate_jacobian(loader, stack_back=True, flatten=True)
+            self.jax, self.z_values = self.encoding_model.calculate_jacobian(loader, flatten=True)
             
             if self.verbose > 0:
                 rng = tqdm(self.jax, desc="calculating eigendecomposition of jacobians")
@@ -468,7 +467,7 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
         disregard_radii: bool = False
     ):
         if not use_cache:
-            self.centers, self.radii, self.rotations = calculate_ellipsoids(self, loader, return_rotations=True, stack_back=False)
+            self.centers, self.radii, self.rotations = calculate_ellipsoids(self, loader, return_rotations=True)
         if not hasattr(self, 'centers') or not hasattr(self, 'radii') or not hasattr(self, 'rotations'):
             raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
         
