@@ -161,6 +161,12 @@ class Sphere(SupervisedDataset):
         self.x = f.pad(torch.Tensor(sphere_points),
                             pad=(0, self.ambient_dim - self.manifold_dim - 1, 0, 0))
         self.y = torch.zeros(self.x.shape[0]).long()
+    
+    def get_data_min(self):
+        return torch.min(self.x)
+
+    def get_data_max(self):
+        return torch.max(self.x)
 
 
 class KleinBottle(SupervisedDataset):

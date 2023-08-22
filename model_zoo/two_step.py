@@ -215,13 +215,10 @@ class TwoStepComponent(nn.Module):
             return (1, *self.data_shape)
 
     def _data_transform(self, data):
-        # print("1", data)
         if self.flatten:
             data = data.flatten(start_dim=1)
-        # print("2", data)
         if self.denoising_sigma is not None and self.training:
             data = data + torch.randn_like(data) * self.denoising_sigma
-        # print("3", data)
         if self.dequantize:
             data = data + torch.rand_like(data)
         if self.scale_data:
@@ -237,7 +234,10 @@ class TwoStepComponent(nn.Module):
         if self.logit_transform:
             data = torch.sigmoid(data)
         if self.scale_data:
-            data = data * (self.abs_data_max + self.dequantize)
+            if self.dequantize:
+                data = data * (self.abs_data_max + 1.0)
+            else:
+                data = data * self.abs_data_max
         elif self.whitening_transform:
             data = data * self.whitening_sigma
             data = data + self.whitening_mu

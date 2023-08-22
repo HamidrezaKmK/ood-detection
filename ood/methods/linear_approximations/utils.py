@@ -38,12 +38,6 @@ def stack_back_iterables(reference_iterable, *chunky_iterables):
         cumul_ref += len(b)
         
         for i, current_loader in enumerate(current_loaders):
-            # if i == 1:
-            #     for tt in current_loader:
-            #         print(tt)
-            #     print("(())")
-            # if current_loader is not iterable, then make it iterable
-            
             intermediate = []
             while cumul_current[i] < cumul_ref:
                 t = next(current_loader)

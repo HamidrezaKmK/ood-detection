@@ -95,7 +95,28 @@ class OmitLabels(torch.utils.data.Dataset):
             return ret[0]
         else:
             return ret
-        
+    def get_data_min(self):
+        # check if self.dset has a method with the same name
+        if hasattr(self.dset, "get_data_min"):
+            return self.dset.get_data_min()
+        if isinstance(self.dset, SupervisedDataset):
+            return self.dset.x.min()
+        raise Exception("No method get_data_min found in the dataset!")
+
+    def get_data_max(self):
+        if hasattr(self.dset, "get_data_max"):
+            return self.dset.get_data_max()
+        if isinstance(self.dset, SupervisedDataset):
+            return self.dset.x.max()
+        raise Exception("No method get_data_max found in the dataset!")
+    
+    def get_data_shape(self):
+        if hasattr(self.dset, "get_data_shape"):
+            return self.dset.get_data_shape()
+        if isinstance(self.dset, SupervisedDataset):
+            return self.dset.x.shape[1:]
+        raise Exception("No method get_data_shape found in the dataset!")
+       
     def to(self, device):
         self.dset = self.dset.to(device)
         return self

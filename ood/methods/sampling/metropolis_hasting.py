@@ -142,15 +142,6 @@ class MetropolisHastingEstimator(OODBaseMethod):
                         
                         radii_range.set_description("Acceptance rate: %.2f [%d/%d]" % (accept.sum() / x.shape[0], _, self.sample_count))
                         
-                        # print("***")
-                        # print(">> DBG going with the following STD:", proposal_std)
-                        # print("R =", R, "r =", r)
-                        # print("Norm", torch.norm((new_samples - x).reshape(x.shape[0], -1), p=2, dim=-1))
-                        # print(new_log_probs)
-                        # print(prev_log_probs)
-                        # print(in_R_range)
-                        # print(in_r_range)
-                        # print("***")
                         
                         new_vals = np.where(in_r_range, new_log_probs, np.full((x.shape[0],), -float('inf')))
                         cumul_log_cdf = np.where(
@@ -163,7 +154,6 @@ class MetropolisHastingEstimator(OODBaseMethod):
                     
                     inner_trend.append(cumul_log_cdf)
                 inner_trend = np.concatenate(inner_trend, axis=0)
-                print(r, R, inner_trend)
                 trend.append(inner_trend)
                 
                 r = R

@@ -35,6 +35,9 @@ base_config:
     # for reproducibility
     seed: 10
   ood:
+    # to bypass or not to bypass
+    bypass_visualization: False
+
     pick_single: False
     use_dataloader: True
     seed: 100
@@ -57,7 +60,7 @@ base_config:
       latent_statistics_calculator_args:
         encoding_model_class: ood.methods.linear_approximations.EncodingFlow
         encoding_model_args:
-          computation_batch_size: 2
+          chunk_size: 1
           use_functorch: True
           use_forward_mode: True
           use_vmap: False
@@ -85,7 +88,7 @@ sweep_configuration:
           method_args:
             sampling_args:
               disregard_radii: False
-            radii_range: [0, 0.001]
+            radii_range: [0, 0.05]
             radii_n: 10
       - ood:
           method_args:

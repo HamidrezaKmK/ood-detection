@@ -8,6 +8,7 @@ import typing as th
 from .utils import stack_back_iterables
 import numpy as np
 import functools
+import wandb
 
 class EncodingModel:
     """
@@ -28,6 +29,8 @@ class EncodingModel:
         chunk_size: th.Optional[int] = None,
         # verbosity
         verbose: int = 0,
+        #
+        diff_transform: bool = False,
     ) -> None:
         """
         likelihood_model:   The likelihood model that is used for the encoding and decoding, it is of type
@@ -58,6 +61,8 @@ class EncodingModel:
         self.chunk_size = chunk_size
         
         self.verbose = verbose
+        
+        self.diff_transform = diff_transform
     
     def decode(self, z):
         """Decodes the input from a standard Gaussian latent space 'z' onto the data space."""
@@ -101,10 +106,12 @@ class EncodingModel:
            
         for x_batch in loader_decorated:
             
+            if not self.diff_transform:
+                x_batch = self.likelihood_model._data_transform(x_batch)
+                
             # encode to obtain the latent representation in the Gaussian space
-            x_batch_transformed = self.likelihood_model._data_transform(x_batch)
             
-            z = self.encode(x_batch_transformed)
+            z = self.encode(x_batch)
             # count the number of NaNs in z
                 
             # Since Jacobian computation is heavier than the normal batch_wise
@@ -142,6 +149,7 @@ class EncodingModel:
                 else:
                     jac_until_now = torch.autograd.functional.jacobian(self.decode, z_s)
 
+                
                 # Reshaping the jacobian to be of the shape (batch_size, latent_dim, latent_dim)
                 if self.use_vmap and self.use_functorch:
                     if flatten:
@@ -192,6 +200,8 @@ class EncodingFlow(EncodingModel):
         # because we don't need to change the model parameters
         # self.likelihood_model.eval()
         # with torch.no_grad():
+        if self.diff_transform:
+            x = self.likelihood_model._data_transform(x)
         if batchwise:
             z = self.likelihood_model._nflow.transform_to_noise(x)
         else:
@@ -203,9 +213,14 @@ class EncodingFlow(EncodingModel):
         # because we don't need to change the model parameters
         # self.likelihood_model.eval()
         # with torch.no_grad():
+        
         if batchwise:
             x, logdets = self.likelihood_model._nflow._transform.inverse(z)
         else:
             x, logdets = self.likelihood_model._nflow._transform.inverse(z.unsqueeze(0))
             x = x.squeeze(0)
+        
+        if self.diff_transform:
+            x = self.likelihood_model._inverse_data_transform(x)
+
         return x

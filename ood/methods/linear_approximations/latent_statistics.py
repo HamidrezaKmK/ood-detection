@@ -13,6 +13,7 @@ from scipy.stats import norm
 from scipy.special import logsumexp
 from .utils import stack_back_iterables
 from scipy.stats import multivariate_normal
+from math import sqrt
 
 def _check_primitive(r: th.Any):
     """
@@ -93,6 +94,7 @@ def calculate_ellipsoids(
         ellipsoids = torch.matmul(jac.transpose(1, 2), jac)
         
         L, Q = torch.linalg.eigh(ellipsoids)
+        
         # Each row of L would contain the scales of the non-central chi-squared distribution
         center = torch.matmul(Q.transpose(1, 2), z.unsqueeze(-1)).squeeze(-1)
         
@@ -206,11 +208,9 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
     def __init__(
         self,
         *args,
-        acceleration: int = 3,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.acceleration = acceleration
         
     def get_name(self):
         return "[N(0, r . I) * p_theta] (x)"
@@ -218,6 +218,27 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
     def get_label(self):
         return "convolution"
     
+    def _prep_cache(self, loader, use_cache, device):
+        
+        if not use_cache:
+            self.jax, self.z_values = self.encoding_model.calculate_jacobian(loader, flatten=True)
+            
+            if self.verbose > 0:
+                rng = tqdm(self.jax, desc="calculating eigendecomposition of jacobians")
+            else:
+                rng = self.jax
+            self.jjt_eigvals = []
+            self.jjt_eigvecs = []
+            
+            for j in rng:
+                j = j.to(device)
+                L, Q = torch.linalg.eigh(torch.matmul(j, j.transpose(1, 2)))
+                self.jjt_eigvals.append(L.cpu())
+                self.jjt_eigvecs.append(Q.cpu())
+                
+        if not hasattr(self, 'jjt_eigvals') or not hasattr(self, 'jjt_eigvecs') or not hasattr(self, 'z_values') or not hasattr(self, 'jax'):
+            raise ValueError("You should first calculate the jacobians before calling this function.")
+            
     def calculate_statistics(self, r, loader, use_cache: bool = False) -> np.ndarray:
         """
         Given two loaders of radii and centers, this function calculates the
@@ -238,35 +259,21 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
         # get the device from loader
         # NOTE: This is jankey, but it works for now
         cur = loader
-        while isinstance(cur, list):
-            cur = cur[0]
+        if not isinstance(cur, list):
+            cur = next(iter(cur))
+        else:
+            while isinstance(cur, list):
+                cur = cur[0]
         device = cur.device
         
-        if not use_cache:
-            self.jax, self.z_values = self.encoding_model.calculate_jacobian(loader, flatten=True)
-            
-            if self.verbose > 0:
-                rng = tqdm(self.jax, desc="calculating eigendecomposition of jacobians")
-            else:
-                rng = self.jax
-            self.jjt_eigs = []
-            for j in rng:
-                if self.acceleration > 0:
-                    j = j.to(device)
-                    self.jjt_eigs.append(torch.linalg.eigvalsh(torch.matmul(j, j.transpose(1, 2))).cpu())
-                else:
-                    self.jjt_eigs.append([0 for _ in range(j.shape[0])])
-                    
-        if not hasattr(self, 'jjt_eigs') or not hasattr(self, 'z_values') or not hasattr(self, 'jax'):
-            raise ValueError("You should first calculate the jacobians before calling this function.")
-            
+        self._prep_cache(loader, use_cache, device)
         
         # if it is not cached, then we should calculate the chi2s
         conv = []
         cumul_l = 0
         cumul_r = 0
         
-        for x_batch, jjt_eigs_batch, jac_batch, z_batch in zip(loader, self.jjt_eigs, self.jax, self.z_values):
+        for x_batch, jjt_eigvals_batch, jjt_eigvecs_batch, jac_batch, z_batch in zip(loader, self.jjt_eigvals, self.jjt_eigvecs, self.jax, self.z_values):
             
             # cumul_l and cumul_r are the cumulative left and right indices
             cumul_r += len(x_batch)
@@ -277,46 +284,102 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
             cumul_l += len(x_batch)
             cumul_r += len(x_batch)
                 
-            for x, jjt_eigs, J, z, r in zip(x_batch, jjt_eigs_batch, jac_batch, z_batch, r_):
+            for x_0, jjt_eigvals, jjt_rot, jac, z_0, r in zip(x_batch, jjt_eigvals_batch, jjt_eigvecs_batch, jac_batch, z_batch, r_):
                 # compute the log density of a standard Gaussian distribution
                 # with mean zero and covariance matrix (J @ J.T + r * I)
                 
-                x = x.to(device)
-                jjt_eigs = jjt_eigs.to(device)
-                J = J.to(device)
-                z = z.to(device)
+                x_0 = x_0.to(device)
+                jjt_eigvals = jjt_eigvals.to(device)
+                jjt_rot = jjt_rot.to(device)
+                jac = jac.to(device)
+                z_0 = z_0.to(device)
                 
-                if self.acceleration >= 3:
-                    d = len(z)
-                    log_pdf = -0.5 * d * np.log(2 * np.pi)
-                    log_pdf += - 0.5 * torch.sum(torch.log(jjt_eigs + r))
-                    conv.append(log_pdf.cpu().item())
-                elif self.acceleration >= 2:
-                    # implement using torch.distributions with the multivariate normal density function
-                    pass
-                elif self.acceleration >= 1:
-                    from torch.distributions.multivariate_normal import MultivariateNormal
-                    # x = x.flatten()
-                    # mean = (x - J @ z.unsqueeze(-1)).squeeze()
-                    # print("HI before!")
-                    d = len(z)
-                    cov = J @ J.T + r * torch.eye(J.shape[0], device=device) # Must be a positive-definite matrix
-                    log_pdf = -0.5 * d * np.log(2 * np.pi)
-                    log_pdf += - 0.5 * torch.logdet(cov)
-                    conv.append(log_pdf.cpu().item())
-                    
-                    # distribution = MultivariateNormal(mean, covariance_matrix=cov)
-                    # log_pdf_value = distribution.log_prob(x)
-                    # conv.append(log_pdf_value.cpu().item())
-                elif self.acceleration >= 0:
-                    J = J.cpu().numpy()
-                    x = x.cpu().numpy().reshape(-1, 1)
-                    z = z.cpu().numpy().reshape(-1, 1)
-                    d = J.shape[0]
-                    
-                    conv.append(multivariate_normal.logpdf(x, mean=(x - J @ z).reshape(-1), cov=J @ J.T + r * np.eye(d)))
+                d = len(z_0)
+                # end up computing log density of N(x_0 - J . z_0, J J^T + r.I) (x0)
+                
+                log_pdf = -0.5 * d * np.log(2 * np.pi)
+                log_pdf += - 0.5 * torch.sum(torch.log(jjt_eigvals + r))
+                
+                z_ = (jjt_rot.T @ jac @ z_0.reshape(-1, 1)).reshape(-1)
+                log_pdf += - torch.sum(z_ * z_ / (jjt_eigvals + r)) / 2
+                
+                conv.append(log_pdf.cpu().item())
                 
         return np.array(conv)
+    
+    def sample(
+        self, 
+        r, 
+        loader, 
+        n_samples, 
+        use_cache = False, 
+    ):
+        cur = loader
+        if not isinstance(cur, list):
+            cur = next(iter(cur))
+        else:
+            while isinstance(cur, list):
+                cur = cur[0]
+        device = cur.device
+        
+        self._prep_cache(loader, use_cache, device) 
+        
+        ret = []
+        # calculate the upper bound of the density values for a Gaussian distribution with 
+        # dimesion latent_dim and covariance matrix I
+        
+        if self.verbose >= 1:
+            outer_range = tqdm(zip(loader, self.jax, self.z_values), desc="sampling from latent gaussians", total=len(loader))
+        else:
+            outer_range = zip(loader, self.jax, self.z_values)
+        
+        idx2 = 0
+        for x_batch, jac_batch, z_batch in outer_range:
+            idx2 += 1
+            idx = 0
+            fail_cnt = 0
+            for x, jac, z in zip(x_batch, jac_batch, z_batch):
+                
+                idx += 1
+                x = x.to(device)
+                jac = jac.to(device)
+                z = z.to(device)
+
+                
+                # calculate the pseudo-inverse of jac @ jac^T
+                # L, Q = torch.linalg.eigh(jac.T @ jac)
+                
+                # covariance_matrix = max(r, 1e-3) * Q @ torch.diag(1 / L) @ Q.T
+                
+                # sample from a multivariate_normal distribution
+                # with mean zero and covariance matrix covariance_matrix
+                covariance_matrix = r * torch.linalg.pinv(jac.T @ jac)
+                L, Q = torch.linalg.eigh(covariance_matrix)
+                L = torch.where(L > 1e-6, L, 1e-6 * torch.ones_like(L))
+                covariance_matrix = Q @ torch.diag(L) @ Q.T
+                
+                try:
+                    all_samples = torch.distributions.MultivariateNormal(
+                        loc = torch.zeros_like(z),
+                        covariance_matrix=covariance_matrix,
+                    ).rsample((n_samples,))
+                except ValueError as e:
+                    all_samples = torch.zeros_like(z).repeat(n_samples, *[1 for _ in range(len(z.shape))])
+                    min_eig = torch.linalg.eigvalsh(covariance_matrix).min()
+                    fail_cnt += 1
+                    if min_eig > 1e-10:
+                        print("saw strange minimum:", min_eig.item())
+                    
+                if self.verbose >= 1:
+                    outer_range.set_description(f"sampling from latent gaussians - fail [{fail_cnt}/{len(x_batch)}]")
+                    
+                all_perturbed_z = z[None, :] + all_samples
+                all_x_perturbed = self.encoding_model.decode(all_perturbed_z, batchwise=True)
+                if not self.encoding_model.diff_transform:
+                    all_x_perturbed = self.likelihood_model._inverse_data_transform(all_x_perturbed)
+                ret.append(all_x_perturbed.detach().cpu())
+        return ret
+         
 
 
 class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
@@ -393,6 +456,7 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
         """
         if not use_cache:
             self.centers, self.radii = calculate_ellipsoids(self, loader)
+                
         if not hasattr(self, 'centers') or not hasattr(self, 'radii'):
             raise ValueError("You should first calculate the ellipsoids before calculating the CDFs with cache.")
         centers, radii = self.centers, self.radii
@@ -417,7 +481,7 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
                         if not filter_out[i]:
                             from chi2comb import ChiSquared
                             chi2s_.append(ChiSquared(coef=r_i, ncent=c_i**2, dof=1))
-                            
+                    
                     if len(chi2s_) == 0:
                         raise Exception("Filtering too strict: no coordinates remain!")
                     self.chi2s.append(chi2s_)
@@ -434,11 +498,31 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
         if _check_primitive(r):
             for chi2s in rng_chi2s:
                 from chi2comb import chi2comb_cdf
-                cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0])
+                atol = self.atol
+                for _ in range(10):
+                    cdf = chi2comb_cdf(r**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0]
+                    if cdf < 0:
+                        atol *= 10
+                    else:
+                        break
+                cdf = max(cdf, 0.0)
+                cdfs.append(cdf)
+                # if r < 0.1:
+                #     print("cdf = ", cdf)
+                # cdfs.append(chi2comb_cdf(r**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0])
         else:
             for r_single, chi2s in zip(r, rng_chi2s):
                 from chi2comb import chi2comb_cdf
-                cdfs.append(chi2comb_cdf(r_single**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0])
+                cdf = chi2comb_cdf(r_single**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0]
+                atol = self.atol
+                for _ in range(10):
+                    cdf = chi2comb_cdf(r_single**2, chi2s, 0.0, lim=self.lim, atol=self.atol)[0]
+                    if cdf < 0:
+                        atol *= 10
+                    else:
+                        break
+                cdf = max(cdf, 0.0)
+                cdfs.append(cdf)
                 
         return np.array(cdfs)
     
@@ -513,8 +597,9 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
                         # and reduce it to the level set of the ellipsoid
                         u = np.random.normal(size=d)
                         u = u / np.linalg.norm(u, ord=2)
+                           
                         if not disregard_radii:
-                            u = u / radii
+                            u = u / np.sqrt(radii)
                         
                         # get the radius (this would most probably be on the perimeter with rad=r
                         # due to high dimensionality)
@@ -538,11 +623,14 @@ class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
                     
                     # turn z into a torch tensor
                     sample_latent = torch.from_numpy(z).float()
-                    sample_latent = sample_latent.to(self.likelihood_model.device).unsqueeze(0)
+                    sample_latent = sample_latent.to(self.likelihood_model.device)
                     
                     # map back to ambient space
-                    sample_ambient = self.encoding_model.decode(sample_latent).squeeze(0)
-                    samples.append(self.likelihood_model._inverse_data_transform(sample_ambient).detach().cpu())
+                    sample_ambient = self.encoding_model.decode(sample_latent, batchwise=False)
+                    if not self.encoding_model.diff_transform:
+                        sample_ambient = self.likelihood_model._inverse_data_transform(sample_ambient)
+                    
+                    samples.append(sample_ambient.detach().cpu())
                 ret.append(torch.stack(samples))
                 
         return ret
