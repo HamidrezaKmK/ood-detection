@@ -126,7 +126,7 @@ class EncodingModel:
             for l in range(0, z.shape[0], step):
                 progress += 1
                 if self.verbose > 1:
-                    loader_decorated.set_description(f"Computing latent jacobians [{progress}/{z.shape[0] // step}]")
+                    loader_decorated.set_description(f"Computing jacobian chunk [{progress}/{z.shape[0] // step}]")
         
                 r = min(l + step, z.shape[0])
                 

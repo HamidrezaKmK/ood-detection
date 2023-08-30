@@ -310,8 +310,9 @@ def run_ood(config: dict, gpu_index: int = 0):
         if config["ood"].get("pick_count", 0) > 0:
             t = min(config['ood']['pick_count'], len(out_loader))
             method_args["x_loader"] = []
+            iterable_ = iter(out_loader)
             for _ in range(t):
-                method_args["x_loader"].append(next(iter(out_loader)))
+                method_args["x_loader"].append(next(iterable_))
     elif "pick_count" not in config["ood"]:
         raise ValueError("pick_count not in config when pick_single=False")
     else:

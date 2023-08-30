@@ -3,7 +3,7 @@
 # method on the models with in and out of distribution datasets and plot the convolution values I obtain
 # No sampling is done in this sweep for fast computation
 project: linear-approximations
-sweep_name: cifar-vs-svhn-gaussian-conv
+sweep_name: intrinsic-dimension-fixing
 entity: dgm-l6
 count: 10000
 method: grid
@@ -42,32 +42,18 @@ base_config:
     samples_visualization: 2
     
     # The OOD detection method in use
-    method: ood.methods.linear_approximations.RadiiTrend
+    method: ood.methods.linear_approximations.IntrinsicDimensionFixing
     method_args:
-      # No sampling for fast computation
-      sampling: False
-        
+
       verbose: 2
       
-      latent_statistics_calculator_class: ood.methods.linear_approximations.GaussianConvolutionStatsCalculator
-      latent_statistics_calculator_args:
-        encoding_model_class: ood.methods.linear_approximations.EncodingFlow
-        encoding_model_args:
-          chunk_size: 1
-          use_functorch: True
-          use_forward_mode: True
-          use_vmap: False
-          verbose: 2
-
-        verbose: 0
-      
-      log_scale: True
-      
-      include_reference: False
-
-      radii_range: [0, 0.000005]
-      radii_n: 10
-      
+      encoding_model_class: ood.methods.linear_approximations.EncodingFlow
+      encoding_model_args:
+        chunk_size: 1
+        use_functorch: True
+        use_forward_mode: True
+        use_vmap: False
+        verbose: 2
 
       
 
@@ -76,63 +62,14 @@ sweep_configuration:
   dy__upsert:
     - ood:
         method_args:
-          log_scale:
+          singular_value_threshold:
             sweep: True
-            values: [False, True]
-    - sweep: True
-      sweep_identifier: std_or_not
-      sweep_alias:
-      - with_std
-      - no_std
-      values:
-      - ood:
-          method_args:
-            visualization_args:
-              with_std: True
-      - ood:
-          method_args:
-            visualization_args:
-              with_std: False
-    - sweep: True
-      sweep_identifier: boost_range
-      sweep_alias:
-      - 100000x
-      - 100x
-      - 10x
-      - 1x
-      values:
-      - ood:
-          method_args:
-            radii_range:
-              dy__eval:
-                expression: |
-                  def boost100000x(conf):
-                    return [conf['ood']['method_args']['radii_range'][0], conf['ood']['method_args']['radii_range'][1] * 100000]
-                function_of_interest: boost100000x
-      - ood:
-          method_args:
-            radii_range:
-              dy__eval:
-                expression: |
-                  def boost100x(conf):
-                    return [conf['ood']['method_args']['radii_range'][0], conf['ood']['method_args']['radii_range'][1] * 100]
-                function_of_interest: boost100x
-      - ood:
-          method_args:
-            radii_range:
-              dy__eval:
-                expression: |
-                  def boost10x(conf):
-                    return [conf['ood']['method_args']['radii_range'][0], conf['ood']['method_args']['radii_range'][1] * 10]
-                function_of_interest: boost10x
-      - ood:
-          method_args:
-            radii_range:
-              dy__eval:
-                expression: |
-                  def boost1x(conf):
-                    return conf['ood']['method_args']['radii_range']
-                function_of_interest: boost1x
+            values: [0.0015, 0.0013, 0.001]
+    - ood:
+        method_args:
+          poly_deg:
+            sweep: True
+            values: [1, 2, 3]
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:

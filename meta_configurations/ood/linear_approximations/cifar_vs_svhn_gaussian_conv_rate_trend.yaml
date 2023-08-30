@@ -3,7 +3,7 @@
 # method on the models with in and out of distribution datasets and plot the convolution values I obtain
 # No sampling is done in this sweep for fast computation
 project: linear-approximations
-sweep_name: cifar-vs-svhn-gaussian-conv
+sweep_name: cifar-vs-svhn-gaussian-conv-rate-trend
 entity: dgm-l6
 count: 10000
 method: grid
@@ -49,7 +49,7 @@ base_config:
         
       verbose: 2
       
-      latent_statistics_calculator_class: ood.methods.linear_approximations.GaussianConvolutionStatsCalculator
+      latent_statistics_calculator_class: ood.methods.linear_approximations.GaussianConvolutionRateStatsCalculator
       latent_statistics_calculator_args:
         encoding_model_class: ood.methods.linear_approximations.EncodingFlow
         encoding_model_args:
@@ -61,15 +61,13 @@ base_config:
 
         verbose: 0
       
-      log_scale: True
+      calculate_statistics_extra_args:
+        order: 1
       
       include_reference: False
 
-      radii_range: [0, 0.000005]
-      radii_n: 10
-      
-
-      
+      radii_range: [0.000004, 0.0005]
+      radii_n: 500
 
 sweep_configuration:
 
@@ -94,45 +92,67 @@ sweep_configuration:
             visualization_args:
               with_std: False
     - sweep: True
-      sweep_identifier: boost_range
+      sweep_identifier: Y_boost_range_right
       sweep_alias:
-      - 100000x
-      - 100x
-      - 10x
-      - 1x
+      - 100xright
+      - 10xright
+      - 1xright
       values:
       - ood:
           method_args:
             radii_range:
               dy__eval:
                 expression: |
-                  def boost100000x(conf):
-                    return [conf['ood']['method_args']['radii_range'][0], conf['ood']['method_args']['radii_range'][1] * 100000]
-                function_of_interest: boost100000x
-      - ood:
-          method_args:
-            radii_range:
-              dy__eval:
-                expression: |
-                  def boost100x(conf):
+                  def boost100xright(conf):
                     return [conf['ood']['method_args']['radii_range'][0], conf['ood']['method_args']['radii_range'][1] * 100]
-                function_of_interest: boost100x
+                function_of_interest: boost100xright
       - ood:
           method_args:
             radii_range:
               dy__eval:
                 expression: |
-                  def boost10x(conf):
+                  def boost10xright(conf):
                     return [conf['ood']['method_args']['radii_range'][0], conf['ood']['method_args']['radii_range'][1] * 10]
-                function_of_interest: boost10x
+                function_of_interest: boost10xright
       - ood:
           method_args:
             radii_range:
               dy__eval:
                 expression: |
-                  def boost1x(conf):
+                  def boost1xright(conf):
                     return conf['ood']['method_args']['radii_range']
-                function_of_interest: boost1x
+                function_of_interest: boost1xright
+    - sweep: True
+      sweep_identifier: Z_boost_range_left
+      sweep_alias:
+      - 100xleft
+      - 10xleft
+      - 1xleft
+      values:
+      - ood:
+          method_args:
+            radii_range:
+              dy__eval:
+                expression: |
+                  def boost100xleft(conf):
+                    return [conf['ood']['method_args']['radii_range'][0] * 100, conf['ood']['method_args']['radii_range'][1]]
+                function_of_interest: boost100xleft
+      - ood:
+          method_args:
+            radii_range:
+              dy__eval:
+                expression: |
+                  def boost10xleft(conf):
+                    return [conf['ood']['method_args']['radii_range'][0] * 10, conf['ood']['method_args']['radii_range'][1]]
+                function_of_interest: boost10xleft
+      - ood:
+          method_args:
+            radii_range:
+              dy__eval:
+                expression: |
+                  def boost1xleft(conf):
+                    return conf['ood']['method_args']['radii_range']
+                function_of_interest: boost1xleft
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:

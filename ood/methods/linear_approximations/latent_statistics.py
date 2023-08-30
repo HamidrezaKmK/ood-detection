@@ -23,6 +23,11 @@ def _check_primitive(r: th.Any):
         return True
     if isinstance(r, int):
         return True
+    try:
+        tt = len(r)
+    except:
+        return True
+    
     return False
 
 class LatentStatsCalculator:
@@ -202,8 +207,6 @@ class ParallelogramLogCDF(ParallelogramStatsCalculator):
     def calculate_statistics(self, r, loader, use_cache: bool = False):
         return self.calculate_log_cdf(r, loader, use_cache)
 
-
-# TODO: implement a convolution-based approach
 class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
     def __init__(
         self,
@@ -227,19 +230,43 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
                 rng = tqdm(self.jax, desc="calculating eigendecomposition of jacobians")
             else:
                 rng = self.jax
-            self.jjt_eigvals = []
-            self.jjt_eigvecs = []
+            self.jtj_eigvals = []
+            self.jtj_eigvecs = []
             
             for j in rng:
                 j = j.to(device)
-                L, Q = torch.linalg.eigh(torch.matmul(j, j.transpose(1, 2)))
-                self.jjt_eigvals.append(L.cpu())
-                self.jjt_eigvecs.append(Q.cpu())
+                L, Q = torch.linalg.eigh(torch.matmul(j.transpose(1, 2), j))
+                L = torch.where(L > 1e-20, L, 1e-20 * torch.ones_like(L))
                 
-        if not hasattr(self, 'jjt_eigvals') or not hasattr(self, 'jjt_eigvecs') or not hasattr(self, 'z_values') or not hasattr(self, 'jax'):
+                self.jtj_eigvals.append(L.cpu())
+                self.jtj_eigvecs.append(Q.cpu())
+                
+        if not hasattr(self, 'jtj_eigvals') or not hasattr(self, 'jtj_eigvecs') or not hasattr(self, 'z_values') or not hasattr(self, 'jax'):
             raise ValueError("You should first calculate the jacobians before calling this function.")
-            
-    def calculate_statistics(self, r, loader, use_cache: bool = False) -> np.ndarray:
+    
+    def _calc_score_quant(self, jtj_eigvals, r, jtj_rot, jac, z_0, log_scale: bool = False):
+        
+        if log_scale:
+            if isinstance(r, torch.Tensor):
+                var = torch.exp(2 * r)
+            else:
+                var = np.exp(2 * r)
+        else:
+            var = r ** 2
+        
+        # print(r, var)    
+        d = len(z_0)
+        log_pdf = -0.5 * d * np.log(2 * np.pi)
+        log_pdf = log_pdf - 0.5 * torch.sum(torch.log(jtj_eigvals + var))
+        # print(log_pdf)
+        z_ = (jtj_rot.T @ z_0.reshape(-1, 1)).reshape(-1)
+        log_pdf = log_pdf - torch.sum(jtj_eigvals * z_ * z_ / (jtj_eigvals + var)) / 2
+        # print(log_pdf)
+        # print(z_)
+        return log_pdf
+    
+                    
+    def calculate_statistics(self, r, loader, use_cache: bool = False, **kwargs) -> np.ndarray:
         """
         Given two loaders of radii and centers, this function calculates the
         CDF of each of the entailed generalized chi-squared distributions.
@@ -273,7 +300,7 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
         cumul_l = 0
         cumul_r = 0
         
-        for x_batch, jjt_eigvals_batch, jjt_eigvecs_batch, jac_batch, z_batch in zip(loader, self.jjt_eigvals, self.jjt_eigvecs, self.jax, self.z_values):
+        for x_batch, jtj_eigvals_batch, jtj_eigvecs_batch, jac_batch, z_batch in zip(loader, self.jtj_eigvals, self.jtj_eigvecs, self.jax, self.z_values):
             
             # cumul_l and cumul_r are the cumulative left and right indices
             cumul_r += len(x_batch)
@@ -284,27 +311,23 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
             cumul_l += len(x_batch)
             cumul_r += len(x_batch)
                 
-            for x_0, jjt_eigvals, jjt_rot, jac, z_0, r in zip(x_batch, jjt_eigvals_batch, jjt_eigvecs_batch, jac_batch, z_batch, r_):
+            for x_0, jtj_eigvals, jtj_rot, jac, z_0, r in zip(x_batch, jtj_eigvals_batch, jtj_eigvecs_batch, jac_batch, z_batch, r_):
                 # compute the log density of a standard Gaussian distribution
                 # with mean zero and covariance matrix (J @ J.T + r * I)
                 
                 x_0 = x_0.to(device)
-                jjt_eigvals = jjt_eigvals.to(device)
-                jjt_rot = jjt_rot.to(device)
+                jtj_eigvals = jtj_eigvals.to(device)
+                jtj_rot = jtj_rot.to(device)
                 jac = jac.to(device)
                 z_0 = z_0.to(device)
                 
-                d = len(z_0)
                 # end up computing log density of N(x_0 - J . z_0, J J^T + r.I) (x0)
-                
-                log_pdf = -0.5 * d * np.log(2 * np.pi)
-                log_pdf += - 0.5 * torch.sum(torch.log(jjt_eigvals + r))
-                
-                z_ = (jjt_rot.T @ jac @ z_0.reshape(-1, 1)).reshape(-1)
-                log_pdf += - torch.sum(z_ * z_ / (jjt_eigvals + r)) / 2
-                
-                conv.append(log_pdf.cpu().item())
-                
+                val = self._calc_score_quant(jtj_eigvals, r, jtj_rot, jac, z_0, **kwargs)
+                # if val is a tensor of size 1, then we should convert it to a float
+                if isinstance(val, torch.Tensor):
+                    val = val.cpu().item()
+                conv.append(val)
+                    
         return np.array(conv)
     
     def sample(
@@ -355,7 +378,7 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
                 # with mean zero and covariance matrix covariance_matrix
                 covariance_matrix = r * torch.linalg.pinv(jac.T @ jac)
                 L, Q = torch.linalg.eigh(covariance_matrix)
-                L = torch.where(L > 1e-6, L, 1e-6 * torch.ones_like(L))
+                L = torch.where(L > 1e-4, L, 1e-4 * torch.ones_like(L))
                 covariance_matrix = Q @ torch.diag(L) @ Q.T
                 
                 try:
@@ -381,7 +404,82 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
         return ret
          
 
+class GaussianConvolutionRateStatsCalculator(GaussianConvolutionStatsCalculator):
+    """
+    This class computes the i'th order gradients of the approximated likelihood
+    """
+    def __init__(
+        self,
+        *args,
+        empirical: bool = False,
+        delta: float = 1e-6,
+        eig_threshold_val: th.Optional[float] = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.empirical = empirical
+        self.delta = delta
+        self.eig_threshold_val = eig_threshold_val
 
+    
+    def _calc_score_quant(
+        self, 
+        jtj_eigvals, r, jtj_rot, jac, z_0, 
+        order: int = 0, 
+        log_scale: bool = True,
+        ref_eigval_mean: th.Optional[torch.Tensor] = None,
+        ref_eigval_std: th.Optional[torch.Tensor] = None,
+        scaling_factor: float = 1.0,
+    ):
+        if ref_eigval_mean is not None and ref_eigval_std is not None:
+            # manipulate the jtj eigenvalues using the reference
+            jtj_eigvals = (jtj_eigvals - ref_eigval_mean) * scaling_factor + ref_eigval_mean
+            jtj_eigvals = torch.where(jtj_eigvals < 1e-20, torch.ones_like(jtj_eigvals) * 1e-20, jtj_eigvals)
+
+        
+        # Do a thresholding to get rid of the zero pretenders (THIS IS VERY IMPORTANT!)
+        if self.eig_threshold_val is not None:
+            jtj_eigvals = torch.where(jtj_eigvals < self.eig_threshold_val, torch.ones_like(jtj_eigvals) * 1e-20, jtj_eigvals - self.eig_threshold_val)
+        
+        if order == 0:
+            return super()._calc_score_quant(jtj_eigvals, r, jtj_rot, jac, z_0, log_scale=log_scale)
+        
+        if self.empirical:
+            # (1) In this case, given a delta the function evaluated at r + delta is subtracted from the function
+            # calculated at r.
+            ret0 = super()._calc_score_quant(jtj_eigvals, r, jtj_rot, jac, z_0, log_scale=log_scale)
+            ret1 = super()._calc_score_quant(jtj_eigvals, r + self.delta, jtj_rot, jac, z_0, log_scale=log_scale)
+            return (ret1 - ret0) / self.delta
+        else:
+            if order > 1:
+                # turn r into a differentiable 1 element tensor
+                r = torch.tensor(r, requires_grad=True, device=jtj_eigvals.device)
+                ret = super()._calc_score_quant(jtj_eigvals, r, jtj_rot, jac, z_0, log_scale=log_scale)
+                cur = ret
+                for _ in range(order - 1):
+                    cur = torch.autograd.grad(cur, r, create_graph=True)[0]
+                cur.backward()
+                ret = r.grad.item()
+            else: # order = 1
+                if log_scale:
+                    if isinstance(r, torch.Tensor):
+                        var = torch.exp(2 * r)
+                    else:
+                        var = np.exp(2 * r)
+                else:
+                    var = r ** 2
+                    
+                ret = - torch.sum(1 / (jtj_eigvals + var))
+                z_ = (jtj_rot.T @ z_0.reshape(-1, 1)).reshape(-1)
+                ret = ret + torch.sum(jtj_eigvals * (z_ / (jtj_eigvals + var)) ** 2)
+                
+                if log_scale:
+                    ret = ret * var
+                else:
+                    ret = ret * r
+            
+        return ret
+        
 class EllipsoidCDFStatsCalculator(LatentStatsCalculator):
     """
     This is a class that is used in methods that use latent ellipsoids.

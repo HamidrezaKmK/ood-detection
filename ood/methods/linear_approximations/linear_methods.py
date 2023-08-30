@@ -2,7 +2,7 @@ from ..base_method import OODBaseMethod
 import typing as th
 import torch
 import math
-from ...visualization import visualize_histogram, visualize_trends
+from ...visualization import visualize_histogram, visualize_trends, visualize_scatterplots
 import numpy as np
 from chi2comb import ChiSquared, chi2comb_cdf
 from tqdm import tqdm
@@ -13,6 +13,8 @@ from scipy.special import logsumexp
 from .utils import buffer_loader
 from .latent_statistics import LatentStatsCalculator
 import torchvision
+from .latent_statistics import GaussianConvolutionStatsCalculator, GaussianConvolutionRateStatsCalculator
+from math import log
 
 class LatentBaseMethod(OODBaseMethod):
     """
@@ -89,7 +91,193 @@ class LatentBaseMethod(OODBaseMethod):
             self.x_loader = [(self.x_batch, None, None)]
         
         self.verbose = verbose
+
+class IntrinsicDimensionScore(LatentBaseMethod):
+    """
+    This class computes a continuous dimensionality metric using the derivative of the 
+    Gaussian convolution and computes it at a specific 'r' value which is defined in `evaluate_r`.
+    
+    The derivative is computed using the analytical approach and inspired by the LIDL paper.
+    
+    now that dimensionality is "compared" to the in_distr_loader dimensionality and a score is computed.
+    
+    This score is plotted against the likelihood scores in a scatterplot.
+    """
+    def __init__(
+        self,
+        likelihood_model: torch.nn.Module,
         
+        x: th.Optional[torch.Tensor] = None,
+        x_batch: th.Optional[torch.Tensor] = None,
+        x_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        logger: th.Optional[th.Any] = None,
+        in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        
+        
+        # Latent statistics calculator
+        latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # for logging args
+        verbose: int = 0,
+        
+        # The range of the radii to show in the trend
+        evaluate_r: float = 1e-6,
+        log_scale: bool = False,
+        
+        # visualization arguments
+        visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
+
+        # in distr training
+        ood_loader_limit: th.Optional[int] = None,
+        ood_loader_buffer_size: int = 60,
+                
+        # in_distribution training hyperparameters
+        perform_training: bool = False,
+        jacobian_relative_scaling_factor: float = 1,
+        automatic_jacobian_scaling: bool = False,        
+        in_distr_loader_buffer_size: int = 60,
+
+        
+    ):
+        self.latent_statistics_calculator: GaussianConvolutionRateStatsCalculator
+        
+        super().__init__(
+            likelihood_model=likelihood_model,
+            x=x,
+            x_batch=x_batch,
+            x_loader=x_loader,
+            logger=logger,
+            in_distr_loader=in_distr_loader,
+            latent_statistics_calculator_class='ood.methods.linear_approximations.GaussianConvolutionRateStatsCalculator',
+            latent_statistics_calculator_args=latent_statistics_calculator_args,
+            verbose=verbose,
+        )
+        self.perform_training = perform_training
+        
+        self.evaluate_r = evaluate_r
+        self.log_scale = log_scale
+        
+        self.visualization_args = visualization_args or {}
+        
+        self.in_distr_loader_buffer_size = in_distr_loader_buffer_size
+        
+        self.ood_loader_limit = ood_loader_limit
+        self.ood_loader_buffer_size = ood_loader_buffer_size
+        
+        self.jacobian_relative_scaling_factor = jacobian_relative_scaling_factor
+        self.automatic_jacobian_scaling = automatic_jacobian_scaling
+    
+    def run(self):
+        # (1) compute the average dimensionality score of the in-distribution data
+        
+        
+        calculate_statistics_additional_args = {}
+        
+        if self.perform_training:
+            buffer = buffer_loader(self.in_distr_loader, self.in_distr_loader_buffer_size, limit=1)
+            all_jtj_eigvals = []
+            for inner_loader in buffer:
+                jax, _ = self.latent_statistics_calculator.encoding_model.calculate_jacobian(
+                    loader=inner_loader,
+                )
+                if self.verbose > 0:
+                    jax = tqdm(jax, desc=f"Calculating jacobian for loader in buffer")
+                for jac_batch in jax:
+                    for i, jac in enumerate(jac_batch):
+                        if self.verbose > 0:
+                            jax.set_description(f"calculating chunk [{i+1}/{len(jac_batch)}]")
+                        jac = jac.to(self.likelihood_model.device)
+                        jtj_eigvals = torch.linalg.eigvalsh(jac.T @ jac).cpu().numpy().flatten()
+                        all_jtj_eigvals.append(jtj_eigvals)
+            
+                all_jtj_eigvals = np.stack(all_jtj_eigvals, axis=0)
+                ref_jtj_eigvals_mean = np.mean(all_jtj_eigvals, axis=0)
+                ref_jtj_eigvals_std = np.std(all_jtj_eigvals, axis=0)
+                ref_jtj_eigvals_mean = torch.from_numpy(ref_jtj_eigvals_mean).to(self.likelihood_model.device)
+                ref_jtj_eigvals_std = torch.from_numpy(ref_jtj_eigvals_std).to(self.likelihood_model.device)
+                # store the extrinsic dimension
+                D = len(ref_jtj_eigvals_mean)
+                
+                if self.automatic_jacobian_scaling:
+                    def f(x, use_cache=True):
+                        dimensionalities =  self.latent_statistics_calculator.calculate_statistics(
+                            self.evaluate_r,
+                            loader=inner_loader,
+                            use_cache=use_cache,
+                            log_scale=self.log_scale,
+                            order=1,
+                            ref_eigval_mean=ref_jtj_eigvals_mean,
+                            ref_eigval_std=ref_jtj_eigvals_std,
+                            scaling_factor=x,
+                        )
+                        msk1 = dimensionalities < D / 2
+                        msk2 = dimensionalities > 20
+                        return np.sum(msk1) + np.sum(msk2)
+                    
+                    L = 1.0
+                    _ = f(1.0, use_cache=False)
+                    R = max(1.0, L + self.jacobian_relative_scaling_factor)
+                    
+                    # perform ternery search to find the scaling factor that produces the most
+                    # variance for in-distribution dimensionalities
+                    for _ in tqdm(range(20), desc="calculating automatic scaling factor", total=20):
+                        left_third = (2 * L + R) / 3
+                        right_third = (L + 2 * R) / 3
+                        
+                        l_val = f(left_third)
+                        r_val = f(right_third)
+                        
+                        if l_val < r_val:
+                            L = left_third
+                        else:
+                            R = right_third
+                    scaling_factor = (L + R) / 2
+                else:
+                    scaling_factor = self.jacobian_relative_scaling_factor
+            
+            
+            calculate_statistics_additional_args['scaling_factor'] = scaling_factor
+            calculate_statistics_additional_args['ref_eigval_mean'] = ref_jtj_eigvals_mean
+            calculate_statistics_additional_args['ref_eigval_std'] = ref_jtj_eigvals_std
+        
+        # (2) compute the average dimensionality score of the OOD data
+        if self.verbose > 0:
+            buffer = tqdm(
+                buffer_loader(self.x_loader, self.ood_loader_buffer_size, limit=self.ood_loader_limit),
+                desc="Calculating OOD dimensionalities for loader in buffer",
+                total=self.ood_loader_limit,
+            )
+        else:
+            buffer = buffer_loader(self.x_loader, self.ood_loader_buffer_size, limit=self.ood_loader_limit)
+        
+        all_likelihoods = None
+        all_dimensionalities = None
+        
+        buff = 0
+        for inner_loader in buffer:
+            buff += 1
+            inner_dimensionalities  = self.latent_statistics_calculator.calculate_statistics(
+                self.evaluate_r,
+                loader=inner_loader,
+                use_cache=False,
+                log_scale=self.log_scale,
+                order=1,
+                **calculate_statistics_additional_args,
+            )
+            all_dimensionalities = np.concatenate([all_dimensionalities, inner_dimensionalities]) if all_dimensionalities is not None else inner_dimensionalities
+            
+            
+            for x in inner_loader:
+                with torch.no_grad():
+                    likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
+                    all_likelihoods = np.concatenate([all_likelihoods, likelihoods]) if all_likelihoods is not None else likelihoods
+        
+        
+        visualize_scatterplots(
+            scores = np.stack([all_likelihoods, all_dimensionalities]).T,
+            column_names=["log-likelihood", "dimensionality (d-D)"],
+        )
+    
 class RadiiTrend(LatentBaseMethod):
     """
     Instead of evaluating the OOD data using a single score visualization,
@@ -113,12 +301,15 @@ class RadiiTrend(LatentBaseMethod):
         latent_statistics_calculator_class: th.Optional[str] = None,
         latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
         
+        calculate_statistics_extra_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
         # for logging args
         verbose: int = 0,
         
         # The range of the radii to show in the trend
         radii_range: th.Optional[th.Tuple[float, float]] = None,
         radii_n: int = 100,
+        log_scale: bool = False,
         
         # visualization arguments
         visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
@@ -158,7 +349,12 @@ class RadiiTrend(LatentBaseMethod):
             verbose=verbose,
         )
         
-        self.radii = np.linspace(*radii_range, radii_n)
+        self.log_scale = log_scale
+        if log_scale:
+            self.radii = np.logspace(*np.log([r + 1e-12 for r in radii_range]), radii_n)
+        else:
+            self.radii = np.linspace(*radii_range, radii_n)
+        self.calculate_statistics_extra_args = calculate_statistics_extra_args or {}
         
         self.visualization_args = visualization_args or {}
         
@@ -236,9 +432,11 @@ class RadiiTrend(LatentBaseMethod):
                             )
                         first = False
                     single_scores = self.latent_statistics_calculator.calculate_statistics(
-                        r, 
+                        np.log(r) if self.log_scale else r, 
                         loader=inner_loader, 
                         use_cache=not first,
+                        log_scale=self.log_scale,
+                        **self.calculate_statistics_extra_args,
                     )
                     inner_trend.append(
                         single_scores
@@ -291,14 +489,128 @@ class RadiiTrend(LatentBaseMethod):
                   
         visualize_trends(
             scores=trend,
-            t_values=self.radii,
+            t_values=np.log(self.radii) if self.log_scale else self.radii,
             reference_scores=reference_trend,
-            x_label="r",
+            x_label="log r" if self.log_scale else "r",
             y_label=self.latent_statistics_calculator.get_label(),
             title=f"Trend of the average {self.latent_statistics_calculator.get_name()}",
             **self.visualization_args,
         )
 
+class GaussianConvolutionAnalysis(LatentBaseMethod):
+    """
+    This function calculates the convolution with the analytical approach
+    and comes up with a single score based on the "rate" of change in the
+    convolved density function.
+    
+    This rate is either empirically calculated or analytically done.
+    
+    By the end, this rate is plotted against the likelihood scores themselves in a scatterplot.
+    """
+    def __init__(
+        self,
+        likelihood_model: torch.nn.Module,
+        
+        x: th.Optional[torch.Tensor] = None,
+        x_batch: th.Optional[torch.Tensor] = None,
+        x_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        logger: th.Optional[th.Any] = None,
+        in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        
+        
+        # Latent statistics calculator
+        latent_statistics_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
+        
+        # for logging args
+        verbose: int = 0,
+        
+        # visualization arguments
+        visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
+            
+        loader_buffer_size: int = 60,
+        
+        evaluate_r: float = 1e-6,
+        log_scale: bool = True,
+        
+        analysis_order: int = 2,
+    ):
+        """
+        Inherits from EllipsoidBaseMethod and adds the visualization of the trend.
+        
+        Args:
+            radii_range (th.Optional[th.Tuple[float, float]], optional): The smallest and largest distance to consider.
+            radii_n (int, optional): The number of Radii scales in the range to consider. Defaults to 100.
+            visualization_args (th.Optional[th.Dict[str, th.Any]], optional): Additional arguments that will get passed on
+                visualize_trend function. Defaults to None which is an empty dict.
+            include_reference (bool, optional): If set to True, then the training data trend will also be visualized.
+        """
+        self.latent_statistics_calculator: LatentStatsCalculator
+        
+        
+        super().__init__(
+            likelihood_model=likelihood_model,
+            x=x,
+            x_batch=x_batch,
+            x_loader=x_loader,
+            logger=logger,
+            in_distr_loader=in_distr_loader,
+            latent_statistics_calculator_class='ood.methods.linear_approximations.GaussianConvolutionRateStatsCalculator',
+            latent_statistics_calculator_args=latent_statistics_calculator_args,
+            verbose=verbose,
+        )
+        
+        
+        self.visualization_args = visualization_args or {}
+        
+        
+        self.loader_buffer_size = loader_buffer_size
+        
+        self.log_scale = log_scale
+        self.evaluate_r = log(evaluate_r) if self.log_scale else evaluate_r
+        
+        self.analysis_order = analysis_order
+        if analysis_order < 2:
+            raise ValueError("The analysis order must be at least 2!")
+        
+    def run(self):
+        loader = self.x_loader
+        
+        all_convs = None
+        
+        if self.verbose > 0:
+            buffered = tqdm(buffer_loader(loader, self.loader_buffer_size), desc="Calculating latent statistics for buffer")
+        else:
+            buffered = buffer_loader(loader, self.loader_buffer_size)
+            
+        for inner_loader in buffered:
+            
+            conv = []
+            use_cache = False
+        
+            for ord in range(self.analysis_order):
+                
+                new_diffs = self.latent_statistics_calculator.calculate_statistics(
+                    self.evaluate_r,
+                    loader=inner_loader,
+                    use_cache=use_cache,
+                    order=ord,
+                    log_scale=self.log_scale,
+                )
+                use_cache = True
+                
+                conv.append(new_diffs)
+            conv = np.stack(conv, axis=1)
+                
+            all_convs = conv if all_convs is None else np.concatenate([all_convs, new_diffs])
+
+        
+        visualize_scatterplots(
+            all_convs,
+            column_names=[f"rate-{i}" for i in range(self.analysis_order)],
+            title="rate-analysis",
+        )
+        
+        
 
 class LatentScore(LatentBaseMethod):
     """

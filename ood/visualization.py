@@ -95,9 +95,6 @@ def visualize_scatterplots(
         for j in range(scores.shape[1]):
             row.append(scores[i, j])
         data.append(row)
-        
-        x, y = scores[i, 0], scores[i, 1]
-        data.append([x, y])
     
     table = wandb.Table(data=data, columns = column_names)
     
