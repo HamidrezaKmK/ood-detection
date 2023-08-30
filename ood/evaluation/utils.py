@@ -24,6 +24,7 @@ def parse_table(df):
             # filter the rows of df so that the name follows the convention: "first_part"_vs_"second_part"_...
             filter = df["name"].str.startswith(first_part + "_vs_" + second_part)
             filter = filter | df["name"].str.startswith(first_part + "_vs_" + first_part + "_train")
+            filter = filter | df["name"].str.startswith(first_part + "_vs_" + first_part + "_test")
             filter = filter | df["name"].str.startswith(first_part + "_vs_" + first_part + "_dgm-generated")
             filtered_df = df[filter]
         

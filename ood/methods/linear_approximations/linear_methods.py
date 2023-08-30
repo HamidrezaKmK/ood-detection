@@ -122,6 +122,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
         
         # The range of the radii to show in the trend
         evaluate_r: float = 1e-6,
+        adaptive_measurement: bool = False,
         log_scale: bool = False,
         
         # visualization arguments
@@ -166,6 +167,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
         
         self.jacobian_relative_scaling_factor = jacobian_relative_scaling_factor
         self.automatic_jacobian_scaling = automatic_jacobian_scaling
+        self.adaptive_measurement = adaptive_measurement
     
     def run(self):
         # (1) compute the average dimensionality score of the in-distribution data
@@ -173,7 +175,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
         
         calculate_statistics_additional_args = {}
         
-        if self.perform_training:
+        if self.perform_training or self.adaptive_measurement:
             buffer = buffer_loader(self.in_distr_loader, self.in_distr_loader_buffer_size, limit=1)
             all_jtj_eigvals = []
             for inner_loader in buffer:
@@ -198,42 +200,47 @@ class IntrinsicDimensionScore(LatentBaseMethod):
                 # store the extrinsic dimension
                 D = len(ref_jtj_eigvals_mean)
                 
-                if self.automatic_jacobian_scaling:
-                    def f(x, use_cache=True):
-                        dimensionalities =  self.latent_statistics_calculator.calculate_statistics(
-                            self.evaluate_r,
-                            loader=inner_loader,
-                            use_cache=use_cache,
-                            log_scale=self.log_scale,
-                            order=1,
-                            ref_eigval_mean=ref_jtj_eigvals_mean,
-                            ref_eigval_std=ref_jtj_eigvals_std,
-                            scaling_factor=x,
-                        )
-                        msk1 = dimensionalities < D / 2
-                        msk2 = dimensionalities > 20
-                        return np.sum(msk1) + np.sum(msk2)
-                    
-                    L = 1.0
-                    _ = f(1.0, use_cache=False)
-                    R = max(1.0, L + self.jacobian_relative_scaling_factor)
-                    
-                    # perform ternery search to find the scaling factor that produces the most
-                    # variance for in-distribution dimensionalities
-                    for _ in tqdm(range(20), desc="calculating automatic scaling factor", total=20):
-                        left_third = (2 * L + R) / 3
-                        right_third = (L + 2 * R) / 3
-                        
-                        l_val = f(left_third)
-                        r_val = f(right_third)
-                        
-                        if l_val < r_val:
-                            L = left_third
-                        else:
-                            R = right_third
-                    scaling_factor = (L + R) / 2
+                if self.adaptive_measurement:
+                    self.evaluate_r = ref_jtj_eigvals_mean[10]
+                    if self.log_scale:
+                        self.evaluate_r = np.log(self.evaluate_r)
                 else:
-                    scaling_factor = self.jacobian_relative_scaling_factor
+                    if self.automatic_jacobian_scaling:
+                        def f(x, use_cache=True):
+                            dimensionalities =  self.latent_statistics_calculator.calculate_statistics(
+                                self.evaluate_r,
+                                loader=inner_loader,
+                                use_cache=use_cache,
+                                log_scale=self.log_scale,
+                                order=1,
+                                ref_eigval_mean=ref_jtj_eigvals_mean,
+                                ref_eigval_std=ref_jtj_eigvals_std,
+                                scaling_factor=x,
+                            )
+                            msk1 = dimensionalities < D / 2
+                            msk2 = dimensionalities > 20
+                            return np.sum(msk1) + np.sum(msk2)
+                        
+                        L = 1.0
+                        _ = f(1.0, use_cache=False)
+                        R = max(1.0, L + self.jacobian_relative_scaling_factor)
+                        
+                        # perform ternery search to find the scaling factor that produces the most
+                        # variance for in-distribution dimensionalities
+                        for _ in tqdm(range(20), desc="calculating automatic scaling factor", total=20):
+                            left_third = (2 * L + R) / 3
+                            right_third = (L + 2 * R) / 3
+                            
+                            l_val = f(left_third)
+                            r_val = f(right_third)
+                            
+                            if l_val < r_val:
+                                L = left_third
+                            else:
+                                R = right_third
+                        scaling_factor = (L + R) / 2
+                    else:
+                        scaling_factor = self.jacobian_relative_scaling_factor
             
             
             calculate_statistics_additional_args['scaling_factor'] = scaling_factor
