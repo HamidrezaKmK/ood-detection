@@ -124,7 +124,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
         evaluate_r: float = 1e-6,
         adaptive_measurement: bool = False,
         log_scale: bool = False,
-        
+        data_intrinsic_dimension: int = 10,
         # visualization arguments
         visualization_args: th.Optional[th.Dict[str, th.Any]] = None,
 
@@ -136,7 +136,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
         perform_training: bool = False,
         jacobian_relative_scaling_factor: float = 1,
         automatic_jacobian_scaling: bool = False,        
-        in_distr_loader_buffer_size: int = 60,
+        in_distr_loader_buffer_size: int = 5,
 
         
     ):
@@ -168,6 +168,8 @@ class IntrinsicDimensionScore(LatentBaseMethod):
         self.jacobian_relative_scaling_factor = jacobian_relative_scaling_factor
         self.automatic_jacobian_scaling = automatic_jacobian_scaling
         self.adaptive_measurement = adaptive_measurement
+        
+        self.data_intrinsic_dimension = data_intrinsic_dimension
     
     def run(self):
         # (1) compute the average dimensionality score of the in-distribution data
@@ -201,7 +203,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
                 D = len(ref_jtj_eigvals_mean)
                 
                 if self.adaptive_measurement:
-                    self.evaluate_r = ref_jtj_eigvals_mean[10]
+                    self.evaluate_r = ref_jtj_eigvals_mean[-self.data_intrinsic_dimension].item()
                     if self.log_scale:
                         self.evaluate_r = np.log(self.evaluate_r)
                 else:
@@ -243,9 +245,11 @@ class IntrinsicDimensionScore(LatentBaseMethod):
                         scaling_factor = self.jacobian_relative_scaling_factor
             
             
-            calculate_statistics_additional_args['scaling_factor'] = scaling_factor
-            calculate_statistics_additional_args['ref_eigval_mean'] = ref_jtj_eigvals_mean
-            calculate_statistics_additional_args['ref_eigval_std'] = ref_jtj_eigvals_std
+                    calculate_statistics_additional_args['scaling_factor'] = scaling_factor
+                    calculate_statistics_additional_args['ref_eigval_mean'] = ref_jtj_eigvals_mean
+                    calculate_statistics_additional_args['ref_eigval_std'] = ref_jtj_eigvals_std
+        
+        print(">>> Scale:", self.evaluate_r)
         
         # (2) compute the average dimensionality score of the OOD data
         if self.verbose > 0:
@@ -270,7 +274,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
                 log_scale=self.log_scale,
                 order=1,
                 **calculate_statistics_additional_args,
-            )
+            ) + D
             all_dimensionalities = np.concatenate([all_dimensionalities, inner_dimensionalities]) if all_dimensionalities is not None else inner_dimensionalities
             
             
@@ -282,7 +286,7 @@ class IntrinsicDimensionScore(LatentBaseMethod):
         
         visualize_scatterplots(
             scores = np.stack([all_likelihoods, all_dimensionalities]).T,
-            column_names=["log-likelihood", "dimensionality (d-D)"],
+            column_names=["log-likelihood", "intrinsic-dimension"],
         )
     
 class RadiiTrend(LatentBaseMethod):
