@@ -1,5 +1,5 @@
 """
-utility functions being used for latent_r2 models
+utility functions being used for OOD detection models
 """
 import torch
 

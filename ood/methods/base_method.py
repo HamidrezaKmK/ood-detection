@@ -27,6 +27,15 @@ class OODBaseMethod(ABC):
         self.x_loader = x_loader
         self.in_distr_loader = in_distr_loader
 
+        
+        if self.x is not None:    
+            self.x_batch = self.x.unsqueeze(0)
+        
+        if self.x_batch is not None:
+            # create a loader with that single batch
+            self.x_loader = [self.x_batch]
+        
+
     @abstractmethod
     def run(self):
         raise NotImplementedError("run method not implemented!")

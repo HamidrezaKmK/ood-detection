@@ -8,7 +8,7 @@ from ood.methods.base_method import OODBaseMethod
 import typing as th
 from .encoding_model import EncodingModel
 import dypy as dy
-from .utils import buffer_loader
+from ..utils import buffer_loader
 import numpy as np
 from ood.visualization import visualize_trends, visualize_scatterplots
 from tqdm import tqdm

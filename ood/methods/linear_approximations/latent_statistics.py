@@ -11,7 +11,7 @@ import numpy as np
 from tqdm import tqdm
 from scipy.stats import norm
 from scipy.special import logsumexp
-from .utils import stack_back_iterables
+from ..utils import stack_back_iterables
 from scipy.stats import multivariate_normal
 from math import sqrt
 

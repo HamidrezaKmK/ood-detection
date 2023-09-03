@@ -5,7 +5,7 @@ that can be used for ood detection.
 import torch
 from tqdm import tqdm
 import typing as th
-from .utils import stack_back_iterables
+from ood.methods.utils import stack_back_iterables
 import numpy as np
 import functools
 import wandb

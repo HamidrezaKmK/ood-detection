@@ -3,7 +3,7 @@
 # method on the models with in and out of distribution datasets and plot the convolution values I obtain
 # No sampling is done in this sweep for fast computation
 project: intrinsic-dimension
-sweep_name: cifar-vs-svhn-lidl-inspired-hyper-parameter-tuning
+sweep_name: cifar-vs-svhn-lidl-inspired-smart-hp-tuning
 entity: dgm-l6
 count: 10000
 method: grid
@@ -42,17 +42,13 @@ base_config:
     samples_visualization: 2
     
     # The OOD detection method in use
-    method: ood.methods.linear_approximations.IntrinsicDimensionScore
+    method: ood.methods.intrinsic_dimension.IntrinsicDimensionScore
     method_args:
 
       verbose: 2
-      perform_training: false
-
-      evaluate_r: -20
-      log_scale: True
       adaptive_measurement: True
 
-      latent_statistics_calculator_args: 
+      intrinsic_dimension_calculator_args: 
 
         encoding_model_class: ood.methods.linear_approximations.EncodingFlow
         encoding_model_args:
@@ -72,9 +68,25 @@ sweep_configuration:
   dy__upsert:
     - ood:
         method_args:
-          data_intrinsic_dimension:
+          dimension_tolerance:
             sweep: True
-            values: [20, 30, 60, 300, 500, 600, 1000, 1500, 3000]
+            sweep_identifier: A_dim_tol
+            values: [0.2, 0.25, 0.33, 0.5, 0.1, 0.05]
+    - ood:
+        method_args:
+          outlier_detection_args:
+            z_score_threshold:
+              sweep: True
+              sweep_identifier: B_z_score_threshold
+              values: [2, 3]
+    - ood:
+        method_args:
+          outlier_detection_args:
+            iqr_coeff:
+              sweep: True
+              sweep_identifier: B_iqr_coeff
+              values: [1.5, 3.0, 10.0]
+
     - sweep: True
       sweep_identifier: Z_in_distribution_model
       sweep_alias:
