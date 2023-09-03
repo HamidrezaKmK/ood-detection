@@ -1,0 +1,67 @@
+base_model:
+  # A directory containing the configuration used for instantiating the likelihood model itself
+  config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/run_config.json
+  # A directory containing the model weights of the likelihood model to work with a good fit one
+  # This is produced by running the single step training models
+  checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/checkpoints/de_nf_best_valid.pt
+data:
+  # specify the datasets and dataloader configurations for the in and out of distribution data.
+  in_distribution:
+    dataloader_args:
+      dataset: cifar10
+      make_valid_loader: false
+      train_batch_size: 8
+      valid_batch_size: 8
+      test_batch_size: 8
+
+  out_of_distribution:
+    dataloader_args:
+      dataset: cifar10
+      make_valid_loader: false
+      train_batch_size: 8
+      valid_batch_size: 8
+      test_batch_size: 8
+  # for reproducibility
+  seed: 10
+ood:
+  bypass_samples_visualization: True
+  bypass_visualize_histogram: True
+  pick_single: False
+  use_dataloader: True
+  # The number of batches to consider
+  pick_count: 1
+  seed: 10
+  # The OOD detection method in use
+  method: ood.methods.linear_approximations.RadiiTrend
+  method_args:
+    sampling: True
+    sampling_args:
+      rejection_sampling: False
+      disregard_radii: True
+      
+    verbose: 2
+    
+    latent_statistics_calculator_class: ood.methods.linear_approximations.EllipsoidCDFStatsCalculator
+    latent_statistics_calculator_args:
+      encoding_model_class: ood.methods.linear_approximations.EncodingFlow
+      encoding_model_args:
+        computation_batch_size: 2
+        use_functorch: True
+        use_forward_mode: True
+        use_vmap: False
+        verbose: 2
+
+      verbose: 0
+    
+    include_reference: False
+    
+    visualization_args:
+      with_std: False
+
+    radii_range: [0, 0.001]
+    radii_n: 100
+
+logger:
+  project: ood-detection-single-runs
+  entity: dgm-l6
+  name: rq_nsf_cifar10_vs_cifar10

@@ -1,7 +1,6 @@
 """
 The main file used for OOD detection.
 """
-import sys
 import copy
 from PIL import Image
 import io
@@ -14,11 +13,13 @@ from jsonargparse import ArgumentParser, ActionConfigFile
 import wandb
 from dataclasses import dataclass
 from random_word import RandomWords
-import os
 from model_zoo.datasets import get_loaders
-import yaml
 import traceback
 import typing as th
+from model_zoo.utils import load_model_with_checkpoints
+from dotenv import load_dotenv
+import os
+from tqdm import tqdm
 
 @dataclass
 class OODConfig:
@@ -44,15 +45,16 @@ def plot_likelihood_ood_histogram(
         data_loader_in (torch.utils.data.DataLoader): A dataloader for the in-distribution data
         data_loader_out (torch.utils.data.DataLoader): A dataloader for the out-of-distribution data
         limit (int, optional): The limit of number of datapoints to consider for the histogram.
-                            Defaults to 1000.
+                            Defaults to None => no limit.
     """
     # create a function that returns a list of all the likelihoods when given
     # a dataloader
-    def list_all_scores(dloader: torch.utils.data.DataLoader):
+    model.eval()
+    def list_all_scores(dloader: torch.utils.data.DataLoader, description: str):
         log_probs = []
-        for tmp in dloader:
-            x, y, _ = tmp
-            t = model.log_prob(x).cpu().detach()
+        for x in tqdm(dloader, desc=f"Calculating likelihoods for {description}"):
+            with torch.no_grad():
+                t = model.log_prob(x).cpu()
             # turn t into a list of floats
             t = t.flatten()
             t = t.tolist()
@@ -62,8 +64,8 @@ def plot_likelihood_ood_histogram(
         return log_probs
 
     # List the likelihoods for both dataloaders
-    in_distr_scores = list_all_scores(data_loader_in)
-    out_distr_scores = list_all_scores(data_loader_out)
+    in_distr_scores = list_all_scores(data_loader_in, "in distribution")
+    out_distr_scores = list_all_scores(data_loader_out, "out of distribution")
     
     # plot using matplotlib and then visualize the picture 
     # using W&B media.
@@ -88,7 +90,7 @@ def plot_likelihood_ood_histogram(
     return np.array(img)
 
 
-def run_ood(config: dict):
+def run_ood(config: dict, gpu_index: int = 0):
     """
     This function reads the OOD configurations
     (samples can be found in experiments/ood/single_runs)
@@ -146,46 +148,47 @@ def run_ood(config: dict):
     ###################
     # (1) Model setup #
     ###################
-    model_conf = None
-    # load the model and load the corresponding checkpoint
-    if 'config_dir' in config['base_model']:
-        filename = config['base_model']['config_dir']
-        with open(filename, 'r') as f:
-            model_conf = yaml.load(f, Loader=yaml.FullLoader)
-    # if the model is directly given in the yaml, then overwrite the model_conf
-    if 'model' in config['base_model']:
-        model_conf = config['base_model']['model']
-    # if the config is still None, then raise an error   
-    if model_conf is None:
-        raise ValueError("model configuration should be either given in the yaml or in the config_dir")
-    # Instantiate the model
-    model = dy.eval(model_conf['class_path'])(**model_conf['init_args'])
-    # load the model weights from the checkpoint
-    checkpoint_dir = config["base_model"]["checkpoint_dir"]
-    # TODO: This is a bit jankey -- fix it later on!
-    model.load_state_dict(torch.load(checkpoint_dir)['module_state_dict'])
-    # change the device of the model to device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    load_dotenv()
+    
+    if 'MODEL_DIR' in os.environ:
+        model_root = os.environ['MODEL_DIR']
+    else:
+        model_root = './runs'
+
+    device = f"cuda:{gpu_index}" if torch.cuda.is_available() else "cpu"
+    
+    model = load_model_with_checkpoints(config=config['base_model'], root=model_root, device=device)
+    
+    
     model.to(device)
-    # set to evaluation mode to get rid of any randomness happening in the 
-    # architecture such as dropout
-    model.eval()
     
     ##################
     # (1) Data setup #
     ##################
+    # Load the environment variables
+    
+    # Set the data directory if it is specified in the environment
+    # variables, otherwise, set to './data'
+    if 'DATA_DIR' in os.environ:
+        data_root = os.environ['DATA_DIR']
+    else:
+        data_root = './data'
+        
     in_train_loader, _, in_test_loader = get_loaders(
         **config["data"]["in_distribution"]["dataloader_args"],
         device=device,
         shuffle=False,
-        data_root='data/',
+        data_root=data_root,
+        unsupervised=True,
     )
     ood_train_loader, _, ood_test_loader = get_loaders(
         **config["data"]["out_of_distribution"]["dataloader_args"],
         device=device,
         shuffle=False,
-        data_root='data/',
+        data_root=data_root,
+        unsupervised=True,
     )
+    
     
     # in_loader is the loader that is used for the in-distribution data
     if not 'pick_loader' in config['data']['in_distribution']:
@@ -196,8 +199,6 @@ def run_ood(config: dict):
         in_loader = in_test_loader
     elif config['data']['in_distribution']['pick_loader'] == 'train':
         in_loader = in_train_loader
-    else:
-        raise ValueError("pick_loader should be either test or train")
     
     # out_loader is the loader that is used for the out-of-distribution data
     if not 'pick_loader' in config['data']['out_of_distribution']:
@@ -208,8 +209,6 @@ def run_ood(config: dict):
         out_loader = ood_test_loader
     elif config['data']['out_of_distribution']['pick_loader'] == 'train':
         out_loader = ood_train_loader
-    else:
-        raise ValueError("pick_loader should be either test or train")
 
 
     ############################################################
@@ -222,10 +221,17 @@ def run_ood(config: dict):
     # you can set to visualize or bypass the visualization for speedup!
     if 'bypass_visualization' not in config['ood'] or not config['ood']['bypass_visualization']:
         # get 9 random samples from the in distribution dataset
-        in_samples = in_loader.dataset.x[np.random.randint(
-            len(in_loader.dataset), size=9)]
-        out_samples = out_loader.dataset.x[np.random.randint(
-            len(out_loader.dataset), size=9)]
+        sample_set = np.random.randint(len(in_loader.dataset), size=9)
+        in_samples = []
+        for s in sample_set:
+            in_samples.append(in_loader.dataset[s])
+        sample_set = np.random.randint(len(out_loader.dataset), size=9)
+        out_samples = []
+        for s in sample_set:
+            out_samples.append(out_loader.dataset[s])
+        in_samples = torch.stack(in_samples)
+        out_samples = torch.stack(out_samples)
+
         in_samples = torchvision.utils.make_grid(in_samples, nrow=3)
         out_samples = torchvision.utils.make_grid(out_samples, nrow=3)
         
@@ -234,23 +240,47 @@ def run_ood(config: dict):
         wandb.log({"data/out_of_distribution samples": [wandb.Image(
             out_samples, caption="out of distribution samples")]})
         
-        # generate 9 samples from the model
-        with torch.no_grad():
-            # set torch seed for reproducibility
-            if config["ood"]["seed"] is not None:
-                torch.manual_seed(config["ood"]["seed"])
-            samples = model.sample(9)
-            samples = torchvision.utils.make_grid(samples, nrow=3)
-            wandb.log(
-                {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
+        # generate 9 samples from the model if bypass sampling is not set to True
+        if 'samples_visualization' in config['ood']:
+            if config['ood']['samples_visualization'] > 0:
+                with torch.no_grad():
+                    def log_samples():
+                        samples = model.sample(9)
+                        samples = torchvision.utils.make_grid(samples, nrow=3)
+                        wandb.log(
+                            {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
+                    # set torch seed for reproducibility
+                    if config["ood"]["seed"] is not None:
+                        if device.startswith("cuda"):
+                            torch.cuda.manual_seed(config["ood"]["seed"])
+                        torch.manual_seed(config["ood"]["seed"])
+                        log_samples()
+                    else:
+                        log_samples()
+                        
+            if config['ood']['samples_visualization'] > 1:
+                wandb.log({"data/most_probable": [wandb.Image(model.sample(-1).squeeze(), caption="max likelihood")]})
         
-        img_array = plot_likelihood_ood_histogram(
-            model,
-            in_loader,
-            out_loader,
-        )
-        wandb.log({"likelihood_ood_histogram": [wandb.Image(
-            img_array, caption="Histogram of log likelihoods")]})
+        def log_histograms():
+            limit = config['ood'].get('histogram_limit', None)
+            img_array = plot_likelihood_ood_histogram(
+                model,
+                in_loader,
+                out_loader,
+                limit=limit,
+            )
+            wandb.log({"likelihood_ood_histogram": [wandb.Image(
+                img_array, caption="Histogram of log likelihoods")]})
+        
+        if "bypass_visualize_histogram" not in config['ood'] or not config['ood']['bypass_visualize_histogram']:
+            if config["ood"]["seed"] is not None:  
+                if device.startswith("cuda"):
+                    torch.cuda.manual_seed(config["ood"]["seed"])
+                    torch.manual_seed(config["ood"]["seed"])
+                log_histograms()
+            else:
+                log_histograms()
+                
     
     #########################################
     # (4) Instantiate an OOD solver and run #
@@ -268,15 +298,21 @@ def run_ood(config: dict):
     # pick a random batch with seed for reproducibility
     if config["ood"]["seed"] is not None:
         np.random.seed(config["ood"]["seed"])
-    idx = np.random.randint(len(out_loader))
+    idx = np.random.randint(len(out_loader))    
     for _ in range(idx + 1):
-        x, _, _ = next(iter(out_loader))
+        x = next(iter(out_loader))
 
     if config["ood"]["pick_single"]:
         # pick a single image the selected batch
         method_args["x"] = x[np.random.randint(x.shape[0])]
     elif "use_dataloader" in config["ood"] and config["ood"]["use_dataloader"]:
         method_args["x_loader"] = out_loader
+        if config["ood"].get("pick_count", 0) > 0:
+            t = min(config['ood']['pick_count'], len(out_loader))
+            method_args["x_loader"] = []
+            iterable_ = iter(out_loader)
+            for _ in range(t):
+                method_args["x_loader"].append(next(iterable_))
     elif "pick_count" not in config["ood"]:
         raise ValueError("pick_count not in config when pick_single=False")
     else:
@@ -286,18 +322,19 @@ def run_ood(config: dict):
     
     method_args["in_distr_loader"] = in_train_loader
     
-    torch.manual_seed(110)
+    if device.startswith("cuda"):
+        torch.cuda.manual_seed(config["ood"]["seed"])
+    torch.manual_seed(config["ood"]["seed"])
     method = dy.eval(config["ood"]["method"])(**method_args)
-
     # Call the run function of the given method
     method.run()
 
-def dysweep_run(config, checkpoint_dir):
+def dysweep_compatible_run(config, checkpoint_dir, gpu_index: int = 0):
     """
     Function compatible with dysweep
     """
     try:
-        run_ood(config)
+        run_ood(config, gpu_index=gpu_index)
     except Exception as e:
         print("Exception:\n", e)
         print(traceback.format_exc())
@@ -312,12 +349,24 @@ if __name__ == "__main__":
         fail_untyped=False,
         sub_configs=True,
     )
+    # add an argument to the parser pertaining to the gpu index
+    parser.add_argument(
+        '--gpu-index',
+        type=int,
+        help="The index of GPU being used",
+        default=0,
+    )
     parser.add_argument(
         "--config",
         action=ActionConfigFile,
         help="Path to the config file",
     )
+    
+    
     args = parser.parse_args()
+    
+    print("Running on gpu index", args.gpu_index)
+    
     conf = {
         "base_model": args.base_model,
         "data": args.data,
@@ -330,4 +379,4 @@ if __name__ == "__main__":
 
     wandb.init(config=conf, **args.logger)
 
-    run_ood(conf)
+    run_ood(conf, gpu_index=args.gpu_index)

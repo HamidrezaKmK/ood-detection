@@ -5,7 +5,8 @@ import torch.nn as nn
 
 from .utils import batch_or_dataloader
 import dypy as dy
-
+from dysweep import dysweep_run_resume
+import typing as th
 
 class TwoStepDensityEstimator(nn.Module):
 
@@ -117,7 +118,7 @@ class TwoStepComponent(nn.Module):
             "Implement loss function in child class"
         )
 
-    def train_batch(self, x, max_grad_norm=None, **kwargs):
+    def train_batch(self, x, max_grad_norm=None, trainer=None, **kwargs):
         self.optimizer.zero_grad()
 
         loss = self.loss(x, **kwargs)
@@ -127,8 +128,19 @@ class TwoStepComponent(nn.Module):
             nn.utils.clip_grad_norm_(self.parameters(), max_grad_norm)
 
         self.optimizer.step()
-        self.lr_scheduler.step()
-
+        
+        if trainer is not None:
+            # look for an edge in the trainer's epoch and if an edge
+            # occures call the step function of your lr_scheduler
+            if not hasattr(self.optimizer, 'epoch'):
+                self.optimizer.epoch = trainer.epoch
+            
+            if self.optimizer.epoch != trainer.epoch:
+                self.lr_scheduler.step()
+                self.optimizer.epoch = trainer.epoch
+        else:
+            self.lr_scheduler.step()
+            
         return {
             "loss": loss
         }
@@ -160,8 +172,13 @@ class TwoStepComponent(nn.Module):
                 lr_lambda=lambda step: 1.
             )
         else:
+            init_args = {}
+            if 'init_args' in cfg['lr_scheduler'] and cfg['lr_scheduler']['init_args'] is not None:
+                init_args = cfg['lr_scheduler']['init_args']
             self.lr_scheduler: torch.optim.lr_scheduler.LRScheduler = dy.eval(cfg['lr_scheduler']['class_path'])(
-                optimizer=self.optimizer, **cfg['lr_scheduler']['init_args'])
+                optimizer=self.optimizer, **init_args)
+            if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                raise NotImplementedError("ReduceLROnPlateau is not integrated yet!")
         
     #     self._get_lr_scheduler(
     #         optim=self.optimizer,
@@ -198,7 +215,6 @@ class TwoStepComponent(nn.Module):
             return (1, *self.data_shape)
 
     def _data_transform(self, data):
-       
         if self.flatten:
             data = data.flatten(start_dim=1)
         if self.denoising_sigma is not None and self.training:
@@ -218,7 +234,10 @@ class TwoStepComponent(nn.Module):
         if self.logit_transform:
             data = torch.sigmoid(data)
         if self.scale_data:
-            data = data * (self.abs_data_max + self.dequantize)
+            if self.dequantize:
+                data = data * (self.abs_data_max + 1.0)
+            else:
+                data = data * self.abs_data_max
         elif self.whitening_transform:
             data = data * self.whitening_sigma
             data = data + self.whitening_mu

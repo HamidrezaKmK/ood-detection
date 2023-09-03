@@ -31,3 +31,9 @@ class SupervisedDataset(torch.utils.data.Dataset):
             self.x.to(device),
             self.y.to(device)
         )
+
+    def get_data_max(self):
+        return self.x.max()
+    
+    def get_data_min(self):
+        return self.x.min()

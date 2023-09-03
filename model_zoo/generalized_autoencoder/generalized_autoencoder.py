@@ -1,5 +1,5 @@
 import torch
-from functorch import jvp
+from torch.func import jvp
 
 from ..two_step import TwoStepComponent
 from ..utils import batch_or_dataloader

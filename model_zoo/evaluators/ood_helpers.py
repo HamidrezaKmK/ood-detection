@@ -24,7 +24,7 @@ def ood_acc(
 
     def get_log_prob(dataloader, name):
         dataloader = remove_drop_last(dataloader)
-        log_prob = np.zeros(dataloader.dataset.x.shape[0])
+        log_prob = np.zeros(len(dataloader.dataset))
 
         ind = 0
         for batch, _, _ in tqdm(dataloader, leave=False, desc=name):

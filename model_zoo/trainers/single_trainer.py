@@ -13,29 +13,29 @@ class BaseTrainer:
     _STEPS_PER_LOSS_WRITE = 10
 
     def __init__(
-            self,
+        self,
 
-            module, *,
-            ckpt_prefix,
+        module, *,
+        ckpt_prefix,
 
-            train_loader,
-            valid_loader,
-            test_loader,
+        train_loader,
+        valid_loader,
+        test_loader,
 
-            writer,
+        writer,
 
-            max_epochs,
+        max_epochs,
 
-            early_stopping_metric=None,
-            max_bad_valid_epochs=None,
-            max_grad_norm=None,
+        early_stopping_metric=None,
+        max_bad_valid_epochs=None,
+        max_grad_norm=None,
 
-            evaluator=None,
+        evaluator=None,
 
-            only_test=False,
-            
-            sample_freq: th.Optional[int] = None,
-            progress_bar: th.Optional[bool] = True,
+        only_test=False,
+        
+        sample_freq: th.Optional[int] = None,
+        progress_bar: th.Optional[bool] = True,
     ):
         self.module = module
         self.ckpt_prefix = ckpt_prefix
@@ -217,7 +217,7 @@ class SingleTrainer(BaseTrainer):
     """Class for training single module"""
 
     def train_single_batch(self, batch):
-        loss_dict = self.module.train_batch(batch, max_grad_norm=self.max_grad_norm)
+        loss_dict = self.module.train_batch(batch, max_grad_norm=self.max_grad_norm, trainer=self)
 
         if self.iteration % self._STEPS_PER_LOSS_WRITE == 0:
             for k, v in loss_dict.items():
@@ -227,17 +227,17 @@ class SingleTrainer(BaseTrainer):
         return loss_dict
 
     def update_transform_parameters(self):
-        train_dset = self.train_loader.dataset.x
+        train_dset = self.train_loader.dataset
 
-        self.module.data_min = train_dset.min()
-        self.module.data_max = train_dset.max()
-        self.module.data_shape = train_dset.shape[1:]
+        self.module.data_min = torch.ones_like(self.module.data_min) * train_dset.get_data_min()
+        self.module.data_max = torch.ones_like(self.module.data_max) * train_dset.get_data_max()
+        self.module.data_shape = train_dset.get_data_shape()
 
 
         if self.module.whitening_transform:
             self.module.set_whitening_params(
-                torch.mean(train_dset, dim=0, keepdim=True),
-                torch.std(train_dset, dim=0, keepdim=True)
+                torch.mean(train_dset.tensorize_and_concatenate_all(), dim=0, keepdim=True),
+                torch.std(train_dset.tensorize_and_concatenate_all(), dim=0, keepdim=True)
             )
 
     def write_checkpoint(self, tag):

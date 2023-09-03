@@ -7,7 +7,134 @@ import torch
 import torch.nn.functional as f
 
 from .supervised_dataset import SupervisedDataset
+from model_zoo.utils import load_model_with_checkpoints
+from model_zoo.density_estimator import DensityEstimator
+from model_zoo import TwoStepDensityEstimator
+from functools import lru_cache
+from dotenv import load_dotenv
 
+import typing as th
+import os
+from tqdm import tqdm
+import shutil
+
+import PIL
+
+class DGMGeneratedDataset(SupervisedDataset):
+    """Base class for generated datasets"""
+
+    item_cache_size = 10000
+    
+    def __init__(
+        self, 
+        data_root: str,
+        identifier: str,
+        model_loading_config: th.Dict[str, th.Any],
+        length: th.Optional[int] = None,
+        seed: th.Optional[int] = None,
+        generation_batch_size: int = 10,
+        device: str = "cpu",
+        model_root: th.Optional[str] = None,
+    ):
+        self.data_path = os.path.join(data_root, identifier)
+        if model_root is None:
+            load_dotenv()
+            model_root = os.environ.get("MODEL_DIR", './runs/')
+            
+        def generate_all():
+            # get the model and generate all the data and save it
+            model: th.Union[DensityEstimator, TwoStepDensityEstimator] = \
+                load_model_with_checkpoints(model_loading_config, device=device, root=model_root)
+            
+            if seed is not None:    
+                np.random.seed(seed)
+                torch.manual_seed(seed)
+            rng = tqdm(range(0, length, generation_batch_size))
+            rng.set_description("Generating data")
+            for i in rng:
+                r = min(i + generation_batch_size, length)
+                data = model.sample(r - i).detach().cpu().permute(0, 2, 3, 1).numpy()
+                for j, sample in enumerate(data):
+                    img_dir = os.path.join(self.data_path, f"{i + j + 1}.png")
+                    # save that sample in image format in img_dir
+                    if sample.shape[-1] == 1:
+                        im = PIL.Image.fromarray(sample[:, :, 0].astype(np.uint8), mode="L")
+                    elif sample.shape[-1] == 3:
+                        im = PIL.Image.fromarray(sample.astype(np.uint8))
+                    else:
+                        raise ValueError("Invalid number of channels: ", sample.shape[-1])
+                    im.save(img_dir)
+            self.length = length
+                    
+        if not os.path.exists(self.data_path):
+            os.makedirs(self.data_path)
+            generate_all()
+            
+        else:
+            # get the length of the dataset
+            if length != len(os.listdir(self.data_path)):
+                # delete all the content of the folder
+                shutil.rmtree(self.data_path)
+                os.mkdir(self.data_path)
+                generate_all()
+            else:
+                print("Using existing data cached ...")
+                self.length = len(os.listdir(self.data_path))
+        
+        self.cached_indices = {}
+        
+        self.device = device
+    
+    def get_data_min(self):
+        return 0.0
+    
+    def get_data_max(self):
+        return 255.0
+    
+    def get_data_shape(self):
+        t = self.__getitem__(0)[0].shape
+        return t
+                   
+    def __len__(self):
+        return self.length
+
+    def to(self, device):
+        # uncache all the outputs
+        if device != self.device:
+            self.cached_indices = {}
+            self.device = device
+
+        return self
+    
+    def __getitem__(self, idx):
+        if idx not in self.cached_indices:
+            img_path = os.path.join(self.data_path, f"{idx + 1}.png")
+            X = PIL.Image.open(img_path)
+            # turn X into a numpy array of type float
+            X = np.array(X).astype(np.float32)
+            if len(X.shape) == 2:
+                X = X[:, :, None]
+            # turn X into a tensor
+            X = torch.from_numpy(X).float().permute(2, 0, 1).to(self.device)
+            # NOTE: if the dgm model is class conditional, then we can also generate the class labels here
+            #       and return the sample conditioned on that specific class
+            self.cached_indices[idx] = X, None, idx
+        return self.cached_indices[idx]
+
+def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str] = None):
+    if identifier is None:
+        checkpoint_dir = dgm_args['model_loading_config']['checkpoint_dir']
+        # split checkpoint_dir according to the os path separator
+        separated = checkpoint_dir.split('/')
+        identifier = '_'.join(separated)
+        # replace dots with underscores
+        identifier = identifier.replace('.', '_')
+        
+    train_dset = DGMGeneratedDataset(data_root, identifier=identifier, **dgm_args)
+    valid_dset = train_dset
+    test_dset = train_dset
+    return train_dset, valid_dset, test_dset
+     
 class Sphere(SupervisedDataset):
     """Sample from a Gaussian distribution projected to a sphere"""
 
@@ -34,6 +161,12 @@ class Sphere(SupervisedDataset):
         self.x = f.pad(torch.Tensor(sphere_points),
                             pad=(0, self.ambient_dim - self.manifold_dim - 1, 0, 0))
         self.y = torch.zeros(self.x.shape[0]).long()
+    
+    def get_data_min(self):
+        return torch.min(self.x)
+
+    def get_data_max(self):
+        return torch.max(self.x)
 
 
 class KleinBottle(SupervisedDataset):

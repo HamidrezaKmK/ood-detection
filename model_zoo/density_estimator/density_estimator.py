@@ -118,6 +118,10 @@ class DensityEstimator(TwoStepComponent):
         return self._mid_level_representations
                  
     def sample(self, n_samples):
+        """
+        n_sample can also take value "-1" in which case we
+        will return the sample with the most probability.
+        """
         raise NotImplementedError("sample not implemented")
 
     def log_prob(self, x, **kwargs):
