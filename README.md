@@ -1,4 +1,4 @@
-# README
+# OOD-detection using Peaks of the Density Function
 
 This repository explores different ways of performing OOD detection on likelihood-based deep generative models. The codebase uses [two_step_zoo](https://github.com/layer6ai/two_step_zoo), containing code from the paper ["Diagnosing and Fixing Manifold Overfitting in Deep Generative Models"](https://arxiv.org/abs/2204.07172) accepted to TMLR in July 2022.
 

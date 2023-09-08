@@ -187,4 +187,4 @@ dysweep_logs
 hamid_notebook.ipynb
 
 # an exception for meta_run.sh
-!meta_run.sh
+!meta_run*

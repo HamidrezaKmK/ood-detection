@@ -1,3 +1,6 @@
+"""
+This code are the codes used for creating the dysweep and operate on a meta_configuration level to logging onto W&B.
+"""
 import typing as th
 from pprint import pprint
 
@@ -56,6 +59,9 @@ def change_coupling_layers(conf, coupling_name: str, additional_args: th.Optiona
     return conf
 
 def get_generated_config(conf: dict):
+    """
+    Returns the configurations required for the model generated datasets.
+    """
     return {
         'dataset': 'dgm-generated',
         'dgm_args': {
@@ -66,6 +72,11 @@ def get_generated_config(conf: dict):
     }
 
 def run_name_changer(conf, run_name):
+    """
+    This run changer takes a look at the configuration and sets a name for that
+    run appropriately.
+    The scheme here is [trained_dataset]_vs_[ood_dataset]_[test_or_train_split]
+    """
     ret = conf['data']['in_distribution']['dataloader_args']['dataset']
     ret += '_vs_'
     ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']

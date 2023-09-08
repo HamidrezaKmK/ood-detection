@@ -1,5 +1,7 @@
-# This sweep contains the training configuration of all the flow models 
+# This sweep contains the training configuration of all the RGB flow models 
 # trained on a colorful image of size [3 x 32 x 32]
+# This contains the Glow models and the Neural Spline Flows
+
 project: training-dgms
 entity: dgm-l6
 sweep_name: colorful_flows

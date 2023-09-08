@@ -1,5 +1,5 @@
 """
-The main file used for OOD detection.
+The main file used for OOD detection that follows the dysweep conventions
 """
 import copy
 from PIL import Image
@@ -20,6 +20,7 @@ from model_zoo.utils import load_model_with_checkpoints
 from dotenv import load_dotenv
 import os
 from tqdm import tqdm
+from ood.visualization import visualize_histogram
 
 @dataclass
 class OODConfig:
@@ -31,7 +32,6 @@ class OODConfig:
 
 def plot_likelihood_ood_histogram(
     model: torch.nn.Module,
-    data_loader_in: torch.utils.data.DataLoader,
     data_loader_out: torch.utils.data.DataLoader,
     limit: th.Optional[int] = None,
 ):
@@ -50,45 +50,24 @@ def plot_likelihood_ood_histogram(
     # create a function that returns a list of all the likelihoods when given
     # a dataloader
     model.eval()
-    def list_all_scores(dloader: torch.utils.data.DataLoader, description: str):
-        log_probs = []
-        for x in tqdm(dloader, desc=f"Calculating likelihoods for {description}"):
-            with torch.no_grad():
-                t = model.log_prob(x).cpu()
-            # turn t into a list of floats
-            t = t.flatten()
-            t = t.tolist()
-            log_probs += t
-            if limit is not None and len(log_probs) > limit:
-                break
-        return log_probs
-
-    # List the likelihoods for both dataloaders
-    in_distr_scores = list_all_scores(data_loader_in, "in distribution")
-    out_distr_scores = list_all_scores(data_loader_out, "out of distribution")
+    log_probs = []
+    for x in tqdm(data_loader_out, desc=f"Calculating likelihoods"):
+        with torch.no_grad():
+            t = model.log_prob(x).cpu()
+        # turn t into a list of floats
+        t = t.flatten()
+        t = t.tolist()
+        log_probs += t
+        if limit is not None and len(log_probs) > limit:
+            break
     
-    # plot using matplotlib and then visualize the picture 
-    # using W&B media.
-    try:
-        # return an image of the histogram
-        plt.hist(in_distr_scores, density=True, bins=100,
-                 alpha=0.5, label="in distribution")
-        plt.hist(out_distr_scores, density=True, bins=100,
-                 alpha=0.5, label="out distribution")
-        plt.title("Histogram of log likelihoods")
-        plt.legend(loc="upper right")
-        buf = io.BytesIO()
-        # Save your plot to the buffer
-        plt.savefig(buf, format="png")
-
-        # Use PIL to convert the BytesIO object to an image object
-        buf.seek(0)
-        img = Image.open(buf)
-    finally:
-        plt.close()
-
-    return np.array(img)
-
+    visualize_histogram(
+        scores=np.array(log_probs),
+        x_label="log_likelihoods",
+        plot_using_lines=True,
+        bincount=20,
+        reject_outliers=0.1,
+    )
 
 def run_ood(config: dict, gpu_index: int = 0):
     """
@@ -215,11 +194,10 @@ def run_ood(config: dict, gpu_index: int = 0):
     # (3) Log model samples and in/out of distribution samples #
     ############################################################
     
-    # print out a sample ood and in distribution image onto the wandb logger
-    np.random.seed(config["data"]["seed"])
-
+    np.random.seed(config["data"].get("seed", None))
+    ood_config = config.get("ood", {})
     # you can set to visualize or bypass the visualization for speedup!
-    if 'bypass_visualization' not in config['ood'] or not config['ood']['bypass_visualization']:
+    if not ood_config.get('bypass_visualization', False):
         # get 9 random samples from the in distribution dataset
         sample_set = np.random.randint(len(in_loader.dataset), size=9)
         in_samples = []
@@ -240,43 +218,42 @@ def run_ood(config: dict, gpu_index: int = 0):
         wandb.log({"data/out_of_distribution samples": [wandb.Image(
             out_samples, caption="out of distribution samples")]})
         
-        # generate 9 samples from the model if bypass sampling is not set to True
-        if 'samples_visualization' in config['ood']:
-            if config['ood']['samples_visualization'] > 0:
+        # generate 16 samples from the model if bypass sampling is not set to True
+        if 'samples_visualization' in ood_config:
+            if ood_config['samples_visualization'] > 0:
                 with torch.no_grad():
                     def log_samples():
-                        samples = model.sample(9)
-                        samples = torchvision.utils.make_grid(samples, nrow=3)
+                        samples = model.sample(16)
+                        samples = torchvision.utils.make_grid(samples, nrow=4)
                         wandb.log(
                             {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
                     # set torch seed for reproducibility
-                    if config["ood"]["seed"] is not None:
+                    ood_seed = ood_config.get("seed", None)
+                    if ood_seed is not None:
                         if device.startswith("cuda"):
-                            torch.cuda.manual_seed(config["ood"]["seed"])
-                        torch.manual_seed(config["ood"]["seed"])
+                            torch.cuda.manual_seed(ood_seed)
+                        torch.manual_seed(ood_seed)
                         log_samples()
                     else:
                         log_samples()
                         
-            if config['ood']['samples_visualization'] > 1:
+            if ood_config['samples_visualization'] > 1:
                 wandb.log({"data/most_probable": [wandb.Image(model.sample(-1).squeeze(), caption="max likelihood")]})
         
         def log_histograms():
-            limit = config['ood'].get('histogram_limit', None)
-            img_array = plot_likelihood_ood_histogram(
+            limit = ood_config.get('histogram_limit', None)
+            plot_likelihood_ood_histogram(
                 model,
-                in_loader,
                 out_loader,
                 limit=limit,
             )
-            wandb.log({"likelihood_ood_histogram": [wandb.Image(
-                img_array, caption="Histogram of log likelihoods")]})
-        
-        if "bypass_visualize_histogram" not in config['ood'] or not config['ood']['bypass_visualize_histogram']:
-            if config["ood"]["seed"] is not None:  
+            
+        if "bypass_visualize_histogram" not in ood_config or not ood_config['bypass_visualize_histogram']:
+            ood_seed = ood_config.get("seed", None)
+            if ood_seed is not None:  
                 if device.startswith("cuda"):
-                    torch.cuda.manual_seed(config["ood"]["seed"])
-                    torch.manual_seed(config["ood"]["seed"])
+                    torch.cuda.manual_seed(ood_seed)
+                    torch.manual_seed(ood_seed)
                 log_histograms()
             else:
                 log_histograms()
@@ -287,45 +264,31 @@ def run_ood(config: dict, gpu_index: int = 0):
     #########################################
     
     # For dummy runs that you just use for visualization
-    if "method_args" not in config["ood"] or "method" not in config["ood"]:
+    if "method_args" not in ood_config or "method" not in ood_config:
         print("No ood method available! Exiting...")
         return
     
-    method_args = copy.deepcopy(config["ood"]["method_args"])
-    method_args["logger"] = wandb.run
+    method_args = copy.deepcopy(ood_config["method_args"])
     method_args["likelihood_model"] = model
 
-    # pick a random batch with seed for reproducibility
-    if config["ood"]["seed"] is not None:
-        np.random.seed(config["ood"]["seed"])
-    idx = np.random.randint(len(out_loader))    
-    for _ in range(idx + 1):
-        x = next(iter(out_loader))
-
-    if config["ood"]["pick_single"]:
-        # pick a single image the selected batch
-        method_args["x"] = x[np.random.randint(x.shape[0])]
-    elif "use_dataloader" in config["ood"] and config["ood"]["use_dataloader"]:
-        method_args["x_loader"] = out_loader
-        if config["ood"].get("pick_count", 0) > 0:
-            t = min(config['ood']['pick_count'], len(out_loader))
-            method_args["x_loader"] = []
-            iterable_ = iter(out_loader)
-            for _ in range(t):
-                method_args["x_loader"].append(next(iterable_))
-    elif "pick_count" not in config["ood"]:
-        raise ValueError("pick_count not in config when pick_single=False")
-    else:
-        # pass in the entire batch
-        r = min(config["ood"]["pick_count"], x.shape[0])
-        method_args["x_batch"] = x[:r]
-    
+    # Pick a subset of the OOD dataloader for tractability if 
+    # pick_count is specified
+    ood_seed = ood_config.get("seed", None)
+    np.random.seed(ood_seed)
+        
+    method_args["x_loader"] = out_loader
+    t = min(ood_config.get("pick_count", len(out_loader)), len(out_loader))
+    method_args["x_loader"] = []
+    iterable_ = iter(out_loader)
+    for _ in range(t):
+        batch = next(iterable_)
+        method_args["x_loader"].append(batch)
     method_args["in_distr_loader"] = in_train_loader
     
     if device.startswith("cuda"):
-        torch.cuda.manual_seed(config["ood"]["seed"])
-    torch.manual_seed(config["ood"]["seed"])
-    method = dy.eval(config["ood"]["method"])(**method_args)
+        torch.cuda.manual_seed(ood_seed)
+    torch.manual_seed(ood_seed)
+    method = dy.eval(ood_config["method"])(**method_args)
     # Call the run function of the given method
     method.run()
 
