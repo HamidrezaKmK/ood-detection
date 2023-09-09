@@ -91,42 +91,17 @@ def run_ood(config: dict, gpu_index: int = 0):
     What this function does is that it first creates the appropriate torch model.
     Then uses the in-distribution data and out-of-distribution data to create a histogram
     comparing the likelihood of the model on the in-distribution and out-of-distribution data.
-    
-    For sanity check, it also samples 9 data points from the model and 9 data points from the
-    in and out of distribution datasets and logs them to the W&B logger.
-    
-    After that, according to a set of arguments, either
-    1. A single data point is picked from out-of-distribution dataset and the method is run on it
-    2. A single batch is picked from the out-of-distribution dataset and the method is run on it
-    3. The entire out-of-distribution dataset is passed to the method
-    
-    For each setting the following configurations are appropriate:
-    1. 'ood': {
-        'seed': <set the seed for reproducibility>
-        'pick_single': True,
-    }
-    2. 'ood': {
-        'seed': <set the seed for reproducibility>
-        'pick_single': False,
-        'use_dataloader': False
-        'pick_count': <the number of data points to pick from a batch>
-    }
-    3. 'ood': {
-        'seed': <set the seed for reproducibility>
-        'pick_single': False,
-        'use_dataloader': True,
-    }
-    
-    With either of these three setups the appropriate method which inherits from
-    ood.methods.base.BaseOODMethod is passed in with (1) x (a single data point),
-    (2) x_batch (a batch of data points) or (3) x_loader (a dataloader).   
+     
 
     Args:
         config (dict): The configuration dictionary
     """
+    torch.cuda.empty_cache()
+    
     ###################
     # (1) Model setup #
     ###################
+    
     load_dotenv()
     
     if 'MODEL_DIR' in os.environ:
@@ -138,8 +113,6 @@ def run_ood(config: dict, gpu_index: int = 0):
     
     model = load_model_with_checkpoints(config=config['base_model'], root=model_root, device=device)
     
-    
-    model.to(device)
     
     ##################
     # (1) Data setup #

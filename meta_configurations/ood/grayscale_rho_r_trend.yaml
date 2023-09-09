@@ -56,28 +56,13 @@ base_config:
       verbose: 2
       
       # The number of radii that are being plotted is always fixed
-      radii_n: 100
+      radii_n: 120
+      radii_range: [-20, 5]
+      with_std: True
       
 sweep_configuration:
 
   dy__upsert:
-    - ood:
-        method_args:
-          with_std:
-            sweep: True
-            values: [False, True]
-    - ood:
-        method_args:
-          radii_range:
-            sweep: True
-            sweep_alias:
-            - zoom_in
-            - normal
-            - zoom_out
-            values:
-            - [-20, 0]
-            - [-20, 2]
-            - [-20, 5]
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
@@ -86,11 +71,6 @@ sweep_configuration:
         - flow_fmnist_RQ_NSF
         - flow_omniglot_RQ_NSF
         - flow_emnist_RQ_NSF
-        # neural spline flows
-        - flow_mnist_Glow
-        - flow_fmnist_Glow
-        - flow_omniglot_Glow
-        - flow_emnist_Glow
       values:
         - base_model:
             config_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_mnist_agenizing_xhkxy2eu_final/run_config.json
@@ -140,67 +120,6 @@ sweep_configuration:
         - base_model:
             config_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_emnist_papillous_jr5k61wg_final/run_config.json
             checkpoint_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_emnist_papillous_jr5k61wg_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: emnist
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-        # 
-        - base_model:
-            config_dir: checkpoints-443rgkyn/AffineCouplingTransform_mnist_unforgettably_6a8il0rr_final/run_config.json
-            checkpoint_dir: checkpoints-443rgkyn/AffineCouplingTransform_mnist_unforgettably_6a8il0rr_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: mnist
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-        - base_model:
-            config_dir: checkpoints-443rgkyn/AffineCouplingTransform_fashion-mnist_spritzer_ahbuahyr_final/run_config.json
-            checkpoint_dir: checkpoints-443rgkyn/AffineCouplingTransform_fashion-mnist_spritzer_ahbuahyr_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: fashion-mnist
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-        - base_model:
-            config_dir: checkpoints-443rgkyn/AffineCouplingTransform_omniglot_sarcophaguses_24z9ios4_final/run_config.json
-            checkpoint_dir: checkpoints-443rgkyn/AffineCouplingTransform_omniglot_sarcophaguses_24z9ios4_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: omniglot
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 8
-                valid_batch_size: 8
-                test_batch_size: 8
-        - base_model:
-            config_dir: checkpoints-443rgkyn/AffineCouplingTransform_emnist_josey_zkejz05t_final/run_config.json
-            checkpoint_dir: checkpoints-443rgkyn/AffineCouplingTransform_emnist_josey_zkejz05t_final/checkpoints/de_nf_best_valid.pt
           data:
             in_distribution:
               dataloader_args:

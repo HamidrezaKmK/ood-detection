@@ -246,22 +246,21 @@ class Omniglot(Dataset):
         self.device = device
         # shuffle the dataset deterministically according to the splitting seed
         
-        with torch.random.fork_rng():
-            torch.manual_seed(seed)
-            perm = torch.randperm(len(self.omniglot))
-            test_len = int(len(self.omniglot) * 0.1)
-            valid_len = int(len(self.omniglot) * valid_fraction)
-            test_indices = perm[:test_len]
-            valid_indices = perm[test_len:valid_len+test_len]
-            train_indices = perm[valid_len+test_len:]
-            if role == "train":
-                self.omniglot = torch.utils.data.Subset(self.omniglot, train_indices)
-            elif role == 'valid':
-                self.omniglot = torch.utils.data.Subset(self.omniglot, valid_indices)
-            elif role == 'test':
-                self.omniglot = torch.utils.data.Subset(self.omniglot, test_indices)
-            else:
-                raise ValueError(f"Unknown role {role}")
+        torch.manual_seed(seed)
+        perm = torch.randperm(len(self.omniglot))
+        test_len = int(len(self.omniglot) * 0.1)
+        valid_len = int(len(self.omniglot) * valid_fraction)
+        test_indices = perm[:test_len]
+        valid_indices = perm[test_len:valid_len+test_len]
+        train_indices = perm[valid_len+test_len:]
+        if role == "train":
+            self.omniglot = torch.utils.data.Subset(self.omniglot, train_indices)
+        elif role == 'valid':
+            self.omniglot = torch.utils.data.Subset(self.omniglot, valid_indices)
+        elif role == 'test':
+            self.omniglot = torch.utils.data.Subset(self.omniglot, test_indices)
+        else:
+            raise ValueError(f"Unknown role {role}")
         
         self.cached_values = {}
             

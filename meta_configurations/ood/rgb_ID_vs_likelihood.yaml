@@ -142,12 +142,6 @@ sweep_configuration:
         - flow_cifar100_RQ_NSF
         - flow_tiny_RQ_NSF
         - flow_celeba_small_RQ_NSF
-        # glow models
-        - flow_cifar10_Glow
-        - flow_svhn_Glow
-        - flow_cifar100_Glow
-        - flow_tiny_Glow
-        - flow_celeba_small_Glow
       values:
         - base_model:
             config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/run_config.json
@@ -156,14 +150,14 @@ sweep_configuration:
             in_distribution:
               dataloader_args:
                 dataset: cifar10
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
             out_of_distribution:
               dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
         - base_model:
             config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_svhn_hittitics_znujejsh_final/run_config.json
             checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_svhn_hittitics_znujejsh_final/checkpoints/de_nf_best_valid.pt
@@ -171,14 +165,14 @@ sweep_configuration:
             in_distribution:
               dataloader_args:
                 dataset: svhn
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
             out_of_distribution:
               dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
         - base_model:
             config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar100_unindigenous_42n5ww2b_final/run_config.json
             checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar100_unindigenous_42n5ww2b_final/checkpoints/de_nf_best_valid.pt
@@ -186,14 +180,14 @@ sweep_configuration:
             in_distribution:
               dataloader_args:
                 dataset: cifar100
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
             out_of_distribution:
               dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
         - base_model:
             config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_tiny-imagenet_directors_zk9ezaia_final/run_config.json
             checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_tiny-imagenet_directors_zk9ezaia_final/checkpoints/de_nf_best_valid.pt
@@ -201,14 +195,14 @@ sweep_configuration:
             in_distribution:
               dataloader_args:
                 dataset: tiny-imagenet
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
             out_of_distribution:
               dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
         
         - base_model:
             config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_celeba-small_loculose_8fvoxku1_final/run_config.json
@@ -217,89 +211,14 @@ sweep_configuration:
             in_distribution:
               dataloader_args:
                 dataset: celeba-small
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
             out_of_distribution:
               dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-        - base_model:
-            config_dir: checkpoints-zei1ialy/AffineCouplingTransform_cifar10_loller_neht0raf_final/run_config.json
-            checkpoint_dir: checkpoints-zei1ialy/AffineCouplingTransform_cifar10_loller_neht0raf_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: cifar10
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-        - base_model:
-            config_dir: checkpoints-zei1ialy/AffineCouplingTransform_svhn_loricae_8552bnt7_final/run_config.json
-            checkpoint_dir: checkpoints-zei1ialy/AffineCouplingTransform_svhn_loricae_8552bnt7_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: svhn
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-        - base_model:
-            config_dir: checkpoints-zei1ialy/AffineCouplingTransform_cifar100_dependable_rurkoi3l_final/run_config.json
-            checkpoint_dir: checkpoints-zei1ialy/AffineCouplingTransform_cifar100_dependable_rurkoi3l_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: cifar100
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-        - base_model:
-            config_dir: checkpoints-zei1ialy/AffineCouplingTransform_tiny-imagenet_mediofrontal_i007b0qb_final/run_config.json
-            checkpoint_dir: checkpoints-zei1ialy/AffineCouplingTransform_tiny-imagenet_mediofrontal_i007b0qb_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: tiny-imagenet
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-        - base_model:
-            config_dir: checkpoints-zei1ialy/AffineCouplingTransform_celeba-small_ricinus_y3xyffia_final/run_config.json
-            checkpoint_dir: checkpoints-zei1ialy/AffineCouplingTransform_celeba-small_ricinus_y3xyffia_final/checkpoints/de_nf_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: celeba-small
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
-            out_of_distribution:
-              dataloader_args:
-                train_batch_size: 32
-                valid_batch_size: 32
-                test_batch_size: 32
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
         
     - sweep: True
       sweep_identifier: ood_picker

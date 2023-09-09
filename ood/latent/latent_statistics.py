@@ -92,7 +92,18 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
             
             for j in jax_wrapped:
                 j = j.to(device)
-                L, Q = torch.linalg.eigh(torch.matmul(j.transpose(1, 2), j))
+                
+                # take care of extremes and corner cases
+                # This should happen because of a CUDA error while dealing with large
+                # matrices and computing eigh
+                jtj = torch.matmul(j.transpose(1, 2), j)
+                jtj = 0.5 * (jtj.transpose(1, 2) + jtj)
+                jtj = torch.clamp(jtj, min=-10**4.5, max=10**4.5)
+                jtj = torch.where(jtj.isnan(), torch.zeros_like(jtj), jtj)
+                
+                # perform eigendecomposition
+                L, Q = torch.linalg.eigh(jtj)
+                    
                 L = torch.where(L > 1e-20, L, 1e-20 * torch.ones_like(L))
                 
                 # move to RAM memory to circumvent overloading the GPU memory
