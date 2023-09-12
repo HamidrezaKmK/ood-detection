@@ -33,7 +33,7 @@ base_config:
     seed: 100
     # the number of batches under consideration -> Makes a total of 1024 datapoints
     
-    pick_count: 3
+    pick_count: 128
     
     # The OOD detection method in use
     method: ood.baselines.JEMVol
