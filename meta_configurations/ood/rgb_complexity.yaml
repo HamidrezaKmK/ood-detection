@@ -53,7 +53,7 @@ sweep_configuration:
           correction_coeff:
             sweep: True
             sweep_identifier: A_coeff
-            values: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2]
+            values: [3.0, 2.8, 2.6, 2.4, 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0, 0.9, 0.8, 0.6, 0.4, 0.2]
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
@@ -95,14 +95,10 @@ sweep_configuration:
     - sweep: True
       sweep_identifier: Z_ood_picker
       sweep_alias:
-      - celeba-small
       - svhn
       - cifar10
+      - celeba-small
       values:
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: celeba-small
       - data:
           out_of_distribution:
             dataloader_args:
@@ -111,3 +107,7 @@ sweep_configuration:
           out_of_distribution:
             dataloader_args:
               dataset: cifar10
+      - data:
+          out_of_distribution:
+            dataloader_args:
+              dataset: celeba-small
