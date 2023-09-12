@@ -163,7 +163,7 @@ def visualize_histogram(
     """
     
     table1 = wandb.Table(columns=[x_label], data=[[x] for x in scores])
-    wandb.log({"scores_histogram": wandb.plot.histogram(table1, x_label, title=f"histogram of {x_label}")})
+    wandb.log({f"scores_histogram/{x_label}": wandb.plot.histogram(table1, x_label, title=f"histogram of {x_label}")})
     
     if plot_using_lines:
         # Now plot a line wandb plot 
@@ -190,7 +190,7 @@ def visualize_histogram(
         
         data = [[x, y] for x, y in zip(centers, density)]
         table = wandb.Table(data=data, columns = [x_label, y_label])
-        dict_to_log = {f"histogram/{title}": wandb.plot.line(table, x_label, y_label, title=title)}
+        dict_to_log = {f"histogram/{title}/{x_label}": wandb.plot.line(table, x_label, y_label, title=title)}
         
         wandb.log(dict_to_log)
 
