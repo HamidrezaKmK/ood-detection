@@ -23,6 +23,10 @@ import os
 from PIL import Image 
 import subprocess
 
+def _get_filename():
+    # This piece of code makes concurrency possible for a machine
+    return f"COMPLEXITY_BASELINE_{os.getpid()}"
+
 class CompelxityBased(OODBaseMethod):
     """
     This OOD detection method visualizes trends of the latent statistics that are being calculated in the ood.methods.linear_approximations.latent_statistics.
@@ -90,9 +94,9 @@ class CompelxityBased(OODBaseMethod):
         As per the details of the method, we set the compression level
         to the maximum value possible.
         """
-        cv2.imwrite("COMPLEXITY_BASELINE_tmp.jpg", x, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, compression_level])
-        ret = 8.0 * os.path.getsize("COMPLEXITY_BASELINE_tmp.jpg")
-        os.remove("COMPLEXITY_BASELINE_tmp.jpg")
+        cv2.imwrite(f"{_get_filename()}_tmp.jpg", x, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, compression_level])
+        ret = 8.0 * os.path.getsize(f"{_get_filename()}_tmp.jpg")
+        os.remove(f"{_get_filename()}_tmp.jpg")
         return ret
     
     def flif_compressor(self, x: np.array):
@@ -109,11 +113,11 @@ class CompelxityBased(OODBaseMethod):
             im = Image.fromarray(x.astype('uint8'), mode='L')
         elif len(x.shape) == 3:
             im = Image.fromarray(x.astype('uint8'), mode='RGB')
-        im.save('COMPLEXITY_BASELINE_compression_method.png')
-        subprocess.call(["flif", "COMPLEXITY_BASELINE_compression_method.png", "COMPLEXITY_BASELINE_compression_method.flif"])
-        ret = 8.0 * os.path.getsize("COMPLEXITY_BASELINE_compression_method.flif")
-        os.remove("COMPLEXITY_BASELINE_compression_method.png")
-        os.remove("COMPLEXITY_BASELINE_compression_method.flif")
+        im.save(f'{_get_filename()}_compression_method.png')
+        subprocess.call(["flif", f"{_get_filename()}_compression_method.png", f"{_get_filename()}_compression_method.flif"])
+        ret = 8.0 * os.path.getsize(f"{_get_filename()}_compression_method.flif")
+        os.remove(f"{_get_filename()}_compression_method.png")
+        os.remove(f"{_get_filename()}_compression_method.flif")
         return ret
     
     def run(self):
