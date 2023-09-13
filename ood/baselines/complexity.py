@@ -114,10 +114,18 @@ class CompelxityBased(OODBaseMethod):
         elif len(x.shape) == 3:
             im = Image.fromarray(x.astype('uint8'), mode='RGB')
         im.save(f'{_get_filename()}_compression_method.png')
-        subprocess.call(["flif", f"{_get_filename()}_compression_method.png", f"{_get_filename()}_compression_method.flif"])
-        ret = 8.0 * os.path.getsize(f"{_get_filename()}_compression_method.flif")
-        os.remove(f"{_get_filename()}_compression_method.png")
-        os.remove(f"{_get_filename()}_compression_method.flif")
+        ret = inf
+        try:
+            subprocess.call(["flif", f"{_get_filename()}_compression_method.png", f"{_get_filename()}_compression_method.flif"])
+            ret = 8.0 * os.path.getsize(f"{_get_filename()}_compression_method.flif")
+        except Exception as E:
+            # ignore the exception
+            pass
+        finally:
+            if os.path.exists(f"{_get_filename()}_compression_method.png"):
+                os.remove(f"{_get_filename()}_compression_method.png")
+            if os.path.exists(f"{_get_filename()}_compression_method.flif"):
+                os.remove(f"{_get_filename()}_compression_method.flif")
         return ret
     
     def run(self):
