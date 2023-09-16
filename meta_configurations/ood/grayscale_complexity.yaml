@@ -99,6 +99,7 @@ sweep_configuration:
       - mnist
       - fashion-mnist
       - omniglot
+      - generated
       values:
       - data:
           out_of_distribution:
@@ -112,3 +113,14 @@ sweep_configuration:
           out_of_distribution:
             dataloader_args:
               dataset: omniglot
+      - data:
+          out_of_distribution:
+            dataloader_args:
+              dy__eval:
+                expression: |
+                  from meta_configurations import get_generated_config
+
+                  def pick_generated(conf):
+                    return get_generated_config(conf)
+
+                function_of_interest: pick_generated
