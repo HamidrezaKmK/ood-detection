@@ -22,6 +22,7 @@ from math import inf
 import os
 from PIL import Image 
 import subprocess
+import warnings
 
 def _get_filename():
     # This piece of code makes concurrency possible for a machine
@@ -106,7 +107,9 @@ class CompelxityBased(OODBaseMethod):
         """
         # NOTE: make sure you have FLIF installed on your system
         # for an ubuntu machine which we ran our experiments on
-        # you can install using `sudo snap install flif`
+        # you can install using the instructions in https://github.com/FLIF-hub/FLIF
+        # NOTE: JPEG-XL is apprantly the new SOTA in lossless compression, but since it was not
+        # reported in the baseline paper, we will go with flif
         if len(x.shape) == 2 or x.shape[-1] == 1:
             if x.shape[-1] == 1:
                 x = x[:, :, 0]
@@ -116,11 +119,12 @@ class CompelxityBased(OODBaseMethod):
         im.save(f'{_get_filename()}_compression_method.png')
         ret = inf
         try:
-            subprocess.call(["flif", f"{_get_filename()}_compression_method.png", f"{_get_filename()}_compression_method.flif"])
+            # NOTE: Might need to change this depending on the way flif works on your machine
+            subprocess.call(["/usr/local/bin/flif", f"{_get_filename()}_compression_method.png", f"{_get_filename()}_compression_method.flif"])
             ret = 8.0 * os.path.getsize(f"{_get_filename()}_compression_method.flif")
         except Exception as E:
-            # ignore the exception
-            pass
+            # If FLIF does not work, that does not mean our method fails, especially with ensembles.
+            warnings.warn("FLIF did not execute!")
         finally:
             if os.path.exists(f"{_get_filename()}_compression_method.png"):
                 os.remove(f"{_get_filename()}_compression_method.png")
