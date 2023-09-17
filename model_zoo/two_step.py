@@ -52,6 +52,36 @@ class TwoStepDensityEstimator(nn.Module):
         else:
             return super().__getattribute__(attr)
 
+def mask_and_replace(x, rate):
+    """
+    This implements the background perturbations introduced in Ren et al.
+    https://arxiv.org/pdf/1906.02845.pdf
+    
+    Mask elements in tensor x with probability 'rate' and then replace them with a random value 
+    from the unique values in the tensor.
+
+    Args:
+        x (torch.Tensor): input tensor.
+        rate (float): probability of masking each element in the tensor.
+
+    Returns:
+        torch.Tensor: tensor after masking and replacement.
+    """
+    
+    # Create a binary mask of the same shape as x with 1's at the locations to be masked
+    mask = (torch.rand(x.shape) < rate).float().to(x.device)
+
+    # Get unique values from x (no gradients)
+    unique_vals = x.detach().unique()
+
+    # For each masked location, select a random value from unique_vals for replacement
+    rand_indices = torch.randint(0, len(unique_vals), size=x.shape)
+    replacements = unique_vals[rand_indices]
+
+    # Use the mask to combine the original tensor with replacements
+    result = x * (1 - mask) + replacements * mask
+    
+    return result
 
 class TwoStepComponent(nn.Module):
     """Superclass for the GeneralizedAutoencoder and DensityEstimator"""
@@ -70,6 +100,7 @@ class TwoStepComponent(nn.Module):
             dequantize=False,
             scale_data=False,
             whitening_transform=False,
+            background_augmentation: th.Optional[float] = None,
             logit_transform=False,
             clamp_samples=False,
         ):
@@ -85,6 +116,7 @@ class TwoStepComponent(nn.Module):
         self.scale_data = scale_data
         self.whitening_transform = whitening_transform
         self.logit_transform = logit_transform
+        self.background_augmentation = background_augmentation
         self.clamp_samples = clamp_samples
 
         # NOTE: Need to set buffers to specific amounts or else they will not be loaded by state_dict
@@ -228,6 +260,10 @@ class TwoStepComponent(nn.Module):
             data = data / self.whitening_sigma
         if self.logit_transform:
             data = torch.logit(data)
+        if self.background_augmentation is not None:
+            rate = self.background_augmentation
+            data = mask_and_replace(data, rate)
+            
         return data
 
     def _inverse_data_transform(self, data):

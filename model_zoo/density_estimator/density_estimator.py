@@ -12,10 +12,12 @@ class DensityEstimator(TwoStepComponent):
         dequantize=False, 
         scale_data=False, 
         whitening_transform=False, 
+        background_augmentation: th.Optional[float] = None,
         logit_transform=False, 
         clamp_samples=False
+        
     ):
-        super().__init__(flatten, data_shape, denoising_sigma, dequantize, scale_data, whitening_transform, logit_transform, clamp_samples)
+        super().__init__(flatten, data_shape, denoising_sigma, dequantize, scale_data, whitening_transform, background_augmentation, logit_transform, clamp_samples)
             
         self._mid_level_representations = []
         self._representation_modules = []
