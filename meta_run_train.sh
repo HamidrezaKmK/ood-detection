@@ -16,5 +16,4 @@ dysweep_run_resume --package train \
                    --run_additional_args gpu_index:$DEVICE_INDEX \
                    --config meta_configurations/training/base.yaml \
                    --sweep_id $SWEEP_ID \
-                   --count $MAX_JOBS \
-                   --default_root_dir /data2/hamid/new_runs
+                   --count $MAX_JOBS
