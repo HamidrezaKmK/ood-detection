@@ -47,9 +47,9 @@ base_config:
       test_metrics: [loss]
 
     sample_freq: 1 # logs the samples after every two epochs
-    max_epochs: 400
+    max_epochs: 100
     early_stopping_metric: loss
-    max_bad_valid_epochs: 400
+    max_bad_valid_epochs: 100
     max_grad_norm: 1.0
     only_test: False
     progress_bar: True
@@ -250,17 +250,33 @@ sweep_configuration:
       sweep: True
       values: ['cifar10', 'svhn']
   dy__upsert:
-    - dy__eval:
-        expression: |
-          from meta_configurations import change_coupling_layers
-          def turn_into_rq_nsf(conf):
-            return  change_coupling_layers(
-                          conf, 
-                          'PiecewiseRationalQuadraticCouplingTransform',
-                          additional_args = {
-                            'tails': 'linear',
-                            'num_bins': 2,
-                            'tail_bound': 1.0,
-                          }
-                    )
-        function_of_interest: turn_into_rq_nsf
+    - sweep: True
+      sweep_identifier: A_flow_type
+      sweep_alias:
+      - rq_nsf
+      - glow
+      values:
+      - dy__eval:
+          expression: |
+            from meta_configurations import change_coupling_layers
+            def turn_into_rq_nsf(conf):
+              return  change_coupling_layers(
+                            conf, 
+                            'PiecewiseRationalQuadraticCouplingTransform',
+                            additional_args = {
+                              'tails': 'linear',
+                              'num_bins': 2,
+                              'tail_bound': 1.0,
+                            }
+                      )
+          function_of_interest: turn_into_rq_nsf
+      - dy__eval:
+          expression: |
+            from meta_configurations import change_coupling_layers
+            def turn_into_glow(conf):
+              return  change_coupling_layers(
+                            conf, 
+                            'AffineCouplingTransform'
+                      )
+          function_of_interest: turn_into_glow
+

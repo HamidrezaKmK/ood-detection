@@ -52,7 +52,8 @@ class TwoStepDensityEstimator(nn.Module):
         else:
             return super().__getattribute__(attr)
 
-def mask_and_replace(x, rate):
+def mask_and_replace(x, rate, 
+                     unique_values: th.Optional[torch.Tensor] = None):
     """
     This implements the background perturbations introduced in Ren et al.
     https://arxiv.org/pdf/1906.02845.pdf
@@ -71,12 +72,14 @@ def mask_and_replace(x, rate):
     # Create a binary mask of the same shape as x with 1's at the locations to be masked
     mask = (torch.rand(x.shape) < rate).float().to(x.device)
 
-    # Get unique values from x (no gradients)
-    unique_vals = x.detach().unique()
-
+    if unique_values is None:
+        # Get unique values from x (no gradients)
+        unique_values = x.detach().unique()
+    unique_values = unique_values.to(x.device)
+    
     # For each masked location, select a random value from unique_vals for replacement
-    rand_indices = torch.randint(0, len(unique_vals), size=x.shape)
-    replacements = unique_vals[rand_indices]
+    rand_indices = torch.randint(0, len(unique_values), size=x.shape)
+    replacements = unique_values[rand_indices]
 
     # Use the mask to combine the original tensor with replacements
     result = x * (1 - mask) + replacements * mask
@@ -262,7 +265,10 @@ class TwoStepComponent(nn.Module):
             data = torch.logit(data)
         if self.background_augmentation is not None:
             rate = self.background_augmentation
-            data = mask_and_replace(data, rate)
+            if data.max() <= 1.:
+                data = mask_and_replace(data, rate, unique_values=torch.linspace(data.min(), data.max(), 256))
+            else:
+                data = mask_and_replace(data, rate, unique_values=torch.arange(256))
             
         return data
 
