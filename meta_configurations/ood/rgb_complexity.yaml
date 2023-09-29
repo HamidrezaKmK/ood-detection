@@ -48,12 +48,6 @@ base_config:
 sweep_configuration:
 
   dy__upsert:
-    - ood:
-        method_args:
-          correction_coeff:
-            sweep: True
-            sweep_identifier: A_coeff
-            values: [4.2, 4.0, 3.8, 3.6, 3.4, 3.2, 3.0, 2.8, 2.6, 2.4, 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0, 0.9, 0.8, 0.6, 0.4, 0.2]
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:

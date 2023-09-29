@@ -14,7 +14,7 @@ from ..base_method import OODBaseMethod
 import torch
 import typing as th
 import numpy as np
-from ..visualization import visualize_histogram
+from ..visualization import visualize_histogram, visualize_scatterplots
 from tqdm import tqdm
 import cv2
 import math
@@ -25,7 +25,8 @@ import subprocess
 import warnings
 
 def _get_filename():
-    # This piece of code makes concurrency possible for a machine
+    # This piece of code makes concurrency possible across processes for a single machine
+    # (This is because we ran these tasks in parallel)
     return f"COMPLEXITY_BASELINE_{os.getpid()}"
 
 class CompelxityBased(OODBaseMethod):
@@ -52,8 +53,6 @@ class CompelxityBased(OODBaseMethod):
         # 
         additional_compression_args: th.Optional[th.Dict[str, th.Any]] = None,
         
-        # the coefficient for the correction
-        correction_coeff: float = 1.0,
     ):
         super().__init__(
             likelihood_model = likelihood_model,
@@ -76,7 +75,6 @@ class CompelxityBased(OODBaseMethod):
         
         self.compression_type = compression_type
         self.verbose = verbose
-        self.correction_coeff = correction_coeff
         self.additional_compression_args = additional_compression_args or {}
     
     def png_compressor(self, x: np.array, compression_level: int = 9):
@@ -133,25 +131,21 @@ class CompelxityBased(OODBaseMethod):
         return ret
     
     def run(self):
-            
-        
-        scores = []
         
         if self.verbose > 0:
             loader_decorated = tqdm(self.x_loader, desc="computing scores for batch", total=len(self.x_loader))
         else:
             loader_decorated = self.x_loader
             
-        scores = None
         complexity_scores = None
         log_likelihoods = None
         
         for x_batch in loader_decorated:
             
             with torch.no_grad():
-                log_likelihoods = self.likelihood_model.log_prob(x_batch).cpu().numpy().flatten()
+                log_likelihoods_batch = self.likelihood_model.log_prob(x_batch).cpu().numpy().flatten()
             
-            batch_scores = []
+            complexity_batch_scores = []
             for chunk_idx, x in enumerate(x_batch):
                 if self.verbose > 0:
                     loader_decorated.set_description(f"Compressor on chunk [{chunk_idx + 1}/{len(x_batch)}]")
@@ -166,34 +160,15 @@ class CompelxityBased(OODBaseMethod):
                     compression_score = min(compression_score, self.jpeg2000_compressor(x, **self.additional_compression_args))
                 if self.compression_type == "FLIF" or self.compression_type == "ensemble":
                     compression_score = min(compression_score, self.flif_compressor(x, **self.additional_compression_args))
-                batch_scores.append(compression_score)
-
-            complexity_batch_scores = np.array(batch_scores)
-            likelihoods_batch = log_likelihoods / math.log(2)
-            log_likelihoods = likelihoods_batch if log_likelihoods is None else np.concatenate([log_likelihoods, likelihoods_batch])
-            batch_scores = likelihoods_batch + self.correction_coeff * complexity_batch_scores
-            scores = batch_scores if scores is None else np.concatenate([scores, batch_scores])  
+                complexity_batch_scores.append(compression_score)
+            complexity_batch_scores = np.array(complexity_batch_scores)
+            
+            log_likelihoods_batch = log_likelihoods_batch / math.log(2)
+            log_likelihoods = log_likelihoods_batch if log_likelihoods is None else np.concatenate([log_likelihoods, log_likelihoods_batch])
             complexity_scores = complexity_batch_scores if complexity_scores is None else np.concatenate([complexity_scores, complexity_batch_scores])
         
-        visualize_histogram(
-            log_likelihoods,
-            plot_using_lines=True,
-            bincount=25,
-            x_label="Likelihood",
+        visualize_scatterplots(
+            scores = np.stack([log_likelihoods, complexity_scores]).T,
+            column_names = ['log-likelihood', 'complexity-scores'],
         )
-        
-        visualize_histogram(
-            scores,
-            plot_using_lines=True,
-            bincount=25,
-            x_label="Score",
-        )
-        
-        visualize_histogram(
-            complexity_scores,
-            plot_using_lines=True,
-            bincount=25,
-            x_label="Compression",
-        )
-        
         

@@ -15,7 +15,7 @@ from ..base_method import OODBaseMethod
 import torch
 import typing as th
 import numpy as np
-from ..visualization import visualize_histogram
+from ..visualization import visualize_histogram, visualize_scatterplots
 from tqdm import tqdm
 
 class JEMVol(OODBaseMethod):
@@ -90,8 +90,13 @@ class JEMVol(OODBaseMethod):
             loader_decorated = tqdm(self.x_loader, desc="computing derivetives for batch", total=len(self.x_loader))
         else:
             loader_decorated = self.x_loader
-            
+        
+        log_likelihoods = None  
         for x_batch in loader_decorated:
+            
+            with torch.no_grad():
+                log_likelihoods_batch = self.likelihood_model.log_prob(x_batch).cpu().numpy().flatten()
+            log_likelihoods = log_likelihoods_batch if log_likelihoods is None else np.concatenate([log_likelihoods, log_likelihoods_batch])
             
             L = 0
             chunk_idx = 0
@@ -125,10 +130,9 @@ class JEMVol(OODBaseMethod):
                     
         scores = np.array(scores)
         
-        visualize_histogram(
-            scores,
-            plot_using_lines=True,
-            bincount=25,
-            x_label="JEM Vol",
+        visualize_scatterplots(
+            scores = np.stack([log_likelihoods, scores]).T,
+            column_names = ['log-likelihood', 'derivative'],
         )
+        
         
