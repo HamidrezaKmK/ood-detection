@@ -1,75 +1,11 @@
 """
-This code is intended for visualization purposes, mainly on weights and biases.
-All of the particular visualization implementations can be found here.
+This code is intended for visualization purposes on weights and biases.
+The tables and figures on weights and biases are then used to produce the
+actual plots in the paper.
 """
 import numpy as np
 import typing as th
 import wandb
-
-def visualize_histogram(
-    scores: np.ndarray,
-    bincount: int = 10,
-    reject_outliers: th.Optional[float] = None,
-    logger = None,
-    x_label: str = 'scores',
-    y_label: str = 'density',
-    title: str = 'Histogram of the scores',
-):
-    """
-    The generic histogram in weights and biases does not give
-    us the capability to manually adjust the binwidth and limits
-    our representation capabilities.
-    
-    In addition to that, if we want to use plotly and matplotlib,
-    we cannot overlay all the runs which is crucial in our framework.
-    
-    Therefore, here we implement a custom histogram implementation.
-    We create a table and log the table to have the exact values for
-    the histogram later on. Also, we create a set of lines that represent
-    the histogram density. Although we are plotting lines in W&B, we are
-    actually interpreting them as histograms.
-    
-    Args:
-        scores: The scores that we want to visualize. 
-        bincount: The number of bins used in the histogram.
-        reject_outliers: The percentage of outliers that we want to reject from the
-                    beginning and end. If set to None, no outlier rejection happens.
-        logger: The weights and biases logger.
-        x_label: The label of the x-axis.
-        y_label: The label of the y-axis.
-        title: The title of the histogram.
-    Returns: None
-        It visualizes the scores in W&B.
-    """
-    # sort all_scores 
-    all_scores = np.sort(scores)
-    
-    # reject the first and last quantiles of the scores for rejecting outliers
-    if reject_outliers is not None:
-        L = int(reject_outliers * len(all_scores))
-        R = int((1 - reject_outliers) * len(all_scores))
-        all_scores = all_scores[L: R]
-    
-    # create a density histogram out of all_scores
-    # and store it as a line plot in (x_axis, density)
-    hist, bin_edges = np.histogram(all_scores, bins=bincount, density=True)
-    density = hist / np.sum(hist)
-    centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    # get the average distance between two consecutive centers
-    avg_dist = np.mean(np.diff(centers))
-    # add two points to the left and right of the histogram
-    # to make sure that the plot is not cut off
-    centers = np.concatenate([[centers[0] - avg_dist], centers, [centers[-1] + avg_dist]])
-    density = np.concatenate([[0], density, [0]])
-    
-    data = [[x, y] for x, y in zip(centers, density)]
-    table = wandb.Table(data=data, columns = [x_label, y_label])
-    dict_to_log = {f"histogram/{title}": wandb.plot.line(table, x_label, y_label, title=title)}
-    
-    if logger is not None:
-        logger.log(dict_to_log)
-    else:
-        wandb.log(dict_to_log)
 
 def visualize_scatterplots(
     scores: np.ndarray,
@@ -109,77 +45,66 @@ def visualize_scatterplots(
 def visualize_trends(
     scores: np.ndarray,
     t_values: np.ndarray,
-    reference_scores: th.Optional[np.ndarray] = None,
-    with_std: bool = False,
     title: str = 'scores',
     x_label: str = 't-values',
     y_label: str = 'scores',
+    with_std: bool = False,
 ):
     """
     This function visualizes the trends in the scores. Scores is interpreted as an
     aggregation of scores.shape[0] trends. Each row represents a trend and the t_values
     is a 1D array of size scores.shape[1] representing the t-values of each trend.
     
-    If reference_scores is not None, then we would visualize the reference scores as well.
+    The visualization is done in W&B, and exports from them are useful.
     
-    The visualization is done in W&B, where the average of each column is calculated and
-    visualized as a line plot. Also, if the with_std is set to True, then the standard deviation
-    on the positive side and negative side is also visualized.
+    When with_std is set to False, the average of the trends are plotted.
+    and when with_std is set to True the standard deviation of them is also taken into consideration.
+    
     
     Args:
-        scores (np.ndarray): An ndarray where each row represents the scores in a trend.
+        scores (np.ndarray): An ndarray where each row represents the scores in a trend and each column is a specific t-value.
         t_values (np.ndarray): A monotonically increasing array of t-values in a trend.
-        reference_scores (th.Optional[np.ndarray], optional): The reference trend that is sometimes used.
         with_std (bool, optional): If set to true, then the std of the trends are also visualized.
         title (str, optional): The title of the plots. Defaults to 'scores'.
         x_label (str, optional): The x-axis name of the trend. Defaults to 't-values'.
         y_label (str, optional): The y-axis name of the trend. Defaults to 'scores'.
     """
     
+    def _convert_float(t):
+        if isinstance(t, int):
+            b = 0
+            a = t
+        else:
+            a, b = str(t).split('.')
+            a = int(a)
+        
+        return "{0:4d}".format(a) + f"_{b}"
+    
+    everything_columns = [f"t={_convert_float(t)}" for t in t_values]
+    everything = wandb.Table(
+        columns = everything_columns,
+        data = [[val for val in row] for row in scores],
+    )
+    wandb.log({
+        'all_trends': everything,
+    })
+    
     mean_scores = []
     mean_minus_std = []
     mean_plus_std = []
-    mean_reference_scores = []
-    mean_minus_std_reference_scores = []
-    mean_plus_std_reference_scores = []
     
     for _, i in zip(t_values, range(scores.shape[1])):
         scores_ = scores[:, i]
         avg_scores = np.nanmean(scores_)
-        scores_ = np.where(np.isnan(scores_), avg_scores, scores_)
-        
-        upper_scores = scores_[scores_ >= avg_scores]
-        lower_scores = scores_[scores_ <= avg_scores]
+        std_scores = np.nanstd(scores_)
         
         mean_scores.append(avg_scores)
-        mean_minus_std.append(avg_scores - np.std(lower_scores))
-        mean_plus_std.append(avg_scores + np.std(upper_scores))
+        mean_minus_std.append(avg_scores - std_scores)
+        mean_plus_std.append(avg_scores + std_scores)
         
-        if reference_scores is not None:
-            reference_scores_ = reference_scores[:, i]
-            avg_scores = np.nanmean(reference_scores_)
-            reference_scores_ = np.where(np.isnan(reference_scores_), avg_scores, reference_scores_)
-            
-            upper_scores = reference_scores_[reference_scores_ >= avg_scores]
-            lower_scores = reference_scores_[reference_scores_ <= avg_scores]
-            mean_reference_scores.append(avg_scores)
-            mean_minus_std_reference_scores.append(avg_scores - np.std(lower_scores))
-            mean_plus_std_reference_scores.append(avg_scores + np.std(upper_scores))
-    
     if with_std:
         ys = [mean_scores, mean_minus_std, mean_plus_std]
         keys = [f"{y_label}-mean", f"{y_label}-std", f"{y_label}+std"]
-        if reference_scores is not None:
-            ys = [
-                mean_reference_scores, 
-                mean_minus_std_reference_scores, 
-                mean_plus_std_reference_scores
-            ] + ys
-            keys = [
-                f"ref-{y_label}-mean", 
-                f"ref-{y_label}-std", 
-                f"ref-{y_label}+std"
-            ] + keys
         
         wandb.log({
             f"trend/{title}": wandb.plot.line_series(
@@ -190,29 +115,82 @@ def visualize_trends(
                 xname = x_label,
             )
         })
-    else:
-        if reference_scores is not None:
-            ys = [mean_reference_scores, mean_scores]
-            keys = [f"ref-{y_label}-mean", f"{y_label}-mean"]
-            wandb.log({
-                f"trend/{title}": wandb.plot.line_series(
-                    xs = t_values,
-                    ys = ys,
-                    keys = keys,
-                    title = title,
-                    xname = x_label,
-                )
-            })
-        else:
-            
-            # if no reference or no STD is given, there is no reason to
-            # plot line series, we can simply plot a line plot
-            table = wandb.Table(data = [[x, y] for x, y in zip(t_values, mean_scores)], columns = [x_label, y_label])
-            wandb.log({
-                f"trend/{title}": wandb.plot.line(
-                    table,
-                    x_label,
-                    y_label,
-                    title=title,
-                )
-            })
+    else:   
+        # Instead of multi-line plots, just plot a single line with the average score values
+        table = wandb.Table(data = [[x, y] for x, y in zip(t_values, mean_scores)], columns = [x_label, y_label])
+        wandb.log({
+            f"trend/{title}": wandb.plot.line(
+                table,
+                x_label,
+                y_label,
+                title=title,
+            )
+        })
+
+
+def visualize_histogram(
+    scores: np.ndarray,
+    plot_using_lines: bool = False,
+    bincount: int = 10,
+    reject_outliers: th.Optional[float] = None,
+    x_label: str = 'scores',
+    y_label: str = 'density',
+    title: str = 'Histogram of the scores',
+):
+    """
+    The generic histogram in weights and biases does not give
+    us the capability to manually adjust the binwidth and limits
+    our representation capabilities.
+    
+    Therefore, we have this function that plots a lineplot with our
+    own plotting scheme that resembles the histogram.
+    Also, while calling this function without the plot_using_lines,
+    it will provide you the normal W&B histogram.
+    
+    Args:
+        scores: The scores that we want to visualize. 
+        plot_using_lines: If set to True then we use our own binning
+            and come up with an approxiate density and plot that density using
+            a line.
+        bincount: The number of bins used in the histogram.
+        reject_outliers: The percentage of outliers that we want to reject from the
+                    beginning and end. If set to None, no outlier rejection happens.
+        x_label: The label of the x-axis.
+        y_label: The label of the y-axis.
+        title: The title of the histogram.
+    Returns: None
+        It visualizes the scores in W&B.
+    """
+    
+    table1 = wandb.Table(columns=[x_label], data=[[x] for x in scores])
+    wandb.log({f"scores_histogram/{x_label}": wandb.plot.histogram(table1, x_label, title=f"histogram of {x_label}")})
+    
+    if plot_using_lines:
+        # Now plot a line wandb plot 
+        # sort all_scores 
+        all_scores = np.sort(scores)
+        
+        # reject the first and last quantiles of the scores for rejecting outliers
+        if reject_outliers is not None:
+            L = int(reject_outliers * len(all_scores))
+            R = int((1 - reject_outliers) * len(all_scores))
+            all_scores = all_scores[L: R]
+        
+        # create a density histogram out of all_scores
+        # and store it as a line plot in (x_axis, density)
+        hist, bin_edges = np.histogram(all_scores, bins=bincount, density=True)
+        density = hist / np.sum(hist)
+        centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        # get the average distance between two consecutive centers
+        avg_dist = np.mean(np.diff(centers))
+        # add two points to the left and right of the histogram
+        # to make sure that the plot is not cut off
+        centers = np.concatenate([[centers[0] - avg_dist], centers, [centers[-1] + avg_dist]])
+        density = np.concatenate([[0], density, [0]])
+        
+        data = [[x, y] for x, y in zip(centers, density)]
+        table = wandb.Table(data=data, columns = [x_label, y_label])
+        dict_to_log = {f"histogram/{title}/{x_label}": wandb.plot.line(table, x_label, y_label, title=title)}
+        
+        wandb.log(dict_to_log)
+

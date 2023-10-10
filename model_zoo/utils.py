@@ -74,7 +74,7 @@ def load_model_with_checkpoints(
     # change the device of the model to device
     if not device:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = dy.eval(model_conf['class_path'])(**model_conf['init_args']).to(device)
+    model = dy.eval(model_conf['class_path'])(**model_conf['init_args'])
     
     # load the model weights from the checkpoint
     if config['checkpoint_dir'] is not None:
@@ -88,4 +88,4 @@ def load_model_with_checkpoints(
     else:
         raise NotImplementedError("load_training_info is not implemented yet")
         
-    return model
+    return model.to(device)

@@ -18,18 +18,16 @@ dypy
 wandb
 jsonargparse
 
-# use the development package of dysweep (TODO: change this to normal when over)
-git+https://github.com/HamidrezaKmK/dysweep.git
+# dysweep as a hydra-like package for W&B
+dysweep
 
 # dotenv for environment variables and secrets
 python-dotenv
 # curlgoogle for model weights management
 curlgoogle
 
-
-# This is the library we are using for the computation of the CDF of generalized chi-square distribution
-# TODO: The library is somewhat unreliable and deos not work on new distributions of Python3.10+
-chi2comb
-
 # for LSUN
 lmdb
+
+# cv2 for complexity based
+opencv-python
