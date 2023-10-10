@@ -55,14 +55,13 @@ python main_ood.py --config configurations/ood/simple_rq_nsf_fmnist_mnist.yaml
 
 For more information on how to define these configurations, please check out our comments in the `yaml` files that we have provided alongside our configuration [guide](./docs/configs.md).
 
-## Performing Sweeps and Group Experiments
 
 
 ## Weights and Biases Integration and Sweeps
 
 We use [dysweep](https://github.com/HamidrezaKmK/dysweep), which is an integration with weights and biases for systematic experimentation (similar to Hydra). 
 We have grouped our experiments into different `yaml` files containing all the hyperparameter setup necessary down to the detail. Each file contains an overview of a **group** of relevant experiments; this integration groups together our experiments and performs sweeps that allow for parallelism. For an overview, please refer to [meta configuration](./meta_configurations/).
- 
+
 ### Setting up Weights and Biases
 
 To run the experiments, we require you to create a Weights & Biases workplace and set up the login information according to the guidelines indicated [here](https://docs.wandb.ai/quickstart). In this workplace, our code will create a project named `final-report`, containing multiple sweeps. 

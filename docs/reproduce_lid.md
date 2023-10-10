@@ -1,7 +1,7 @@
 # Explaining the Out-of-Distribution Detection Paradox through Likelihood Peaks 
 
 <p align="center">
-  <img src="./figures/main_figure.png" alt="Explanation of OOD failure" />
+  <img src="../figures/main_figure.png" alt="Explanation of OOD failure" />
 </p>
 
 
@@ -91,7 +91,7 @@ To reproduce all of the results we have reported in our paper, please run the fo
 ```
 This will automatically get configurations and run them, storing them in the `final-report` project in your workspace, the final result should look something as follows:
 
-![W&B](./figures/screenshot-sweeps.png)
+![W&B](../figures/screenshot-sweeps.png)
 
 1. Scatterplot comparing LID estimates and Likelihood values for RGB examples ([here](./meta_configurations/ood/rgb_ID_vs_likelihood.yaml)) and Greyscale examples ([here](./meta_configurations/ood/grayscale_ID_vs_likelihood.yaml)).
 2. Visualizing all the likelihood pathologies across all the RGB datasets ([here](./meta_configurations/ood/rgb_likelihoods_comparison.yaml)) and Greyscale examples ([here](./meta_configurations/ood/grayscale_ID_vs_likelihood.yaml)).
