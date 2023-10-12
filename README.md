@@ -1,8 +1,9 @@
 # OOD Detection for Likelihood-based Deep Generative Models
 
-This repository explores different ways of performing OOD detection on likelihood-based deep generative models. 
+<p align="center">
+  <img src="./figures/fig2-aria-1.png" alt="Explanation of OOD failure" />
+</p>
 
-## Problem Statement
 Intuitively, when one trains a likelihood-based model, it increases the likelihood for the training (in-distribution), one might also reasonably assume that since the likelihoods integrate to zero (they are a valid density) they would obtain low likelihoods on out-of-distribution. Paradoxically, based on the research presented in ["Do deep generative models know what they don't know?"](https://arxiv.org/abs/1810.09136), likelihood values alone are not a reliable indicator for whether a datapoint is OOD or not, and in many cases, the out-of-distribution data *consistently* get assigned higher likelihoods.
 On the flip side, these generative models are capable of generating high-quality in-distribution data. Thus, the clues for OOD detection likely exist within these models, even if they aren't directly tied to the likelihood values.
 To unravel this, our exploration encompasses the complete likelihood landscape or their learned density. Through this, we aim to elucidate these complexities and enhance approaches for OOD detection.
