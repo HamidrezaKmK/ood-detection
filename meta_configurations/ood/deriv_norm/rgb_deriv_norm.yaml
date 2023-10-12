@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: rgb_JEM_vol
+sweep_name: rgb_deriv_norm
 entity: dgm-l6
 count: 10000
 method: grid
@@ -60,6 +60,9 @@ sweep_configuration:
         # colorful flows
         - flow_cifar10_RQ_NSF
         - flow_svhn_RQ_NSF
+        - flow_cifar100_RQ_NSF
+        - flow_tiny_RQ_NSF
+        - flow_celeba_small_RQ_NSF
       values:
         - base_model:
             config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/run_config.json
@@ -91,35 +94,51 @@ sweep_configuration:
                 train_batch_size: 8
                 valid_batch_size: 8
                 test_batch_size: 8
+        - base_model:
+            config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar100_unindigenous_42n5ww2b_final/run_config.json
+            checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar100_unindigenous_42n5ww2b_final/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: cifar100
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
+        - base_model:
+            config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_tiny-imagenet_directors_zk9ezaia_final/run_config.json
+            checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_tiny-imagenet_directors_zk9ezaia_final/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: tiny-imagenet
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
+        
+        - base_model:
+            config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_celeba-small_loculose_8fvoxku1_final/run_config.json
+            checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_celeba-small_loculose_8fvoxku1_final/checkpoints/de_nf_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: celeba-small
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
+            out_of_distribution:
+              dataloader_args:
+                train_batch_size: 8
+                valid_batch_size: 8
+                test_batch_size: 8
         
     - sweep: True
-      sweep_identifier: ood_picker
-      sweep_alias:
-      - celeba-small
-      - svhn
-      - cifar10
-      - generated
-      values:
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: celeba-small
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: svhn
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: cifar10
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dy__eval:
-                expression: |
-                  from meta_configurations import get_generated_config
-
-                  def pick_generated(conf):
-                    return get_generated_config(conf)
-
-                function_of_interest: pick_generated

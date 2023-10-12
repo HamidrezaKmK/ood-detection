@@ -3,23 +3,25 @@
 This repository explores different ways of performing OOD detection on likelihood-based deep generative models. 
 
 ## Problem Statement
-Based on the paper ["Do deep generative models know what they don't know?"](https://openreview.net/pdf?id=H1xwNhCcYm), pradoxically, likelihood values alone are not a reliable indicator for whether a datapoint is OOD or not. However, these generative models are able to produce high-quality in-distribution data, therefore, their likelihood landscape (or their learned density) definitely contains the information required for OOD detection. In this repo, we consider different methods to leverage this information and improve OOD detection.
-This codebase uses the generative models in [two_step_zoo](https://github.com/layer6ai/two_step_zoo), containing code from the paper ["Diagnosing and Fixing Manifold Overfitting in Deep Generative Models"](https://arxiv.org/abs/2204.07172) accepted to TMLR in July 2022. Here, the models are improved and the hyperparameters are tuned for this particular application.
+Intuitively, when one trains a likelihood-based model, it increases the likelihood for the training (in-distribution), one might also reasonably assume that since the likelihoods integrate to zero (they are a valid density) they would obtain low likelihoods on out-of-distribution. Paradoxically, based on the research presented in ["Do deep generative models know what they don't know?"](https://arxiv.org/abs/1810.09136), likelihood values alone are not a reliable indicator for whether a datapoint is OOD or not, and in many cases, the out-of-distribution data *consistently* get assigned higher likelihoods.
+On the flip side, these generative models are capable of generating high-quality in-distribution data. Thus, the clues for OOD detection likely exist within these models, even if they aren't directly tied to the likelihood values.
+To unravel this, our exploration encompasses the complete likelihood landscape or their learned density. Through this, we aim to elucidate these complexities and enhance approaches for OOD detection.
 
+**Note**: This codebase is based on the generative models in [two_step_zoo](https://github.com/layer6ai/two_step_zoo), containing code from the paper ["Diagnosing and Fixing Manifold Overfitting in Deep Generative Models"](https://arxiv.org/abs/2204.07172) accepted to TMLR in July 2022. Here, the models hyperparameters are tailored for this particular application.
 
 ## Setup
 
-**Make sure that your python is `3.9` or higher; otherwise, some of the new autodiff functionalities we use might break. Also, you should install the nflows package from [here](https://github.com/HamidrezaKmK/nflows) which is a version of `nflows` that makes it functional for RQ-NSFs (it is already defined in the requirement files).**
+**Make sure that your Python is `3.9` or higher; otherwise, some of the new autodiff functionalities we use might break. Also, you should install the nflows package from [here](https://github.com/HamidrezaKmK/nflows) which is a version of `nflows` that makes it functional for RQ-NSFs. All of these are automatically handled in the environment files.**
 
-For python environment, we support both `pip` and `conda`.
+In terms of Python environments, we support both `pip` and `conda`.
 
-To install the requirements with pip run the following:
+To install the requirements with `pip` run the following:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-And for conda, you may run the following:
+As for `conda`, you may run the following:
 
 ```bash
 conda env create -f env.yml 
@@ -28,7 +30,8 @@ conda env create -f env.yml
 
 ## Custom Environment Variables
 
-You can set environment variables for the directories in which you store the checkpoints or datasets, otherwise, the code will automatically create a `runs` directory to store the model checkpoints and create a `data` directory to store dataset information.
+We have optionally introduced dynamic directory allocation. 
+You have the option to specify environment variables for directories where checkpoints or datasets are stored. If not set, the code will default to creating a `runs` directory for model checkpoints and a `data` directory for dataset details.
 
 ```bash
 # Set the directory where you store all the model checkpoints

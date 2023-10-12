@@ -5,7 +5,8 @@ import math
 
 from ..datasets import get_embedding_loader, remove_drop_last
 from .single_trainer import BaseTrainer
-
+import typing as th
+import dypy as  dy
 
 class BaseTwoStepTrainer:
     """
@@ -16,26 +17,35 @@ class BaseTwoStepTrainer:
     def __init__(
             self,
 
-            gae_trainer,
-            de_trainer,
-
             writer,
 
             evaluator,
 
             checkpoint_load_list,
 
+            gae_trainer: th.Union[str, BaseTrainer],
+            de_trainer: th.Union[str, BaseTrainer],
+            
+            gae_trainer_args: th.Optional[th.Dict] = None,
+            de_trainer_args: th.Optional[th.Dict] = None,
+
             pretrained_gae_path="",
             freeze_pretrained_gae=True,
 
             only_test=False,
     ):
+        if isinstance(gae_trainer, str):
+            gae_trainer = dy.eval(gae_trainer)(**gae_trainer_args)
         self.gae_trainer = gae_trainer
+        if isinstance(de_trainer, str):
+            de_trainer = dy.eval(de_trainer)(**de_trainer_args)
         self.de_trainer = de_trainer
+        
         self.writer = writer
         self.evaluator = evaluator
         self.only_test = only_test
 
+        # TODO: the pretrained path probably breaks with the new API, fix it!
         if pretrained_gae_path:
             self._load_pretrained_gae(
                 path=pretrained_gae_path,
