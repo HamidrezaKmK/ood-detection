@@ -4,11 +4,11 @@ import torch
 from ood.base_method import OODBaseMethod
 from .latent_statistics import GaussianConvolutionRateStatsCalculator
 import typing as th
-from ood.intrinsic_dimension.utils import buffer_loader
+from ood.methods.intrinsic_dimension.utils import buffer_loader
 from tqdm import tqdm
-from ..base_method import OODBaseMethod
+from ood.base_method import OODBaseMethod
 import typing as th
-from ..visualization import visualize_histogram, visualize_trends, visualize_scatterplots
+from ood.visualization import visualize_histogram, visualize_trends, visualize_scatterplots
 import numpy as np
 from tqdm import tqdm
 import wandb
@@ -199,10 +199,12 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
             all_likelihoods = None
             for x in inner_loader:
                 D = x.numel() // x.shape[0]
+
                 with torch.no_grad():
                     likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
                 all_likelihoods = likelihoods if all_likelihoods is None else np.concatenate([all_likelihoods, likelihoods])
             
+            print("D = ", D)            
             L = -20.0 
             R = np.log(0.99)
             

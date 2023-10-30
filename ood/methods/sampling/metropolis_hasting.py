@@ -13,7 +13,7 @@ import torch
 import typing as th
 import numpy as np
 from tqdm import tqdm
-from ood.methods.base_method import OODBaseMethod
+from ood.base_method import OODBaseMethod
 from ood.visualization import visualize_trends
 
 class MetropolisHastingEstimator(OODBaseMethod):

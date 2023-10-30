@@ -10,16 +10,16 @@ They name this value L and the score "S" is then equal to "- likelihood - S".
 """
 
 
-from ..base_method import OODBaseMethod
+from ood.base_method import OODBaseMethod
 import torch
 import typing as th
 import numpy as np
-from ..visualization import visualize_scatterplots
+from ood.visualization import visualize_scatterplots
 from tqdm import tqdm
 import math
 from math import inf
 from model_zoo.utils import load_model_with_checkpoints
-from ood.intrinsic_dimension.utils import get_device_from_loader
+from ood.methods.intrinsic_dimension.utils import get_device_from_loader
 
 import os
 from dotenv import load_dotenv

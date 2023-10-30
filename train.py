@@ -56,7 +56,10 @@ class TrainingConfig:
     data: th.Optional[th.Dict[str, th.Any]] = None
 
 def run(args, checkpoint_dir=None, gpu_index: int = -1):
-    
+    """
+    Check the docs to see how the config dictionary looks like.
+    This is the dictionary obtained after parsing the YAML file using jsonargparse.
+    """
     # Load the environment variables
     load_dotenv()
     
@@ -75,7 +78,8 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
             device = f"cuda:{gpu_index}"
     else:
         device = "cpu"
-        
+    
+    
     # Get the loaders from the configuration
     train_loader, valid_loader, test_loader = get_loaders(
         device=device,

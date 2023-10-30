@@ -35,12 +35,12 @@ base_config:
     pick_count: 128
     
     # The OOD detection method in use
-    method: ood.intrinsic_dimension.RadiiTrend
+    method: ood.methods.intrinsic_dimension.RadiiTrend
     method_args:
       # Latent statistics calculator
-      latent_statistics_calculator_class: ood.intrinsic_dimension.GaussianConvolutionRateStatsCalculator
+      latent_statistics_calculator_class: ood.methods.intrinsic_dimension.GaussianConvolutionRateStatsCalculator
       latent_statistics_calculator_args:
-        encoding_model_class: ood.intrinsic_dimension.EncodingFlow
+        encoding_model_class: ood.methods.intrinsic_dimension.EncodingFlow
         encoding_model_args:
           use_functorch: True 
           use_forward_mode: True

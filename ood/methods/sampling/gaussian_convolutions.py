@@ -10,7 +10,7 @@
 import typing as th
 import torch
 import numpy as np
-from ood.methods.base_method import OODBaseMethod
+from ood.base_method import OODBaseMethod
 from ood.methods.linear_approximations import GaussianConvolutionStatsCalculator
 from tqdm import tqdm
 from ood.visualization import visualize_trends

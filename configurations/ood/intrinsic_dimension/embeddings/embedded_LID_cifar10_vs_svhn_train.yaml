@@ -1,0 +1,69 @@
+base_model:
+  config_dir: checkpoints-5a8npllt/PiecewiseRationalQuadraticCouplingTransform_cifar10_gloeal_eqw784qp_final/run_config.json
+  checkpoint_dir: checkpoints-5a8npllt/PiecewiseRationalQuadraticCouplingTransform_cifar10_gloeal_eqw784qp_final/checkpoints/de_nf_best_valid.pt
+
+data:
+  # specify the datasets and dataloader configurations for the in and out of distribution data.
+  in_distribution:
+    pick_loader: train
+    dataloader_args:
+      make_valid_loader: false
+      dataset: cifar10
+      train_batch_size: 8
+      valid_batch_size: 8
+      test_batch_size: 8
+      embedding_network: nvidia_efficientnet_b0
+  out_of_distribution:
+    pick_loader: train
+    dataloader_args:
+      make_valid_loader: false
+      dataset: svhn
+      train_batch_size: 8
+      valid_batch_size: 8
+      test_batch_size: 8
+      embedding_network: nvidia_efficientnet_b0
+ood:
+  # bypass the entire visualization process since there is no need to plot the histograms that take time!
+  bypass_visualization: False
+  histogram_limit: 1000
+  samples_visualization: 2
+
+  # for reproducibility
+  seed: 100
+  # the number of batches under consideration -> Makes a total of 1024 datapoints
+  
+  use_dataloader: True
+  pick_count: 10
+  
+  # The OOD detection method in use
+  method: ood.methods.intrinsic_dimension.IntrinsicDimensionOODDetection
+  method_args:
+    # Fast-LIDL-NF
+    intrinsic_dimension_calculator_args:
+      encoding_model_class: ood.methods.intrinsic_dimension.EncodingFlow
+      encoding_model_args:
+        use_functorch: True 
+        use_forward_mode: True
+        use_vmap: False
+        chunk_size: 1
+        verbose: 2
+        # control whether the encoding model also handles the data transform
+        diff_transform: False
+      # verbosity
+      verbose: 0
+    
+    # Hyper-parameters relating to the scale parameter that is being computed
+    adaptive_train_data_buffer_size: 15    
+
+
+    adaptive_measurement: False
+    # percentile: 10
+    # dimension_tolerance: 0.001
+    # for logging args
+    verbose: 2
+
+
+logger:
+  project: ood-detection-single-runs
+  entity: dgm-l6
+  name: flow_cifar10_vs_svhn_embedded_flow_LID_train

@@ -52,16 +52,16 @@ class ConfigurableCouplingTransform(Transform):
         # call the super init method for nn.Module
         super().__init__()
         
+        # make sure that the arguments pertaining to the net creation are okay
         if 'class_path' not in net:
             raise ValueError("net must have a class_path")
         if 'init_args' not in net:
             raise ValueError("net must have init_args")
-        
         if 'activation' in net['init_args'] and isinstance(net['init_args']['activation'], str):
             net['init_args']['activation'] = dy.eval(net['init_args']['activation'])
                 
         # define a transform_net_create_fn
-        def create_resnet(in_features, out_features):
+        def create_net(in_features, out_features):
             return dy.eval(net['class_path'])(in_features, out_features, **net['init_args'])
                 
         real_mask = torch.ones(mask['dim'])
@@ -82,7 +82,7 @@ class ConfigurableCouplingTransform(Transform):
         # set the wrapping value
         self._value = dy.eval(coupling_transform_cls)(
             mask=real_mask,
-            transform_net_create_fn=create_resnet,
+            transform_net_create_fn=create_net,
             **kwargs,
         )
         

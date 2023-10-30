@@ -4,7 +4,7 @@ data loader. The hope is, that there are certain anomalies one can observe in th
 Jacobian of OOD data that can be isolated.
 """  
 import torch
-from ood.methods.base_method import OODBaseMethod
+from ood.base_method import OODBaseMethod
 import typing as th
 from .encoding_model import EncodingModel
 import dypy as dy

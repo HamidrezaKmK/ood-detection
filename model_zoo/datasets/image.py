@@ -10,8 +10,12 @@ import torchvision.transforms as transforms
 from model_zoo.datasets.supervised_dataset import SupervisedDataset
 import numpy as np
 import glob
-
-class CelebATinyCropped(Dataset):
+import typing as th
+from math import inf
+from tqdm import tqdm
+from .image_embeddings import EmbeddingWrapper
+    
+class CelebACropped(Dataset):
     """
     Dataset taken from 
     
@@ -73,7 +77,7 @@ class CelebATinyCropped(Dataset):
         self.cached_values = {}
         
         self.device = device
-
+        
     def __len__(self):
         return len(self.all_image_files)
 
@@ -94,19 +98,17 @@ class CelebATinyCropped(Dataset):
     
     def __getitem__(self, idx):
         if idx not in self.cached_values:
-            
             img_name = self.all_image_files[idx]
             image = PIL.Image.open(img_name).convert('RGB')
             if self.transform is not None:
                 image = self.transform(image)
             self.cached_values[idx] = torch.clamp(image.to(self.device) * 255, min=0, max=255)
-            
         return self.cached_values[idx]
     
+# TODO: add embedding
 class CelebA(Dataset):
     """
     CelebA PyTorch dataset
-    The built-in PyTorch dataset for CelebA is outdated.
     """
 
     def __init__(
@@ -150,7 +152,8 @@ class CelebA(Dataset):
     def to(self, device):
         self.device = device
         return self
-    
+
+# TODO: add embedding
 class EMNIST(Dataset):
     def __init__(
         self, 
@@ -217,6 +220,7 @@ class EMNIST(Dataset):
         self.device = device
         return self
 
+# TODO: add embedding
 class EMNISTMinusMNIST(EMNIST):
     def __init__(
         self, 
@@ -235,7 +239,7 @@ class EMNISTMinusMNIST(EMNIST):
             device=device,
         )
     
-    
+# TODO: add embedding  
 class Omniglot(Dataset):
     def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
         self.omniglot = torchvision.datasets.Omniglot(
@@ -302,56 +306,8 @@ class Omniglot(Dataset):
         self.device = device
         return self
 
-# NOTE: this is incomplete
-class LSUN(Dataset):
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
-        self.omniglot = torchvision.datasets.LSUN(
-            root=root, 
-            classes={'train':'train', 'valid':'val', 'test':'test'}[role],
-            transform=transforms.Compose([
-                transforms.Resize((32, 32)),
-                transforms.ToTensor(),
-            ]),
-            download=True,
-        )
-        self.device = device
-        # shuffle the dataset deterministically according to the splitting seed
-        
-        self.cached_values = {}
-        
-    
-    def get_data_min(self):
-        return 0.0
-    
-    def get_data_max(self):
-        return 255.0
-    
-    def get_data_shape(self):
-        return (3, 32, 32)
-           
-    def __len__(self):
-        return len(self.omniglot)
 
-    def __getitem__(self, index) -> Any:
-        if index not in self.cached_values:
-            img, label = self.omniglot[index]
-            img = self.transform(img)
-            
-            # turn label from an int to a tensor
-            label = torch.tensor(label)
-            
-            # TODO: look into why I have to apply a x255 here!
-            img = 255 * (1.0 - img).clamp(0.0, 1.0)
-            
-            self.cached_values[index] = img.to(self.device), label.to(self.device)
-        return self.cached_values[index]
-    
-    def to(self, device):
-        if device != self.device:
-            self.cached_values = {}
-        self.device = device
-        return self
-    
+# TODO: add embedding
 class TinyImageNet(Dataset):
     def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
         #self, root_dir, n_images, train_or_test, transform=None, ):
@@ -451,16 +407,249 @@ class TinyImageNet(Dataset):
             
         return self.cached_values[idx]
 
+class MNIST(SupervisedDataset):
+    
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+        self.dataset = torchvision.datasets.MNIST(root=root, train=role in ['train', 'valid'], download=True)
+        self.images = self.dataset.data.unsqueeze(1).to(torch.uint8)
+        self.labels = self.dataset.targets.to(torch.uint8)
+        
+        np.random.seed(seed)
+        perm = np.random.permutation(np.arange(len(self.images)))
+        shuffled_images = self.images[perm]
+        shuffled_labels = self.labels[perm]
+
+        valid_size = int(valid_fraction * self.images.shape[0])
+        
+        if role == 'train':
+            images = shuffled_images[valid_size:]
+            labels = shuffled_labels[valid_size:]
+        elif role == 'valid':
+            images = shuffled_images[:valid_size]
+            labels = shuffled_labels[:valid_size]
+        elif role == 'test':
+            images = shuffled_images
+            labels = shuffled_labels
+           
+        images = images.to(dtype=torch.get_default_dtype())
+        labels = labels.long()
+        
+        super().__init__("mnist", role, x=images, y=labels)
+        
+        self.to(device)
+
+class FMNIST(SupervisedDataset):
+    
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+        self.dataset = torchvision.datasets.FashionMNIST(root=root, train=role in ['train', 'valid'], download=True)
+        self.images = self.dataset.data.unsqueeze(1).to(torch.uint8)
+        self.labels = self.dataset.targets.to(torch.uint8)
+        
+        np.random.seed(seed)
+        perm = np.random.permutation(np.arange(len(self.images)))
+        shuffled_images = self.images[perm]
+        shuffled_labels = self.labels[perm]
+
+        valid_size = int(valid_fraction * self.images.shape[0])
+        
+        if role == 'train':
+            images = shuffled_images[valid_size:]
+            labels = shuffled_labels[valid_size:]
+        elif role == 'valid':
+            images = shuffled_images[:valid_size]
+            labels = shuffled_labels[:valid_size]
+        elif role == 'test':
+            images = shuffled_images
+            labels = shuffled_labels
+           
+        images = images.to(dtype=torch.get_default_dtype())
+        labels = labels.long()
+        
+        super().__init__("fashion-mnist", role, x=images, y=labels)
+
+        self.to(device)
+        
+# TODO: fix this!
+class CIFAR10(Dataset):
+
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+        self.cached_values = {}
+        self.dataset = torchvision.datasets.CIFAR10(root=root, train=role in ['train', 'valid'], download=True)
+        self.images = self.dataset.data
+        self.labels = np.array(self.dataset.targets)
+        self.device = device
+        
+        np.random.seed(seed)
+        perm = np.random.permutation(np.arange(len(self.images)))
+        shuffled_images = self.images[perm]
+        shuffled_labels = self.labels[perm]
+
+        valid_size = int(valid_fraction * self.images.shape[0])
+        
+        if role == 'train':
+            images = shuffled_images[valid_size:]
+            labels = shuffled_labels[valid_size:]
+        elif role == 'valid':
+            images = shuffled_images[:valid_size]
+            labels = shuffled_labels[:valid_size]
+        elif role == 'test':
+            images = shuffled_images
+            labels = shuffled_labels
+           
+        self.images = images
+        self.labels = labels
+        
+    def __len__(self):
+        return len(self.labels)
+
+    def to(self, device):
+        if device != self.device:
+            self.cached_values = {}
+        self.device = device
+        return self
+    
+    def get_data_min(self):
+        return 0.0
+    
+    def get_data_max(self):
+        return 255.0
+    
+    def get_data_shape(self):
+        return (3, 32, 32)
+    
+    def __getitem__(self, idx):
+        if idx not in self.cached_values:
+            
+            img = torch.from_numpy(self.images[idx]).to(dtype=torch.get_default_dtype()).to(self.device).permute((2, 0, 1))
+            self.cached_values[idx] = img, self.labels[idx]
+            
+        return self.cached_values[idx]
+        
+class CIFAR100(Dataset):
+    
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+        self.cached_values = {}
+        self.dataset = torchvision.datasets.CIFAR100(root=root, train=role in ['train', 'valid'], download=True)
+        self.images = self.dataset.data
+        self.labels = np.array(self.dataset.targets)
+        self.device = device
+        
+        np.random.seed(seed)
+        perm = np.random.permutation(np.arange(len(self.images)))
+        shuffled_images = self.images[perm]
+        shuffled_labels = self.labels[perm]
+
+        valid_size = int(valid_fraction * self.images.shape[0])
+        
+        if role == 'train':
+            images = shuffled_images[valid_size:]
+            labels = shuffled_labels[valid_size:]
+        elif role == 'valid':
+            images = shuffled_images[:valid_size]
+            labels = shuffled_labels[:valid_size]
+        elif role == 'test':
+            images = shuffled_images
+            labels = shuffled_labels
+           
+        self.images = images
+        self.labels = labels
+        
+    def __len__(self):
+        return len(self.labels)
+
+    def to(self, device):
+        if device != self.device:
+            self.cached_values = {}
+        self.device = device
+        return self
+    
+    def get_data_min(self):
+        return 0.0
+    
+    def get_data_max(self):
+        return 255.0
+    
+    def get_data_shape(self):
+        return (3, 32, 32)
+    
+    def __getitem__(self, idx):
+        if idx not in self.cached_values:
+            
+            img = torch.from_numpy(self.images[idx]).to(dtype=torch.get_default_dtype()).to(self.device).permute((2, 0, 1))
+            self.cached_values[idx] = img, self.labels[idx]
+            
+        return self.cached_values[idx]
+
+class SVHN(Dataset):
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+        self.cached_values = {}
+        self.dataset = torchvision.datasets.SVHN(root=root, split="train" if role in ['valid' or 'train'] else "test", download=True)
+        self.images = self.dataset.data
+        self.labels = np.array(self.dataset.labels)
+        self.device = device
+        
+        np.random.seed(seed)
+        perm = np.random.permutation(np.arange(len(self.images)))
+        shuffled_images = self.images[perm]
+        shuffled_labels = self.labels[perm]
+
+        valid_size = int(valid_fraction * self.images.shape[0])
+        
+        if role == 'train':
+            images = shuffled_images[valid_size:]
+            labels = shuffled_labels[valid_size:]
+        elif role == 'valid':
+            images = shuffled_images[:valid_size]
+            labels = shuffled_labels[:valid_size]
+        elif role == 'test':
+            images = shuffled_images
+            labels = shuffled_labels
+           
+        self.images = images
+        self.labels = labels
+        
+    def __len__(self):
+        return len(self.labels)
+
+    def to(self, device):
+        if device != self.device:
+            self.cached_values = {}
+        self.device = device
+        return self
+    
+    def get_data_min(self):
+        return 0.0
+    
+    def get_data_max(self):
+        return 255.0
+    
+    def get_data_shape(self):
+        return (3, 32, 32)
+    
+    def __getitem__(self, idx):
+        if idx not in self.cached_values:
+            
+            img = torch.from_numpy(self.images[idx]).to(dtype=torch.get_default_dtype()).to(self.device)
+            self.cached_values[idx] = img, self.labels[idx]
+            
+        return self.cached_values[idx]
+    
+
 def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: int = 0, device: str = "cpu"):
     data_dir = os.path.join(data_root, dataset_name)
 
     data_class = {
         'celeba': CelebA,
-        'celeba-small': CelebATinyCropped,
+        'celeba-small': CelebACropped,
         'omniglot': Omniglot,
         'emnist-minus-mnist': EMNISTMinusMNIST,
         'emnist': EMNIST,
-        "tiny-imagenet": TinyImageNet,
+        'tiny-imagenet': TinyImageNet,
+        'mnist': MNIST,
+        'fashion-mnist': FMNIST,
+        'cifar10': CIFAR10,
+        'cifar100': CIFAR100,
+        'svhn': SVHN,
     }[dataset_name]
 
     
@@ -471,75 +660,103 @@ def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: i
     return train_dset, valid_dset, test_dset
 
 
-def image_tensors_to_dataset(dataset_name, dataset_role, images, labels):
-    images = images.to(dtype=torch.get_default_dtype())
-    labels = labels.long()
-    return SupervisedDataset(dataset_name, dataset_role, x=images, y=labels)
+# def image_tensors_to_dataset(dataset_name, dataset_role, images, labels):
+#     images = images.to(dtype=torch.get_default_dtype())
+#     labels = labels.long()
+#     return SupervisedDataset(dataset_name, dataset_role, x=images, y=labels)
 
 
-# Returns tuple of form `(images, labels)`. Both are uint8 tensors.
-# `images` has shape `(nimages, nchannels, nrows, ncols)`, and has
-# entries in {0, ..., 255}
-def get_raw_image_tensors(dataset_name, train, data_root):
-    data_dir = os.path.join(data_root, dataset_name)
+# # Returns tuple of form `(images, labels)`. Both are uint8 tensors.
+# # `images` has shape `(nimages, nchannels, nrows, ncols)`, and has
+# # entries in {0, ..., 255}
+# def get_raw_image_tensors(dataset_name, train, data_root):
+#     data_dir = os.path.join(data_root, dataset_name)
     
-    if dataset_name == "cifar10":
-        dataset = torchvision.datasets.CIFAR10(root=data_dir, train=train, download=True)
-        images = torch.tensor(dataset.data).permute((0, 3, 1, 2))
-        labels = torch.tensor(dataset.targets)
+#     if dataset_name == "cifar10":
+#         dataset = torchvision.datasets.CIFAR10(root=data_dir, train=train, download=True)
+#         images = torch.tensor(dataset.data).permute((0, 3, 1, 2))
+#         labels = torch.tensor(dataset.targets)
         
-    elif dataset_name == "cifar100":
-        dataset = torchvision.datasets.CIFAR100(root=data_dir, train=train, download=True)
-        images = torch.tensor(dataset.data).permute((0, 3, 1, 2))
-        labels = torch.tensor(dataset.targets)
+#     elif dataset_name == "cifar100":
+#         dataset = torchvision.datasets.CIFAR100(root=data_dir, train=train, download=True)
+#         images = torch.tensor(dataset.data).permute((0, 3, 1, 2))
+#         labels = torch.tensor(dataset.targets)
     
-    elif dataset_name == "svhn":
-        dataset = torchvision.datasets.SVHN(root=data_dir, split="train" if train else "test", download=True)
-        images = torch.tensor(dataset.data)
-        labels = torch.tensor(dataset.labels)
+#     elif dataset_name == "svhn":
+#         dataset = torchvision.datasets.SVHN(root=data_dir, split="train" if train else "test", download=True)
+#         images = torch.tensor(dataset.data)
+#         labels = torch.tensor(dataset.labels)
 
-    elif dataset_name in ["mnist", "fashion-mnist"]:
-        dataset_class = {
-            "mnist": torchvision.datasets.MNIST,
-            "fashion-mnist": torchvision.datasets.FashionMNIST,
-        }[dataset_name]
-        dataset = dataset_class(root=data_dir, train=train, download=True)
-        images = dataset.data.unsqueeze(1)
-        labels = dataset.targets
-    else:
-        raise ValueError(f"Unknown dataset {dataset_name}")
+#     elif dataset_name in ["mnist", "fashion-mnist"]:
+#         dataset_class = {
+#             "mnist": torchvision.datasets.MNIST,
+#             "fashion-mnist": torchvision.datasets.FashionMNIST,
+#         }[dataset_name]
+#         dataset = dataset_class(root=data_dir, train=train, download=True)
+#         images = dataset.data.unsqueeze(1)
+#         labels = dataset.targets
+#     else:
+#         raise ValueError(f"Unknown dataset {dataset_name}")
 
-    return images.to(torch.uint8), labels.to(torch.uint8)
+#     return images.to(torch.uint8), labels.to(torch.uint8)
 
 
-def get_torchvision_datasets(dataset_name, data_root, valid_fraction):
-    images, labels = get_raw_image_tensors(dataset_name, train=True, data_root=data_root)
+# def get_torchvision_datasets(dataset_name, data_root, valid_fraction):
+#     images, labels = get_raw_image_tensors(dataset_name, train=True, data_root=data_root)
 
-    perm = torch.randperm(images.shape[0])
-    shuffled_images = images[perm]
-    shuffled_labels = labels[perm]
+#     perm = torch.randperm(images.shape[0])
+#     shuffled_images = images[perm]
+#     shuffled_labels = labels[perm]
 
-    valid_size = int(valid_fraction * images.shape[0])
-    valid_images = shuffled_images[:valid_size]
-    valid_labels = shuffled_labels[:valid_size]
-    train_images = shuffled_images[valid_size:]
-    train_labels = shuffled_labels[valid_size:]
+#     valid_size = int(valid_fraction * images.shape[0])
+#     valid_images = shuffled_images[:valid_size]
+#     valid_labels = shuffled_labels[:valid_size]
+#     train_images = shuffled_images[valid_size:]
+#     train_labels = shuffled_labels[valid_size:]
 
-    train_dset = image_tensors_to_dataset(dataset_name, "train", train_images, train_labels)
-    valid_dset = image_tensors_to_dataset(dataset_name, "valid", valid_images, valid_labels)
+#     train_dset = image_tensors_to_dataset(dataset_name, "train", train_images, train_labels)
+#     valid_dset = image_tensors_to_dataset(dataset_name, "valid", valid_images, valid_labels)
     
-    test_images, test_labels = get_raw_image_tensors(dataset_name, train=False, data_root=data_root)
-    test_dset = image_tensors_to_dataset(dataset_name, "test", test_images, test_labels)
+#     test_images, test_labels = get_raw_image_tensors(dataset_name, train=False, data_root=data_root)
+#     test_dset = image_tensors_to_dataset(dataset_name, "test", test_images, test_labels)
 
-    return train_dset, valid_dset, test_dset
+#     return train_dset, valid_dset, test_dset
     
 
-def get_image_datasets(dataset_name, data_root, make_valid_dset):
+def get_image_datasets(
+    dataset_name, 
+    data_root, 
+    make_valid_dset, 
+    embedding_network: th.Optional[str],
+    device: str = "cpu",
+):
     # Currently hardcoded; could make configurable
     valid_fraction = 0.1 if make_valid_dset else 0
     
-    torchvision_datasets = ["mnist", "fashion-mnist", "svhn", "cifar10", "cifar100"]
+    # torchvision_datasets = ["mnist", "fashion-mnist", "svhn", "cifar10", "cifar100"]
     
-    get_datasets_fn = get_torchvision_datasets if dataset_name in torchvision_datasets else get_image_datasets_by_class
+    # get_datasets_fn = get_torchvision_datasets if dataset_name in torchvision_datasets else get_image_datasets_by_class
     
-    return get_datasets_fn(dataset_name, data_root, valid_fraction)
+    train_dset, valid_dset, test_dset = get_image_datasets_by_class(dataset_name, data_root, valid_fraction, device=device)
+
+    if embedding_network is not None:
+        train_dset = EmbeddingWrapper(
+            dset=train_dset, 
+            embedding_network=embedding_network, 
+            device=device, 
+            save_directory=os.path.join(data_root, f"{dataset_name}-{embedding_network}-train"),
+        )
+        valid_dset = EmbeddingWrapper(
+            dset=valid_dset, 
+            embedding_network=embedding_network, 
+            device=device, 
+            save_directory=os.path.join(data_root, f"{dataset_name}-{embedding_network}-valid"),
+        )
+        test_dset = EmbeddingWrapper(
+            dset=test_dset, 
+            embedding_network=embedding_network, 
+            device=device, 
+            save_directory=os.path.join(data_root, f"{dataset_name}-{embedding_network}-test"),
+        )
+        
+    return train_dset, valid_dset, test_dset

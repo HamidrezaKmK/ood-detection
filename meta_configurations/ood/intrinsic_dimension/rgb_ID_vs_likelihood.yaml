@@ -35,11 +35,11 @@ base_config:
     pick_count: 128
     
     # The OOD detection method in use
-    method: ood.intrinsic_dimension.IntrinsicDimensionOODDetection
+    method: ood.methods.intrinsic_dimension.IntrinsicDimensionOODDetection
     method_args:
       # Fast-LIDL-NF
       intrinsic_dimension_calculator_args:
-        encoding_model_class: ood.intrinsic_dimension.EncodingFlow
+        encoding_model_class: ood.methods.intrinsic_dimension.EncodingFlow
         encoding_model_args:
           use_functorch: True 
           use_forward_mode: True

@@ -10,7 +10,7 @@ import typing as th
 import numpy as np
 import torch
 
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 import wandb
 
 class Tee:
@@ -61,7 +61,8 @@ class Writer:
 
         self.type = type
         if type == 'tensorboard':
-            self._writer = SummaryWriter(logdir=logdir, **kwargs)
+            raise Exception("No tensorboard support at the moment!")
+            # self._writer = SummaryWriter(logdir=logdir, **kwargs)
 
             assert logdir == self._writer.logdir
         else:

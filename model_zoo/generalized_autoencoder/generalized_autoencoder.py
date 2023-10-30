@@ -1,9 +1,11 @@
 import torch
 from torch.func import jvp
+import typing as th
+import dypy as dy
 
 from ..two_step import TwoStepComponent
 from ..utils import batch_or_dataloader
-
+from torch import nn
 
 class GeneralizedAutoEncoder(TwoStepComponent):
     """
@@ -16,17 +18,42 @@ class GeneralizedAutoEncoder(TwoStepComponent):
 
             latent_dim,
 
-            encoder,
-            decoder,
+            encoder: th.Optional[th.Union[str, nn.Module, th.List[th.Union[str, nn.Module]]]] = None,
+            decoder: th.Optional[th.Union[str, nn.Module, th.List[th.Union[str, nn.Module]]]] = None,
+            encoder_init_args: th.Optional[th.Union[th.Dict, th.List[th.Dict]]] = None,
+            decoder_init_args: th.Optional[th.Union[th.Dict, th.List[th.Dict]]] = None,
 
             **kwargs
     ):
         super().__init__(**kwargs)
 
         self.latent_dim = latent_dim
-
-        self.encoder = encoder
-        self.decoder = decoder
+        
+        def parse_network(net, net_args):
+            
+            if not isinstance(net, nn.Module):
+                if not isinstance(net, list):
+                    net = [net]
+                    net_args = [net_args]
+                
+                if len(net) != len(net_args):
+                    raise Exception(f"The network class and argument list should have the same length ({len(net)} != {len(net_args)})")  
+                
+                module_list = []
+                for net_, net_args_ in zip(net, net_args):
+                    if isinstance(net_, nn.Module):
+                        module_list.append(net_)
+                    else:
+                        module_list.append(dy.eval(net_)(**(net_args_ or {})))
+                        
+                ret = nn.Sequential(*module_list)
+            else:
+                ret = net
+            
+            return ret
+        
+        self.encoder = parse_network(encoder, encoder_init_args)
+        self.decoder = parse_network(decoder, decoder_init_args)
 
     @batch_or_dataloader()
     def encode(self, x):
