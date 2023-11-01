@@ -248,7 +248,7 @@ sweep_configuration:
     dataset:
       sweep_identifier: B_dataset
       sweep: True
-      values: ['cifar10', 'svhn']
+      values: ['celeba-small', 'cifar10', 'cifar100', 'tiny-imagenet', 'svhn', 'celeba']
   dy__upsert:
     - sweep: True
       sweep_identifier: A_flow_type

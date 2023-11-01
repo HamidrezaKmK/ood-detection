@@ -130,6 +130,9 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
         **additional_args
     )
 
+    if checkpoint_dir is not None:
+        trainer.load_checkpoint("latest")
+        
     # The actual training loop
     trainer.train()
 

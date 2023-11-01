@@ -245,7 +245,7 @@ sweep_configuration:
     dataset:
       sweep_identifier: B_dataset
       sweep: True
-      values: ['mnist', 'fashion-mnist']
+      values: ['fashion-mnist', 'omniglot', 'mnist', 'emnist-minus-mnist', 'emnist']
   dy__upsert:
     - sweep: True
       sweep_identifier: A_flow_type
