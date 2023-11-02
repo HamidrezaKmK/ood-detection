@@ -10,6 +10,8 @@ import typing as th
 import numpy as np
 import torch
 
+# from tensorboardX import SummaryWriter
+
 import wandb
 
 class Tee:
@@ -66,6 +68,7 @@ class Writer:
             
             from tensorboardX import SummaryWriter
             self._writer = SummaryWriter(logdir=logdir, **kwargs)
+
 
             assert logdir == self._writer.logdir
         else:

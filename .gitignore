@@ -186,5 +186,7 @@ dysweep_logs
 
 hamid_notebook.ipynb
 
-# an exception for meta_run.sh
-!meta_run.sh
+# an exception for the meta runner bash files
+!meta_run_ood.sh
+!meta_run_train.sh
+!meta_run_two_step_train.sh

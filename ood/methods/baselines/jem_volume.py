@@ -11,11 +11,11 @@ We question this assumption by doing the same thing on our flow-based models.
 We indicate that while this metric works for the pathological cases, it fails in
 the non-pathological direction.
 """
-from ..base_method import OODBaseMethod
+from ood.base_method import OODBaseMethod
 import torch
 import typing as th
 import numpy as np
-from ..visualization import visualize_histogram, visualize_scatterplots
+from ood.visualization import visualize_histogram, visualize_scatterplots
 from tqdm import tqdm
 
 class JEMVol(OODBaseMethod):

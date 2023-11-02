@@ -1,10 +1,10 @@
-from ..base_method import OODBaseMethod
+from ood.base_method import OODBaseMethod
 import typing as th
 import torch
 import math
-from ...visualization import visualize_histogram, visualize_trends, visualize_scatterplots
+from ood.visualization import visualize_histogram, visualize_trends, visualize_scatterplots
 import numpy as np
-from chi2comb import ChiSquared, chi2comb_cdf
+# from chi2comb import ChiSquared, chi2comb_cdf
 from tqdm import tqdm
 import wandb
 import dypy as dy

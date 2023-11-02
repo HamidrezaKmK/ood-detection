@@ -45,21 +45,21 @@ dotenv set DATA_DIR <root-path-to-data-directory>
 
 The project is divided into two sections:
 
-1. **Training models**: The codes for model training lie within the [model_zoo](./model_zoo/) directory. To run a specific model, define a training configuration and run `train.py` on that configuration. For example, to train a Neural Spline Flow on Fashion-MNIST, there is a training configuration defined at [train_config](./configurations/training/rq_nsf_fmnist.yaml). We use `jsonargparse` to define all your configurations in a `yaml` file, so you can run the following:
+1. **Training likelihood-based models**: 
+The codes for model training lie within the [model_zoo](./model_zoo/) directory. To run a specific model, define a training configuration and run `train.py` on that configuration. For example, to train a Neural Spline Flow on Fashion-MNIST, there is a training configuration defined at [train_config](configurations/training/example_train.yaml). We use `jsonargparse` to define all your configurations in a `yaml` file, so you can run the following:
 
 ```bash
-python train.py --config configurations/training/rq_nsf_fmnist.yaml
+python train.py --config configurations/training/example_train.yaml 
+# please refer to setting up weights and biases if you ran into related errors here
 ```
 
-2. **Performing OOD-detection**: The codebase pertaining to OOD-detection lies within the [ood](./ood/) directory. Every OOD detection method is encapsulated within a class that inherits a base class defined in [OODMethodBaseClass](./ood/methods/base_method.py). To run experiments on OOD detection, one can pick any likelihood based model with specific checkpoints, specify an *in-distribution* dataset and an *out-of-distribution* dataset, and run the method. The `main_ood.py` is the runner script for this. Similar to the training configurations, we use `jsonargparse` to define all your configurations in a `yaml` file, so you can run the following example that performs a basic OOD detection technique on a Neural Spline Flow trained on Fashion-MNIST and then tests it on MNIST to see the pathology:
+2. **Performing OOD-detection**: The codebase for OOD-detection lies within the [ood](./ood/) directory. Every OOD detection method is encapsulated within a class that inherits a base class defined in [OODMethodBaseClass](./ood/base_method.py). To run experiments on OOD detection, one can pick any likelihood-based model with specific checkpoints, specify an *in-distribution* dataset and an *out-of-distribution* dataset, and run the method. The `main_ood.py` is the runner script for this. Similar to the training configurations, we use `jsonargparse` to define all your configurations in a `yaml` file, so you can run the following example that performs a basic OOD detection technique on a Neural Spline Flow trained on Fashion-MNIST and then tests it on MNIST to see the pathology:
 
 ```bash
 python main_ood.py --config configurations/ood/simple_rq_nsf_fmnist_mnist.yaml
 ```
 
-For more information on how to define these configurations, please check out our comments in the `yaml` files that we have provided alongside our configuration [guide](./docs/configs.md).
-
-
+For more information on how to define these configurations, please check out our [guide](./docs/configs.md) alongside the comments in the `yaml` files that we have provided.
 
 ## Weights and Biases Integration and Sweeps
 

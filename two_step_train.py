@@ -16,6 +16,7 @@ from model_zoo import TwoStepComponent, TwoStepDensityEstimator
 from model_zoo.generalized_autoencoder import GeneralizedAutoEncoder
 from model_zoo.density_estimator import DensityEstimator
 from model_zoo.trainers.single_trainer import BaseTrainer
+from model_zoo.trainers.two_step_trainer import SequentialTrainer, BaseTwoStepTrainer
 from model_zoo import (
    get_evaluator, Writer
 )
@@ -42,32 +43,44 @@ class TrainerConfig:
     only_test: bool = False
     sample_freq: th.Optional[int] = None
     progress_bar: bool = False
-    
-    de_evaluator: th.Optional[dict] = None
-    gae_evaluator: th.Optional[dict] = None
+    load_best_valid_first: bool = False
     
 @dataclass
 class GAEConfig:
-    model_class: th.Optional[str] = None
+    model_cls: th.Optional[str] = None
     model_init_args: th.Optional[dict] = None
-    trainer_config: th.Optional[TrainerConfig] = None
-    
+    trainer: th.Optional[TrainerConfig] = None
+    evaluator: th.Optional[dict] = None
+
 @dataclass
 class DEConfig:
-    model_class: th.Optional[str] = None
+    model_cls: th.Optional[str] = None
     model_init_args: th.Optional[dict] = None
-    trainer_config: th.Optional[TrainerConfig] = None
+    trainer: th.Optional[TrainerConfig] = None
+    evaluator: th.Optional[dict] = None
 
 @dataclass
-class TwoStepConfig:
-    gae: th.Optional[GAEConfig] = None
-    de: th.Optional[DEConfig] = None
-    shared: th.Optional[th.Dict] = None
+class SharedConfig:
+    # add arguments in shared config for model itself
+    model_init_args: th.Optional[dict] = None
+    # shared evaluator
+    evaluator: th.Optional[dict] = None
+    # a trigger for whether we perform sequential training or not
+    sequential_training: bool = False
+    # the options for the shared trainer
     trainer: th.Optional[TrainerConfig] = None
-    data: th.Optional[th.Dict[str, th.Any]] = None
+    # unrelated stuff!
     load_pretrained_gae: bool = False
     freeze_pretrained_gae: bool = False
-
+    pretrained_gae_path: th.Optional[str] = None
+    
+@dataclass
+class TwoStepConfig:
+    gae_config: th.Optional[GAEConfig] = None
+    de_config: th.Optional[DEConfig] = None
+    shared_config: th.Optional[th.Dict] = None
+    data: th.Optional[th.Dict[str, th.Any]] = None
+    
 def run(args, checkpoint_dir=None, gpu_index: int = -1):
     
     # Load the environment variables
@@ -97,145 +110,133 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
         **args.data,
     )
 
-    # Create the module 
-    gae_module: GeneralizedAutoEncoder = dy.eval(args.gae_model.class_path)(
-        **args.gae_model.init_args, **(args.shared_config or {})
+    # Create the modules
+    gae_module: GeneralizedAutoEncoder = dy.eval(args.gae_config.model_cls)(
+        **args.gae_config.model_init_args, **(args.shared_config.model_init_args or {})
     ).to(device)
     
-    de_module: DensityEstimator = dy.eval(args.de_module.class_path)(
-        **args.de_module.init_args, **(args.shared_config or {})
+    de_module: DensityEstimator = dy.eval(args.de_module.model_cls)(
+        **args.de_module.model_init_args, **(args.shared_config.model_init_args or {})
     ).to(device)
     
+    # Set the optimizer for the modules
+    gae_module.set_optimizer(args.gae_config.optimizer)
+    de_module.set_optimizer(args.de_config.optimizer)
+        
     two_step_module = TwoStepDensityEstimator(
         generalized_autoencoder=gae_module,
         density_estimator=de_module
     )
-    
-    # Set the appropriate optimizer
-    two_step_module.set_optimizer(args.trainer.optimizer)
 
-    # Set an evaluator that gets called after each epoch of the trainer
+    # Set an evaluator for each model that gets called after each epoch of the trainer
     # for potential early stopping or evaluation
     gae_evaluator = get_evaluator(
         two_step_module.generalized_autoencoder,
         valid_loader=valid_loader, test_loader=test_loader,
         train_loader=train_loader,
-        valid_metrics=args.trainer.gae_evaluator["valid_metrics"],
-        test_metrics=args.trainer.gae_evaluator["test_metrics"],
-        **args.trainer.gae_evaluator.get("metric_kwargs", {}),
+        valid_metrics=args.gae_config.evaluator["valid_metrics"],
+        test_metrics=args.gae_config.evaluator["test_metrics"],
+        **args.gae_config.evaluator.get("metric_kwargs", {}),
     )
     de_evaluator = get_evaluator(
         two_step_module.density_estimator,
         valid_loader=None, test_loader=None, # Loaders must be updated later by the trainer
         train_loader=train_loader,
-        valid_metrics=args.trainer.de_evaluator["valid_metrics"],
-        test_metrics=args.trainer.de_evaluator["test_metrics"],
-        **args.trainer.de_evaluator.get("metric_kwargs", {}),
+        valid_metrics=args.de_config.evaluator["valid_metrics"],
+        test_metrics=args.de_config.evaluator["test_metrics"],
+        **args.de_config.evaluator.get("metric_kwargs", {}),
     )
-
+    shared_evaluator = get_evaluator(
+        two_step_module,
+        valid_loader=valid_loader, test_loader=test_loader, # Loaders must be updated later by the trainer
+        train_loader=train_loader,
+        valid_metrics=args.shared_config.evaluator["valid_metrics"],
+        test_metrics=args.shared_config.evaluator["test_metrics"],
+        **args.shared_config.evaluator.get("metric_kwargs", {}),
+    )
     # create a writer with its logdir equal to the dysweep checkpoint_dir
     # if it is not None
     if checkpoint_dir is not None:
         writer = Writer(logdir=checkpoint_dir, make_subdir=False, **args.trainer.writer)
     else:
         writer = Writer(**args.trainer.writer)
-        
-    # Additional args used for trainer.
-    additional_args = args.trainer.additional_init_args or {}
-    return SingleTrainer(
-        module=module,
-        ckpt_prefix=ckpt_prefix,
+    
+    # Instantiate the GAE trainer
+    additional_args = args.gae_config.trainer.additional_init_args or {}
+    gae_trainer: BaseTrainer = dy.eval(args.gae_config.trainer.trainer_cls)(
+        gae_module,
+        ckpt_prefix="gae",   
         train_loader=train_loader,
         valid_loader=valid_loader,
         test_loader=test_loader,
         writer=writer,
-        max_epochs=cfg["max_epochs"],
-        early_stopping_metric=cfg["early_stopping_metric"],
-        max_bad_valid_epochs=cfg["max_bad_valid_epochs"],
-        max_grad_norm=cfg["max_grad_norm"],
-        evaluator=evaluator,
-        only_test=only_test,
-        **kwargs,
-    )
-    gae_trainer = get_single_trainer(
-        module=two_step_module.generalized_autoencoder,
-        ckpt_prefix="gae",
-        writer=writer,
-        cfg=gae_cfg,
-        train_loader=train_loader,
-        valid_loader=valid_loader,
-        test_loader=test_loader,
+        max_epochs= args.gae_config.trainer.max_epochs,
+        early_stopping_metric= args.gae_config.trainer.early_stopping_metric,
+        max_bad_valid_epochs= args.gae_config.trainer.max_bad_valid_epochs,
+        max_grad_norm=args.gae_config.trainer.max_grad_norm,
         evaluator=gae_evaluator,
-        only_test=only_test,
+        only_test=args.gae_config.trainer.only_test,
+        sample_freq=args.gae_config.trainer.sample_freq,
+        progress_bar=args.gae_config.trainer.progress_bar,
+        **additional_args
     )
-    de_trainer = get_single_trainer(
-        module=two_step_module.density_estimator,
-        ckpt_prefix="de",
+
+    # Instantiate the DE trainer
+    additional_args = args.de_config.trainer.additional_init_args or {}
+    de_trainer: BaseTrainer = dy.eval(args.de_config.trainer.trainer_cls)(
+        de_module,
+        ckpt_prefix="de",   
+        train_loader=train_loader,
+        valid_loader=valid_loader,
+        test_loader=test_loader,
         writer=writer,
-        cfg=de_cfg,
-        train_loader=None,
-        valid_loader=None,
-        test_loader=None,
+        max_epochs= args.de_config.trainer.max_epochs,
+        early_stopping_metric= args.de_config.trainer.early_stopping_metric,
+        max_bad_valid_epochs= args.de_config.trainer.max_bad_valid_epochs,
+        max_grad_norm=args.de_config.trainer.max_grad_norm,
         evaluator=de_evaluator,
-        only_test=only_test,
+        only_test=args.de_config.trainer.only_test,
+        sample_freq=args.de_config.trainer.sample_freq,
+        progress_bar=args.de_config.trainer.progress_bar,
+        **additional_args
     )
-
-    checkpoint_load_list = ["best_valid", "latest"] if load_best_valid_first else ["latest", "best_valid"]
-
-    if shared_cfg["sequential_training"]:
-        return SequentialTrainer(
+    
+    if args.shared_config.sequential_training:
+        additional_args = args.shared_config.trainer.additional_init_args or {}
+        trainer: SequentialTrainer = dy.eval(args.shared_config.trainer.trainer_cls)(
             gae_trainer=gae_trainer,
             de_trainer=de_trainer,
             writer=writer,
             evaluator=shared_evaluator,
-            checkpoint_load_list=checkpoint_load_list,
-            pretrained_gae_path=pretrained_gae_path,
-            freeze_pretrained_gae=freeze_pretrained_gae,
-            only_test=only_test
+            checkpoint_load_list = ["best_valid", "latest"] if args.shared_config.trainer.load_best_valid_first else ["latest", "best_valid"]
+            pretrained_gae_path=args.shared_config.pretrained_gae_path,
+            freeze_pretrained_gae=args.shared_config.freeze_pretrained_gae,
+            only_test=args.shared_config.trainer.only_test,
+            **additional_args
         )
-
-    elif shared_cfg["alternate_by_epoch"]:
-        trainer_class = AlternatingEpochTrainer
     else:
-        trainer_class = AlternatingIterationTrainer
-
-    return trainer_class(
-        two_step_module=two_step_module,
-        gae_trainer=gae_trainer,
-        de_trainer=de_trainer,
-        train_loader=train_loader,
-        valid_loader=valid_loader,
-        test_loader=test_loader,
-        writer=writer,
-        max_epochs=shared_cfg["max_epochs"],
-        early_stopping_metric=shared_cfg["early_stopping_metric"],
-        max_bad_valid_epochs=shared_cfg["max_bad_valid_epochs"],
-        max_grad_norm=shared_cfg["max_grad_norm"],
-        evaluator=shared_evaluator,
-        checkpoint_load_list=checkpoint_load_list,
-        pretrained_gae_path=pretrained_gae_path,
-        freeze_pretrained_gae=freeze_pretrained_gae,
-        only_test=only_test
-    )
-
-
-    trainer: BaseTrainer = dy.eval(args.trainer.trainer_cls)(
-        two_step_module=two_step_module,
-        ckpt_prefix="gae" if args.model.is_gae else "de",   
-        train_loader=train_loader,
-        valid_loader=valid_loader,
-        test_loader=test_loader,
-        writer=writer,
-        max_epochs=args.trainer.max_epochs,
-        early_stopping_metric=args.trainer.early_stopping_metric,
-        max_bad_valid_epochs=args.trainer.max_bad_valid_epochs,
-        max_grad_norm=args.trainer.max_grad_norm,
-        evaluator=evaluator,
-        only_test=args.trainer.only_test,
-        sample_freq=args.trainer.sample_freq,
-        progress_bar=args.trainer.progress_bar,
-        **additional_args
-    )
+        
+        # Additional args used for trainer.
+        additional_args = args.shared_config.trainer.additional_init_args or {}
+        trainer: BaseTwoStepTrainer = dy.eval(args.shared_config.trainer.trainer_cls)(
+            two_step_module=two_step_module,
+            gae_trainer=gae_trainer,
+            de_trainer=de_trainer,
+            train_loader=train_loader,
+            valid_loader=valid_loader,
+            test_loader=test_loader,
+            writer=writer,
+            max_epochs=args.shared_config.trainer.max_epochs,
+            early_stopping_metric=args.shared_config.trainer.early_stopping_metric,
+            max_bad_valid_epochs=args.shared_config.trainer.max_bad_valid_epochs,
+            max_grad_norm=args.shared_config.trainer.max_grad_norm,
+            evaluator=shared_evaluator,
+            checkpoint_load_list=["best_valid", "latest"] if args.shared_config.trainer.load_best_valid_first else ["latest", "best_valid"],
+            pretrained_gae_path=args.shared_config.pretrained_gae_path,
+            freeze_pretrained_gae=args.shared_config.freeze_pretrained_gae,
+            only_test=args.shared_config.trainer.only_test,
+            **additional_args
+        )
 
     # The actual training loop
     trainer.train()

@@ -1,3 +1,4 @@
+from typing import Any
 import numpy as np
 from torch.utils.data import DataLoader
 
@@ -23,9 +24,10 @@ def get_loaders(
     dataset,
     device,
     data_root,
-    train_batch_size,
-    valid_batch_size,
-    test_batch_size,
+    batch_size: th.Optional[int] = None,
+    train_batch_size: th.Optional[int] = None,
+    valid_batch_size: th.Optional[int] = None,
+    test_batch_size: th.Optional[int] = None,
     make_valid_loader: bool = True,
     make_test_loader: bool = True,
     shuffle: bool = True,
@@ -33,12 +35,26 @@ def get_loaders(
     train_ready: bool = False,
     unsupervised: bool = False,
     additional_dataset_args: th.Optional[dict] = None,
+    embedding_network: th.Optional[str] = None,
 ):
+    # override the batchsizes if one global one is defined
+    if batch_size is not None:
+        train_batch_size = batch_size
+        valid_batch_size = batch_size
+        test_batch_size = batch_size
     
     additional_dataset_args = additional_dataset_args or {}
         
     if dataset in SUPPORTED_IMAGE_DATASETS:
-        train_dset, valid_dset, test_dset = get_image_datasets(dataset, data_root, make_valid_loader, **additional_dataset_args)
+        train_dset, valid_dset, test_dset = get_image_datasets(
+          dataset_name=dataset, 
+          data_root=data_root, 
+          make_valid_dset=make_valid_loader,
+          device=device,
+          embedding_network=embedding_network,
+          **additional_dataset_args
+        )
+
         
     elif dataset in SUPPORTED_GENERATED_DATASETS:
         train_dset, valid_dset, test_dset = get_generated_datasets(dataset, **additional_dataset_args)
@@ -69,8 +85,6 @@ def get_loaders(
     test_loader = get_loader(test_dset, device, test_batch_size, drop_last=False, shuffle=False) if make_test_loader else None
     
     return train_loader, valid_loader, test_loader
-    
-
 
 def get_embedding_loader(embeddings, batch_size, drop_last, role):
     dataset = SupervisedDataset(
