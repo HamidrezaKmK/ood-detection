@@ -160,7 +160,7 @@ class Sphere(SupervisedDataset):
         
         self.x = f.pad(torch.Tensor(sphere_points),
                             pad=(0, self.ambient_dim - self.manifold_dim - 1, 0, 0))
-        self.y = torch.zeros(self.x.shape[0]).long()
+        self.y = manifold_dim * torch.ones(self.x.shape[0]).long()
     
     def get_data_min(self):
         return torch.min(self.x)
@@ -213,7 +213,7 @@ class KleinBottle(SupervisedDataset):
         return self.little_r * np.sqrt((self.big_r + self.little_r*np.cos(theta))**2 + (0.5*self.little_r*np.sin(theta))**2)
 
 
-def get_datasets_from_class(name):
+def get_datasets_from_class(name, additional_instantiation_args: th.Optional[dict] = None):
     if name == "sphere":
         data_class = Sphere
     elif name == "klein":
@@ -221,9 +221,10 @@ def get_datasets_from_class(name):
     else:
         raise ValueError(f"Unknown dataset {name}")
     
-    train_dset = data_class(name, "train")
-    valid_dset = data_class(name, "valid")
-    test_dset = data_class(name, "test")
+    additional_instantiation_args = additional_instantiation_args or {}
+    train_dset = data_class(name, "train", **additional_instantiation_args)
+    valid_dset = data_class(name, "valid", **additional_instantiation_args)
+    test_dset = data_class(name, "test", **additional_instantiation_args)
     
     return train_dset, valid_dset, test_dset
 
@@ -420,16 +421,16 @@ def get_2d_data(data, size):
     return torch.tensor(data, dtype=torch.get_default_dtype())
 
 
-def get_simple_datasets(name):
+def get_simple_datasets(name, additional_instantiation_args: th.Optional[dict] = None):
     train_dset = SupervisedDataset(name, "train", get_2d_data(name, size=10000))
     valid_dset = SupervisedDataset(name, "valid", get_2d_data(name, size=1000))
     test_dset = SupervisedDataset(name, "test", get_2d_data(name, size=5000))
     return train_dset, valid_dset, test_dset
 
 
-def get_generated_datasets(name):    
+def get_generated_datasets(name, dataset_generation_args: th.Optional[dict] = None):    
     dataset_classes = ["sphere", "klein"]
     
     get_datasets_fn = get_datasets_from_class if name in dataset_classes else get_simple_datasets
     
-    return get_datasets_fn(name)
+    return get_datasets_fn(name, additional_instantiation_args=dataset_generation_args)

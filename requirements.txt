@@ -31,3 +31,5 @@ lmdb
 
 # cv2 for complexity based
 opencv-python
+
+scikit-dimension

@@ -26,21 +26,25 @@ def get_loaders(
     train_batch_size,
     valid_batch_size,
     test_batch_size,
-    make_valid_loader: bool = False,
+    make_valid_loader: bool = True,
     make_test_loader: bool = True,
     shuffle: bool = True,
     dgm_args: th.Optional[th.Dict[str, th.Any]] = None,
     train_ready: bool = False,
     unsupervised: bool = False,
+    additional_dataset_args: th.Optional[dict] = None,
 ):
+    
+    additional_dataset_args = additional_dataset_args or {}
+        
     if dataset in SUPPORTED_IMAGE_DATASETS:
-        train_dset, valid_dset, test_dset = get_image_datasets(dataset, data_root, make_valid_loader)
+        train_dset, valid_dset, test_dset = get_image_datasets(dataset, data_root, make_valid_loader, **additional_dataset_args)
         
     elif dataset in SUPPORTED_GENERATED_DATASETS:
-        train_dset, valid_dset, test_dset = get_generated_datasets(dataset)
+        train_dset, valid_dset, test_dset = get_generated_datasets(dataset, **additional_dataset_args)
         
     elif dataset == 'dgm-generated':
-        train_dset, valid_dset, test_dset = get_dgm_generated_datasets(data_root, dgm_args)
+        train_dset, valid_dset, test_dset = get_dgm_generated_datasets(data_root, dgm_args, **additional_dataset_args)
         
     else:
         raise ValueError(f"Unknown dataset {dataset}, please check model_zoo/datasets/utils.py for supported ones!")
