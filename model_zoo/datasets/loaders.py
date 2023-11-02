@@ -28,12 +28,13 @@ def get_loaders(
     train_batch_size: th.Optional[int] = None,
     valid_batch_size: th.Optional[int] = None,
     test_batch_size: th.Optional[int] = None,
-    make_valid_loader: bool = False,
+    make_valid_loader: bool = True,
     make_test_loader: bool = True,
     shuffle: bool = True,
     dgm_args: th.Optional[th.Dict[str, th.Any]] = None,
     train_ready: bool = False,
     unsupervised: bool = False,
+    additional_dataset_args: th.Optional[dict] = None,
     embedding_network: th.Optional[str] = None,
 ):
     # override the batchsizes if one global one is defined
@@ -41,21 +42,25 @@ def get_loaders(
         train_batch_size = batch_size
         valid_batch_size = batch_size
         test_batch_size = batch_size
+    
+    additional_dataset_args = additional_dataset_args or {}
         
     if dataset in SUPPORTED_IMAGE_DATASETS:
         train_dset, valid_dset, test_dset = get_image_datasets(
-            dataset_name=dataset,
-            data_root=data_root,
-            make_valid_dset=make_test_loader,
-            device=device,
-            embedding_network=embedding_network 
+          dataset_name=dataset, 
+          data_root=data_root, 
+          make_valid_dset=make_valid_loader,
+          device=device,
+          embedding_network=embedding_network,
+          **additional_dataset_args
         )
+
         
     elif dataset in SUPPORTED_GENERATED_DATASETS:
-        train_dset, valid_dset, test_dset = get_generated_datasets(dataset)
+        train_dset, valid_dset, test_dset = get_generated_datasets(dataset, **additional_dataset_args)
         
     elif dataset == 'dgm-generated':
-        train_dset, valid_dset, test_dset = get_dgm_generated_datasets(data_root, dgm_args)
+        train_dset, valid_dset, test_dset = get_dgm_generated_datasets(data_root, dgm_args, **additional_dataset_args)
         
     else:
         raise ValueError(f"Unknown dataset {dataset}, please check model_zoo/datasets/utils.py for supported ones!")

@@ -11,6 +11,7 @@ import numpy as np
 import torch
 
 # from tensorboardX import SummaryWriter
+
 import wandb
 
 class Tee:
@@ -49,23 +50,29 @@ class Writer:
         logdir, 
         make_subdir, 
         tag_group, 
+        explicit_subdir: th.Optional[str] = None,
         type: th.Literal['tensorboard', 'wandb'] = 'tensorboard',
         redirect_streams: bool = False,
         **kwargs
     ):
+        
+        os.makedirs(logdir, exist_ok=True)
         if make_subdir:
-            os.makedirs(logdir, exist_ok=True)
-
             timestamp = datetime.datetime.now().strftime('%b%d_%H-%M-%S')
             logdir = os.path.join(logdir, timestamp)
-
+        elif explicit_subdir is not None:
+            logdir = os.path.join(logdir, explicit_subdir)
+        
         self.type = type
         if type == 'tensorboard':
-            raise Exception("No tensorboard support at the moment!")
-            # self._writer = SummaryWriter(logdir=logdir, **kwargs)
+            
+            from tensorboardX import SummaryWriter
+            self._writer = SummaryWriter(logdir=logdir, **kwargs)
+
 
             assert logdir == self._writer.logdir
         else:
+            self.wandb_tables = {}
             # make all the directories in the logdir
             os.makedirs(logdir, exist_ok=True)
             
@@ -85,7 +92,50 @@ class Writer:
                 primary_file=self._STDERR,
                 secondary_file=open(os.path.join(logdir, "stderr"), "a")
             )
+#  writer.write_table(
+#             name='LID_data',
+#             data=table,
+#             columns = ['predicted_lid', 'true_lid', 'idx'],
+#         )
+        
+#         writer.log_scatterplot(
+#             name='LID_scatterplot',
+#             title="LID estimation scatterplot",
+#             data_table='LID_data',
+#             x='predicted_lid',
+#             y='true_lid',
+#         )
 
+    def write_table(
+        self,
+        name: str,
+        data: th.Any,
+        columns: th.List[str],
+    ):
+        if self.type == 'wandb':
+            self.wandb_tables[name] = wandb.Table(data=data, columns = columns)
+        else:
+            raise NotImplementedError("writing table for writers other than W&B is not supported!")
+        
+
+    def log_scatterplot(
+        self,
+        name: str,
+        title: str,
+        data_table_ref: str,
+        x: str,
+        y: str,
+    ):
+        if self.type == 'wandb':
+            wandb.log(
+                dict(
+                    name=wandb.plot.scatter(self.wandb_tables[data_table_ref], x, y, title=title)
+                )
+            )
+        else:
+            raise NotImplementedError("writing scatterplots for writers other than W&B is not supported!")
+        
+    
     def write_scalar(self, tag, scalar_value, global_step=None):
         if self.type == 'tensorboard':
             self._writer.add_scalar(self._tag(tag), scalar_value, global_step=global_step)

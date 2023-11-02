@@ -263,8 +263,12 @@ class SingleTrainer(BaseTrainer):
         self.writer.write_checkpoint(self._get_checkpoint_name(tag), checkpoint)
 
     def load_checkpoint(self, tag):
-        checkpoint = self.writer.load_checkpoint(self._get_checkpoint_name(tag), self.module.device)
-
+        try:
+            checkpoint = self.writer.load_checkpoint(self._get_checkpoint_name(tag), self.module.device)
+        except FileNotFoundError as e:
+            print("[WARNING] No checkpoint available!")
+            return
+        
         self.iteration = checkpoint["iteration"]
         self.epoch = checkpoint["epoch"]
 
