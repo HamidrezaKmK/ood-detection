@@ -92,3 +92,4 @@ After running each sweep, you will be given a sweep identifier from the sweep se
 ## Reproducing work based on this codebase
 
 * For the local intrinsic dimension (LID) based method, please check [here](docs/reproduce_lid.md).
+* For benchmarks on the LID estimation method that we employ, please check [here](docs/lid_estimation_comparison.md).

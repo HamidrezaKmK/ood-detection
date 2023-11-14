@@ -262,7 +262,7 @@ sweep_configuration:
                             'PiecewiseRationalQuadraticCouplingTransform',
                             additional_args = {
                               'tails': 'linear',
-                              'num_bins': 2,
+                              'num_bins': 8,
                               'tail_bound': 1.0,
                             }
                       )

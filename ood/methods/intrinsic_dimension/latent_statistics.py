@@ -11,6 +11,7 @@ import numpy as np
 from tqdm import tqdm
 from .utils import get_device_from_loader
 from abc import ABC, abstractmethod
+from ood.visualization import visualize_trends
 
 class LatentStatsCalculator(ABC):
     """
@@ -57,13 +58,15 @@ class LatentStatsCalculator(ABC):
     def get_label(self):
         """A short string name for the statistics being calculated"""
         raise NotImplementedError("No get_label function implemented!")
-    
+
 class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
     def __init__(
         self,
         *args,
+        visualize_eigenspectrum: bool = False,
         **kwargs,
     ):
+        self.visualize_eigenspectirum = visualize_eigenspectrum 
         super().__init__(*args, **kwargs)
         
     def get_name(self):
@@ -80,6 +83,7 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
         if not use_cache:
             # get a list of all the Jacobians next to the latent values
             self.jax, self.z_values = self.encoding_model.calculate_jacobian(loader, flatten=True)
+            
             
             # visualize progressbar if verbose > 0
             if self.verbose > 0:
@@ -134,7 +138,7 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
         return log_pdf
     
                     
-    def calculate_statistics(self, r, loader, use_cache: bool = False, **kwargs) -> np.ndarray:
+    def calculate_statistics(self, r, loader, use_cache: bool = False, visualize_eigen_tag: str = '', **kwargs) -> np.ndarray:
         """
         This is the actual implementation of the rho_r based on our formulations.
         
@@ -149,7 +153,16 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
         
         # get the jacobians and do any pre-computation needed
         self._prep_cache(loader, use_cache, device)
-
+        
+        if self.visualize_eigenspectirum and not use_cache:
+            visul = torch.cat(self.jtj_eigvals).numpy()
+            visualize_trends(
+                scores = visul,
+                t_values = np.arange(visul.shape[1]),
+                title=f'eigenspectrum-jacobian-{visualize_eigen_tag}',
+                x_label='eig-idx',
+                y_label='eigenval',
+            )
         
         latent_values = []
         
@@ -273,10 +286,53 @@ class GaussianConvolutionRateStatsCalculator(GaussianConvolutionStatsCalculator)
             var = torch.exp(2 * r)
         else:
             var = np.exp(2 * r)
-    
-        ret = - torch.sum(1 / (jtj_eigvals + var))
+            
         z_ = (jtj_rot.T @ z_0.reshape(-1, 1)).reshape(-1)
+        ret = - torch.sum(1 / (jtj_eigvals + var))
         ret = ret + torch.sum(jtj_eigvals * (z_ / (jtj_eigvals + var)) ** 2)
-
+        
+        # logspace:
+        # if not isinstance(r, torch.Tensor):
+        #     r = torch.tensor(r).to(jtj_eigvals.device).float()
+        # z_ = (jtj_rot.T @ z_0.reshape(-1, 1)).reshape(-1)
+        
+        # log_jtj_eigvals = torch.log(jtj_eigvals)
+        # first = -torch.exp(2 * r - torch.logsumexp(torch.logaddexp(log_jtj_eigvals, 2 * r), dim=0))
+        # second = torch.exp(2 * r + torch.logsumexp(
+        #     torch.logaddexp(
+        #         torch.logaddexp(log_jtj_eigvals, torch.log(z_ ** 2)),
+        #         -2 * torch.logaddexp(log_jtj_eigvals, 2 * r)
+        #     ),
+        #     dim=0)
+        # )
+        # final = first + second
         return ret * var
+    
+
+
+class JacobianThresholdStatsCalculator(GaussianConvolutionStatsCalculator):
+    """
+    This class computes the i'th order gradients of the approximated likelihood which is the proxy
+    for the intrinsic dimension itself.
+    """
+    
+    def get_name(self):
+        return "threshold_r(x)"
+    
+    def get_label(self):
+        return "fast-LID-threshold"
+    
+    def _calc_score_quant(
+        self, 
+        jtj_eigvals, 
+        r, 
+        jtj_rot, 
+        jac, 
+        z_0, 
+    ):
+        if isinstance(r, torch.Tensor):
+            var = torch.exp(2 * r)
+        else:
+            var = np.exp(2 * r)
+        return (jtj_eigvals > var).sum()  
       

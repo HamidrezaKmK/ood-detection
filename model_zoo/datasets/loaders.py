@@ -57,7 +57,7 @@ def get_loaders(
 
         
     elif dataset in SUPPORTED_GENERATED_DATASETS:
-        train_dset, valid_dset, test_dset = get_generated_datasets(dataset, **additional_dataset_args)
+        train_dset, valid_dset, test_dset = get_generated_datasets(dataset, additional_dataset_args)
         
     elif dataset == 'dgm-generated':
         train_dset, valid_dset, test_dset = get_dgm_generated_datasets(data_root, dgm_args, **additional_dataset_args)
@@ -81,8 +81,8 @@ def get_loaders(
         test_dset = TrainerReadyDataset(test_dset)
     
     train_loader = get_loader(train_dset, device, train_batch_size, drop_last=True, shuffle=shuffle)
-    valid_loader = get_loader(valid_dset, device, valid_batch_size, drop_last=False, shuffle=False) if make_valid_loader else None
-    test_loader = get_loader(test_dset, device, test_batch_size, drop_last=False, shuffle=False) if make_test_loader else None
+    valid_loader = get_loader(valid_dset, device, valid_batch_size, drop_last=False, shuffle=shuffle) if make_valid_loader else None
+    test_loader = get_loader(test_dset, device, test_batch_size, drop_last=False, shuffle=shuffle) if make_test_loader else None
     
     return train_loader, valid_loader, test_loader
 

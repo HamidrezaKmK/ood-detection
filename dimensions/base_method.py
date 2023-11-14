@@ -22,6 +22,7 @@ class BaseIntrinsicDimensionEstimationMethod:
         test_dataloader: th.Optional[DataLoader] = None,
         writer: th.Optional[Writer] = None,
         device: str = 'cpu',
+        ambient_dim: th.Optional[int] = None,
     ):
         if test_dataloader is None:
             raise ValueError("With no test dataloader given, the method cannor return anything!")
@@ -32,6 +33,7 @@ class BaseIntrinsicDimensionEstimationMethod:
         if writer is None:
             raise ValueError("Writer should be specified!")
         self.device = device
+        self.ambient_dim = ambient_dim
         
     def fit(
         self,
@@ -68,4 +70,8 @@ class BaseIntrinsicDimensionEstimationMethod:
     
         return avg_weighted / sm
     
+    def custom_run(
+        self,
+    ):
+        raise NotImplementedError("Not implemented!")
     

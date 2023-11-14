@@ -1,7 +1,6 @@
 base_model:
-  config_dir: checkpoints-5a8npllt/PiecewiseRationalQuadraticCouplingTransform_cifar10_gloeal_eqw784qp_final/run_config.json
-  checkpoint_dir: checkpoints-5a8npllt/PiecewiseRationalQuadraticCouplingTransform_cifar10_gloeal_eqw784qp_final/checkpoints/de_nf_best_valid.pt
-
+  config_dir: checkpoints-5a8npllt/AffineCouplingTransform_cifar10_pesewa_l1fqgj7x_final/run_config.json
+  checkpoint_dir: checkpoints-5a8npllt/AffineCouplingTransform_cifar10_pesewa_l1fqgj7x_final/checkpoints/de_nf_best_valid.pt
 data:
   # specify the datasets and dataloader configurations for the in and out of distribution data.
   in_distribution:

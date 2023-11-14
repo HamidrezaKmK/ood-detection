@@ -71,7 +71,7 @@ def get_generated_config(conf: dict):
         }
     }
 
-def run_name_changer(conf, run_name):
+def ood_run_name_changer(conf, run_name):
     """
     This run changer takes a look at the configuration and sets a name for that
     run appropriately.
@@ -83,3 +83,34 @@ def run_name_changer(conf, run_name):
     ret += f"_{conf['data']['out_of_distribution']['pick_loader']}"
     ret += f"_{run_name}"
     return ret
+
+def intrinsic_dimension_run_name_changer(conf, run_name):
+    """
+    Change the run appropriately for the dataset under consideration
+    """
+    ret = conf['data']['dataset']
+    if 'additional_dataset_args' in conf['data']:
+        map = conf['data']['additional_dataset_args']
+        for key in map:
+            if isinstance(map[key], int) or isinstance(map[key], str):
+                ret += f'_{key}_{map[key]}'
+    ret += f"_{run_name}"
+    return ret
+
+def recursive_replace_with(conf, trigger, replacement):
+    """
+    Change the run appropriately for the dataset under consideration
+    """
+    if isinstance(conf, dict):
+        for key in conf.keys():
+            if conf[key] == trigger:
+                conf[key] = replacement
+            elif isinstance(conf, dict) or isinstance(conf, list):
+                conf[key] = recursive_replace_with(conf[key], trigger, replacement)
+    elif isinstance(conf, list):
+        for i, val in enumerate(conf):
+            if val == trigger:
+                conf[i] = replacement
+            elif isinstance(val, dict) or isinstance(val, list):
+                conf[i] = recursive_replace_with(conf[i], trigger, replacement)
+    return conf

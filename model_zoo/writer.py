@@ -14,6 +14,8 @@ import torch
 
 import wandb
 
+RUN_NAME_SPLIT = '_-_-_'
+
 class Tee:
     """This class allows for redirecting of stdout and stderr"""
     def __init__(self, primary_file, secondary_file):
@@ -50,19 +52,27 @@ class Writer:
         logdir, 
         make_subdir, 
         tag_group, 
-        explicit_subdir: th.Optional[str] = None,
         type: th.Literal['tensorboard', 'wandb'] = 'tensorboard',
+        name: th.Optional[str] = None,
         redirect_streams: bool = False,
+        config: th.Optional[dict] = None,
         **kwargs
     ):
         
         os.makedirs(logdir, exist_ok=True)
+        logdir_name = '' if name is None else name.split(RUN_NAME_SPLIT)[0]
         if make_subdir:
-            timestamp = datetime.datetime.now().strftime('%b%d_%H-%M-%S')
-            logdir = os.path.join(logdir, timestamp)
-        elif explicit_subdir is not None:
-            logdir = os.path.join(logdir, explicit_subdir)
+            if len(logdir_name) == 0:
+                timestamp = datetime.datetime.now().strftime('%b%d_%H-%M-%S')
+                logdir = os.path.join(logdir, timestamp)
+            else:
+                logdir = os.path.join(logdir, logdir_name)
+            os.makedirs(logdir, exist_ok=True)
         
+        if config is not None:
+            with open(os.path.join(logdir, 'config.json'), 'w') as json_file:
+                json.dump(config, json_file, indent=4)
+            
         self.type = type
         if type == 'tensorboard':
             
@@ -76,7 +86,7 @@ class Writer:
             # make all the directories in the logdir
             os.makedirs(logdir, exist_ok=True)
             
-            self._writer = wandb.init(**kwargs)
+            self._writer = wandb.init(name=name, **kwargs)
             
         self.logdir = logdir
 

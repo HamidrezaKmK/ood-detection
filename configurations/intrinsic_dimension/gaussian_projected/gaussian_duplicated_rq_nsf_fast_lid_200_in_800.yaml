@@ -1,11 +1,17 @@
 intrinsic_dimension_estimator:
   method: dimensions.flow_fast_lid.FastFlowLID
   method_args:
+    ambient_dim: 800
+    submethod: fast_regression
+    regression_points:
+    - 0.01
+    - 0.02
+    - 0.03
     flow_model_class: model_zoo.density_estimator.flow.NormalizingFlow
     flow_model_args:
       # Data transform args (they are here because they might influence log_prob)
       flatten: False
-      data_shape: [3]
+      data_shape: [800]
 
       denoising_sigma: null
       dequantize: False
@@ -18,7 +24,7 @@ intrinsic_dimension_estimator:
       base_distribution:
         class_path: nflows.distributions.StandardNormal
         init_args:
-          shape: [3]
+          shape: [800]
       
 
       transform:
@@ -26,39 +32,40 @@ intrinsic_dimension_estimator:
         content:
           - class_path: nflows.transforms.normalization.ActNorm
             init_args:
-              features: 3
+              features: 800
           - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
             init_args: 
               coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
               net:
                 class_path: nflows.nn.nets.resnet.ResidualNet
                 init_args:
-                  hidden_features: 128
+                  hidden_features: 1024
                   num_blocks: 3
               mask:
-                dim: 3
+                dim: 800
                 flip: True
               tails: linear
-              num_bins: 2
-              tail_bound: 1.0
+              num_bins: 8
+              tail_bound: 5.0
+
           
           - class_path: nflows.transforms.normalization.ActNorm
             init_args:
-              features: 3
+              features: 800
           - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
             init_args: 
               coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
               net:
                 class_path: nflows.nn.nets.resnet.ResidualNet
                 init_args:
-                  hidden_features: 128
+                  hidden_features: 1024
                   num_blocks: 3
               mask:
-                dim: 3
+                dim: 800
                 flip: False
               tails: linear
-              num_bins: 2
-              tail_bound: 1.0
+              num_bins: 8
+              tail_bound: 5.0
     checkpoint_tag: best_valid
     flow_model_trainer_args:
       trainer_cls: model_zoo.trainers.single_trainer.SingleTrainer
@@ -70,31 +77,42 @@ intrinsic_dimension_estimator:
         valid_metrics: [loss]
         test_metrics: [loss]
       sample_freq: null # logs the samples after every two epochs
-      max_epochs: 220
+      max_epochs: 10
       early_stopping_metric: loss
-      max_bad_valid_epochs: 30
+      max_bad_valid_epochs: 100
       max_grad_norm: 1.0
       only_test: False
       progress_bar: True
 
-    verbose: 1
-    r: -20
-
+    verbose: 2
+    r: 2
+  fitting_args:
+    chunk_size: 1
+    visualize_eigenspectrum: True
+  estimation_args:
+    show_trend: True
+    left_r: -20.0
+    right_r: 7
+    radii_n: 100
 writer:
   logdir: runs
   make_subdir: False
-  explicit_subdir: my_fast_lid_sphere
   tag_group: flow
   type: wandb
   entity: dgm-l6
   project: training-dgms
-  name: sphere_toy_example
+  name: duplicate_gaussian_rq_nsf_200_in_800
   project: intrinsic-dimension-single-runs
 
 data:
-  dataset: sphere
-  make_valid_loader: True
+  dataset: linear_projected
+  additional_dataset_args:
+    manifold_dim: 200
+    ambient_dim: 800
+    projection_type: repeat
+    # The size should be large since the intrinsic dimension is large
+    size: 60000
   train_batch_size: 128
   valid_batch_size: 128
-  test_batch_size: 128
+  test_batch_size: 8
 

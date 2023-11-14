@@ -1,0 +1,106 @@
+intrinsic_dimension_estimator:
+  method: dimensions.flow_fast_lid.FastFlowLID
+  method_args:
+    ambient_dim: 800
+    flow_model_class: model_zoo.density_estimator.flow.NormalizingFlow
+    flow_model_args:
+      # Data transform args (they are here because they might influence log_prob)
+      flatten: False
+      data_shape: [800]
+
+      denoising_sigma: null
+      dequantize: False
+      scale_data: False
+      whitening_transform: False
+      logit_transform: False
+      clamp_samples: False
+
+      # Base distribution arguments (in this work the base is always Gaussian)
+      base_distribution:
+        class_path: nflows.distributions.StandardNormal
+        init_args:
+          shape: [800]
+      
+
+      transform:
+      - repeat_n: 3
+        content:
+          - class_path: nflows.transforms.normalization.ActNorm
+            init_args:
+              features: 800
+          - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
+            init_args: 
+              coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+              net:
+                class_path: nflows.nn.nets.resnet.ResidualNet
+                init_args:
+                  hidden_features: 1024
+                  num_blocks: 3
+              mask:
+                dim: 800
+                flip: True
+
+          
+          - class_path: nflows.transforms.normalization.ActNorm
+            init_args:
+              features: 800
+          - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
+            init_args: 
+              coupling_transform_cls: nflows.transforms.AffineCouplingTransform
+              net:
+                class_path: nflows.nn.nets.resnet.ResidualNet
+                init_args:
+                  hidden_features: 1024
+                  num_blocks: 3
+              mask:
+                dim: 800
+                flip: False
+    checkpoint_tag: best_valid
+    flow_model_trainer_args:
+      trainer_cls: model_zoo.trainers.single_trainer.SingleTrainer
+      optimizer:
+        class_path: torch.optim.AdamW
+        init_args:
+          lr: 0.001
+      evaluator:
+        valid_metrics: [loss]
+        test_metrics: [loss]
+      sample_freq: null # logs the samples after every two epochs
+      max_epochs: 500
+      early_stopping_metric: loss
+      max_bad_valid_epochs: 30
+      max_grad_norm: 1.0
+      only_test: False
+      progress_bar: True
+
+    verbose: 2
+    r: 2
+  fitting_args:
+    chunk_size: 1
+    visualize_eigenspectrum: True
+  estimation_args:
+    show_trend: True
+    left_r: -7.0
+    right_r: 7
+    radii_n: 100
+writer:
+  logdir: runs
+  make_subdir: False
+  tag_group: flow
+  type: wandb
+  entity: dgm-l6
+  project: training-dgms
+  name: random_projected_gaussian_affine_400_in_800
+  project: intrinsic-dimension-single-runs
+
+data:
+  dataset: linear_projected
+  additional_dataset_args:
+    manifold_dim: 400
+    ambient_dim: 800
+    projection_type: random
+    size: 60000
+  train_batch_size: 128
+  valid_batch_size: 128
+  test_batch_size: 8
+

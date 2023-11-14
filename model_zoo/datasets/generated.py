@@ -17,8 +17,11 @@ import typing as th
 import os
 from tqdm import tqdm
 import shutil
+import pandas as pd
 
 import PIL
+
+import dypy as dy
 
 class DGMGeneratedDataset(SupervisedDataset):
     """Base class for generated datasets"""
@@ -35,12 +38,15 @@ class DGMGeneratedDataset(SupervisedDataset):
         generation_batch_size: int = 10,
         device: str = "cpu",
         model_root: th.Optional[str] = None,
+        data_type: th.Literal['image', 'tabular'] = 'image',
     ):
         self.data_path = os.path.join(data_root, identifier)
         if model_root is None:
             load_dotenv()
             model_root = os.environ.get("MODEL_DIR", './runs/')
-            
+        
+        self.data_type = data_type
+        
         def generate_all():
             # get the model and generate all the data and save it
             model: th.Union[DensityEstimator, TwoStepDensityEstimator] = \
@@ -49,47 +55,74 @@ class DGMGeneratedDataset(SupervisedDataset):
             if seed is not None:    
                 np.random.seed(seed)
                 torch.manual_seed(seed)
+            
+            last_df = None
             rng = tqdm(range(0, length, generation_batch_size))
             rng.set_description("Generating data")
             for i in rng:
                 r = min(i + generation_batch_size, length)
-                data = model.sample(r - i).detach().cpu().permute(0, 2, 3, 1).numpy()
-                for j, sample in enumerate(data):
-                    img_dir = os.path.join(self.data_path, f"{i + j + 1}.png")
-                    # save that sample in image format in img_dir
-                    if sample.shape[-1] == 1:
-                        im = PIL.Image.fromarray(sample[:, :, 0].astype(np.uint8), mode="L")
-                    elif sample.shape[-1] == 3:
-                        im = PIL.Image.fromarray(sample.astype(np.uint8))
-                    else:
-                        raise ValueError("Invalid number of channels: ", sample.shape[-1])
-                    im.save(img_dir)
-            self.length = length
+                data = model.sample(r - i).detach().cpu()
+                
+                if self.data_type == 'image':
+                    data = data.permute(0, 2, 3, 1).numpy()
+                    for j, sample in enumerate(data):
+                        img_dir = os.path.join(self.data_path, f"{i + j + 1}.png")
+                        # save that sample in image format in img_dir
+                        if sample.shape[-1] == 1:
+                            im = PIL.Image.fromarray(sample[:, :, 0].astype(np.uint8), mode="L")
+                        elif sample.shape[-1] == 3:
+                            im = PIL.Image.fromarray(sample.astype(np.uint8))
+                        else:
+                            raise ValueError("Invalid number of channels: ", sample.shape[-1])
+                        im.save(img_dir)
+                elif self.data_type == 'tabular':
+                    current_df = pd.DataFrame(
+                        data.numpy(),
+                        columns = [f'Column_{j+1}' for j in range(data.shape[1])]
+                    )
+                    last_df = current_df if last_df is None else pd.concat([last_df, current_df], ignore_index=True)
+                    if not i + generation_batch_size < length:
+                        last_df.to_csv(os.path.join(self.data_path, 'all_generated.csv'), index=False)
                     
+        self.length = length
+            
+           
         if not os.path.exists(self.data_path):
             os.makedirs(self.data_path)
             generate_all()
             
         else:
-            # get the length of the dataset
-            if length != len(os.listdir(self.data_path)):
+            # Check if you need to generate the data again or not
+            # this occurs if the number of samples changes or that
+            # the current cached values do not match with what you want
+            need_to_generate = False
+            if self.data_type == 'image' and length != len(os.listdir(self.data_path)):
+                need_to_generate = True
+            if self.data_type == 'tabular' and not os.path.exists(os.path.join(self.data_path, 'all_generated.csv')):
+                need_to_generate = True
+            elif self.data_type == 'tabular':
+                df = pd.read_csv(os.path.join(self.data_path, 'all_generated.csv'), index_col=None)
+                if len(df) != self.length:
+                    need_to_generate = True
+            
+            # generate if needed
+            if need_to_generate:
                 # delete all the content of the folder
                 shutil.rmtree(self.data_path)
                 os.mkdir(self.data_path)
                 generate_all()
             else:
                 print("Using existing data cached ...")
-                self.length = len(os.listdir(self.data_path))
         
         self.cached_indices = {}
         
         self.device = device
     
     def get_data_min(self):
-        return 0.0
+        return 0.0 if self.data_type == 'image' else self.df.min()
     
     def get_data_max(self):
-        return 255.0
+        return 255.0 if self.data_type == 'image' else self.df.max()
     
     def get_data_shape(self):
         t = self.__getitem__(0)[0].shape
@@ -108,17 +141,24 @@ class DGMGeneratedDataset(SupervisedDataset):
     
     def __getitem__(self, idx):
         if idx not in self.cached_indices:
-            img_path = os.path.join(self.data_path, f"{idx + 1}.png")
-            X = PIL.Image.open(img_path)
-            # turn X into a numpy array of type float
-            X = np.array(X).astype(np.float32)
-            if len(X.shape) == 2:
-                X = X[:, :, None]
-            # turn X into a tensor
-            X = torch.from_numpy(X).float().permute(2, 0, 1).to(self.device)
-            # NOTE: if the dgm model is class conditional, then we can also generate the class labels here
-            #       and return the sample conditioned on that specific class
-            self.cached_indices[idx] = X, None, idx
+            if self.data_type == 'image':
+                img_path = os.path.join(self.data_path, f"{idx + 1}.png")
+                X = PIL.Image.open(img_path)
+                # turn X into a numpy array of type float
+                X = np.array(X).astype(np.float32)
+                if len(X.shape) == 2:
+                    X = X[:, :, None]
+                # turn X into a tensor
+                X = torch.from_numpy(X).float().permute(2, 0, 1).to(self.device)
+                # NOTE: if the dgm model is class conditional, then we can also generate the class labels here
+                #       and return the sample conditioned on that specific class
+                self.cached_indices[idx] = X, -1, idx
+            elif self.data_type == 'tabular':
+                if not hasattr(self, 'df'):
+                    self.df = pd.read_csv(os.path.join(self.data_path, 'all_generated.csv'), index_col=None)
+                    self.df = torch.from_numpy(self.df.to_numpy()).float().to(self.device)
+                self.cached_indices[idx] = self.df[idx], -1, idx
+                
         return self.cached_indices[idx]
 
 def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str] = None):
@@ -131,10 +171,132 @@ def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str]
         identifier = identifier.replace('.', '_')
         
     train_dset = DGMGeneratedDataset(data_root, identifier=identifier, **dgm_args)
+    
     valid_dset = train_dset
     test_dset = train_dset
+    print("Length of the test dset", len(test_dset))
+    
     return train_dset, valid_dset, test_dset
-     
+
+class Lollipop(SupervisedDataset):
+    """
+    Samples a lollipop
+    """
+    def __init__(
+        self, 
+        name, 
+        role, 
+        size: int = 1000,
+        seed: int = 110, 
+    ):
+        assert role in ['train', 'valid', 'test']
+        np.random.seed(seed)
+        
+        self.name = name
+        self.role = role
+
+        # Generate points for the lollipop surface (circle with radius 1 at (0, 2))
+        circle_x = []
+        circle_y = []
+        r = np.random.uniform(0, 1, size=4 * size)
+        r = np.sqrt(r)
+        theta = np.random.uniform(0, 2 * np.pi, size=4 * size)
+        circle_x = np.cos(theta) * r
+        circle_y = np.sin(theta) * r + 2 
+
+        # Generate points for the lollipop stick (line from (0, 0) to (0, 1))
+        stick_x = np.zeros(2 * size)
+        stick_y = np.linspace(0, 1, 2 * size)
+
+        # Generate a set of points at (0, -1)
+        point_x = np.zeros(size)
+        point_y = -np.ones(size)
+        
+        self.x = np.concatenate([np.stack([circle_x, circle_y]), np.stack([stick_x, stick_y]), np.stack([point_x, point_y])], axis=-1).T
+        self.y = np.concatenate([np.repeat(2, 4 * size), np.repeat(1, 2 * size), np.repeat(0, size)], axis=-1)
+        
+        self.x = torch.from_numpy(self.x).float()
+        self.y = torch.from_numpy(self.y).long()
+        
+    def get_data_min(self):
+        return torch.min(self.x)
+
+    def get_data_max(self):
+        return torch.max(self.x)
+    
+class LinearProjectedDataset(SupervisedDataset):
+    """
+    Sample from a base distribution of dimension 'd' and then project onto a
+    'D' dimensional space with a linear transform.
+    """
+    def __init__(
+        self,
+        name : str,
+        role : th.Literal['train', 'valid', 'test'],
+        seed: int = 110,
+        manifold_dim: int = 2,
+        ambient_dim: int = 4,
+        projection_type: th.Literal['repeat', 'random'] = 'random',
+        size: int = 1000,
+        sample_distr: str = 'normal', # other types are 'uniform', 'laplace', and basically any type that np.random supports
+        sample_args: th.Optional[dict] = None,
+    ):
+        """
+
+        Args:
+            name (str): This is the name of the dataset
+            role: whether it is being used for training, validation, or testing
+            manifold_dim (int, optional): The intrinsic dimension of the data
+            ambient_dim (int, optional): The extrinsic (ambient) dimension of the data
+            projection_type: The data is sampled by sampling something simple in the intrinsic dimension and projecting.
+                if 'random' is chosen, then the projection is linear using a random matrix. If 'repeat', then each entry is copied (repeat_interleave)
+                an appropriate amount of times to match the ambient dimension (if D % d != 0, then the last entry might not be copied as much as the rest)
+            size: The size of the dataset
+            sample_distr (str, optional): This contains any type of random sampling method that is implemented in np.random.x
+        """
+        assert role in ['train', 'valid', 'test']
+        np.random.seed(seed)
+        
+        self.name = name
+        self.role = role
+        self.manifold_dim = manifold_dim
+        self.ambient_dim = ambient_dim
+        
+        if self.ambient_dim < self.manifold_dim:
+            raise ValueError("Manifold dimension should be less than or equal to the ambient dimension!")
+        
+        if projection_type == 'random':
+            # generate an (almost always) rank 'd' matrix that projects 
+            # from 'd' dimensions to 'D' dimensions using Gaussian initialization
+            self.projection = np.random.randn(ambient_dim, manifold_dim)
+            diag_indices = np.arange(min(self.manifold_dim, self.ambient_dim))
+            self.projection[diag_indices, diag_indices] += 10
+        else:
+            # Create a projection that duplicates
+            repeat_freq = ambient_dim // manifold_dim
+            
+            fake_ambient_dim = repeat_freq * manifold_dim
+            self.projection = np.kron(np.eye(manifold_dim), np.ones((repeat_freq, 1)))
+            # Append dimensions
+            if fake_ambient_dim < ambient_dim:
+                last_row = np.zeros((1, manifold_dim))
+                last_row[0][-1] = 1
+                last_row = np.repeat(last_row, ambient_dim - fake_ambient_dim, axis=0)
+                self.projection = np.concatenate([self.projection, last_row], axis=0)
+        
+        sampler = dy.eval(f"numpy.random.{sample_distr}")
+        raw_samples = sampler(**(sample_args or {}), size=(size, self.manifold_dim))
+        self.x = torch.from_numpy(
+            raw_samples @ self.projection.T
+        ).float()
+        self.y = manifold_dim * torch.ones(self.x.shape[0]).long()
+    
+    def get_data_min(self):
+        return torch.min(self.x)
+
+    def get_data_max(self):
+        return torch.max(self.x)
+    
 class Sphere(SupervisedDataset):
     """Sample from a Gaussian distribution projected to a sphere"""
 
@@ -218,6 +380,10 @@ def get_datasets_from_class(name, additional_instantiation_args: th.Optional[dic
         data_class = Sphere
     elif name == "klein":
         data_class = KleinBottle
+    elif name == "linear_projected":
+        data_class = LinearProjectedDataset
+    elif name == "lollipop":
+        data_class = Lollipop
     else:
         raise ValueError(f"Unknown dataset {name}")
     
@@ -429,7 +595,7 @@ def get_simple_datasets(name, additional_instantiation_args: th.Optional[dict] =
 
 
 def get_generated_datasets(name, dataset_generation_args: th.Optional[dict] = None):    
-    dataset_classes = ["sphere", "klein"]
+    dataset_classes = ["sphere", "klein", "linear_projected", "lollipop"]
     
     get_datasets_fn = get_datasets_from_class if name in dataset_classes else get_simple_datasets
     

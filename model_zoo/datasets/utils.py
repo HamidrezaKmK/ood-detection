@@ -22,7 +22,7 @@ SUPPORTED_IMAGE_DATASETS = [
 ]
 
 SUPPORTED_GENERATED_DATASETS = [
-    "sphere", "klein", "two_moons",
+    "sphere", "klein", "two_moons", "linear_projected", "lollipop",
 ]
 
 class TrainerReadyDataset(torch.utils.data.Dataset):

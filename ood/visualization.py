@@ -71,13 +71,12 @@ def visualize_trends(
     """
     
     def _convert_float(t):
-        if isinstance(t, int):
-            b = 0
-            a = t
-        else:
+        try:
             a, b = str(t).split('.')
             a = int(a)
-        
+        except Exception as e:
+            b = 0
+            a = t
         return "{0:4d}".format(a) + f"_{b}"
     
     everything_columns = [f"t={_convert_float(t)}" for t in t_values]

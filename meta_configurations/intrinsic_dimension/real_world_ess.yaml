@@ -1,0 +1,59 @@
+# This sweep compares different fast flow LID estimators for Gaussian projection examples
+# These examples include projected samples from a Gaussian or a uniform distribution
+project: intrinsic-dimensions
+sweep_name: real_world_ess
+entity: dgm-l6
+count: 10000
+method: grid
+
+# Change the name of the run to [in_distribution_dataset]_vs_[out_of_distribution_dataset]_[run_name]
+# using the dysweep name changer for better readability
+run_name_changer:
+  expression: |
+    from meta_configurations import *
+  function_of_interest: intrinsic_dimension_run_name_changer
+
+
+# BASE configuration which is being used
+base_config:
+  intrinsic_dimension_estimator:
+    method: dimensions.scikit_dim.SkdimIntrinsicDimensionEstimation
+    method_args:
+      estimator_name: ess
+      verbose: 1
+      n_jobs: 0
+    # fitting_args:
+    #   subsample_size: (set in sweep)
+
+  writer:
+    logdir: runs
+    make_subdir: False
+    tag_group: ESS
+    type: wandb
+    entity: dgm-l6
+    project: training-dgms
+    name: duplicate_gaussian_toy_example
+    project: intrinsic-dimension-single-runs
+
+  data:
+    # dataset: (set in sweep)
+    train_batch_size: 128
+    valid_batch_size: 128
+    test_batch_size: 128
+
+  local: false
+
+ 
+      
+sweep_configuration:
+  intrinsic_dimension_estimator:
+    fitting_args:
+      subsample_size:
+        sweep: True
+        sweep_identifier: A_subsample_size
+        values: [100, 1000, 30000, null]
+  data:
+    dataset:
+      sweep: True
+      sweep_identifier: B_dataset
+      values: [mnist, fashion-mnist, cifar10, svhn, omniglot, celeba-small, emnist, tiny-imagenet, celeba]

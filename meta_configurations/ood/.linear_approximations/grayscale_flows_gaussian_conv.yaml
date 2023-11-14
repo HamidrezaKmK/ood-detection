@@ -19,7 +19,7 @@ method: grid
 run_name_changer:
   expression: |
     from meta_configurations import *
-  function_of_interest: run_name_changer
+  function_of_interest: ood_run_name_changer
 
 # BASE configuration which is being used
 base_config:

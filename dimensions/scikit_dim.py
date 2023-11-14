@@ -88,12 +88,14 @@ class SkdimIntrinsicDimensionEstimation(BaseIntrinsicDimensionEstimationMethod):
         curr = 0
         for x, y, idx in self.test_dataloader:
             curr += x.shape[0]
-            X.append(x.cpu().numpy())
-            if curr >= subsample_size:
+            X.append(x.cpu().numpy().reshape(x.shape[0], -1))
+            if subsample_size is not None and curr >= subsample_size:
                 break
+        
         X = np.concatenate(X)
         
         # Fit the scikit-learn model
+        
         self.estimator.fit(X)
         end = time.time()
         

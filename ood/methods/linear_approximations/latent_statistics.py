@@ -327,7 +327,9 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
                 if isinstance(val, torch.Tensor):
                     val = val.cpu().item()
                 conv.append(val)
-                    
+            print("DONE WITH THIS")
+            print(conv)
+                                
         return np.array(conv)
     
     def sample(
