@@ -28,9 +28,7 @@ base_config:
   ood:
     # bypass the entire visualization process since there is no need to plot the histograms that take time!
     bypass_visualization: True
-    
-    use_dataloader: True
-    pick_count: 5
+  
 
     # for reproducibility
     seed: 100
@@ -65,7 +63,7 @@ sweep_configuration:
 
   dy__upsert:
     - sweep: True
-      sweep_identifier: Y_inner_calculator
+      sweep_identifier: Z_inner_calculator
       sweep_alias:
         - thresholding
         - taylor_approximation
@@ -80,7 +78,8 @@ sweep_configuration:
       sweep_identifier: Y_search_criterion
       sweep_alias:
         - known
-        - ad_hoc
+        - percentile
+        - plateau_based
       values:
         - ood:
             method_args:
@@ -91,7 +90,27 @@ sweep_configuration:
               adaptive_setting_mode: percentile
               percentile: 10
               dimension_tolerance: 0.07
-              
+
+        - ood:
+            method_args:
+              adaptive_setting_mode: plateau_based
+              plateau_based_search_space_count: 100
+    - sweep: True
+      sweep_identifier: A_subsample_size
+      sweep_alias:
+      - tiny
+      - medium
+      - huge
+      values:
+      - ood:
+          use_dataloader: True
+          pick_count: 5
+      - ood:
+          use_dataloader: True
+          pick_count: 128
+      - ood:
+          use_dataloader: True
+          pick_count: 4096
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
@@ -173,7 +192,7 @@ sweep_configuration:
                 test_batch_size: 8
           ood:
             method_args:
-              given_mean_lid: 17.026996686431346 # This will change
+              given_mean_lid: 17.06469430486845
 
     - sweep: True
       sweep_identifier: ood_picker

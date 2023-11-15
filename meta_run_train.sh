@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Set this to avoid fragmentation
+export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512'
 
 # Argument 1: Sweep ID, no default value so it's mandatory
 SWEEP_ID=${1}
@@ -16,4 +18,5 @@ dysweep_run_resume --package train \
                    --run_additional_args gpu_index:$DEVICE_INDEX \
                    --config meta_configurations/training/base.yaml \
                    --sweep_id $SWEEP_ID \
-                   --count $MAX_JOBS
+                   --count $MAX_JOBS \
+                   --mark_preempting True

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Set this to avoid fragmentation
+export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512'
 
 # Argument 1: Sweep ID, no default value so it's mandatory
 SWEEP_ID=${1}

@@ -141,7 +141,8 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         # Hyper-parameters relating to the scale parameter that is being computed
         evaluate_r: float = -20,
         adaptive_measurement: bool = False,
-        adaptive_setting_mode: th.Literal['percentile', 'given'] = 'percentile',
+        adaptive_setting_mode: th.Literal['percentile', 'given', 'plateau_based'] = 'percentile',
+        plateau_based_search_space_count: int = 100,
         given_mean_lid: th.Optional[float] = None,
         percentile: int = 10,
         dimension_tolerance: float = 0.0,
@@ -193,6 +194,7 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         self.adaptive_measurement = adaptive_measurement
         self.given_mean_lid = given_mean_lid
         self.adaptive_setting_mode = adaptive_setting_mode
+        self.plateau_based_search_space_count = plateau_based_search_space_count
         self.dimension_tolerance = dimension_tolerance
         self.percentile = percentile
         self.adaptive_train_data_buffer_size = adaptive_train_data_buffer_size
@@ -264,6 +266,8 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
                         R = mid
                     else:
                         L = mid
+                
+                self.evaluate_r = L
             elif self.adaptive_setting_mode == 'given':
                 for ii in bin_search:
                     mid = (L + R) / 2
@@ -278,7 +282,74 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
                     else:
                         R = mid
                 
-            self.evaluate_r = L
+                self.evaluate_r = L
+            elif self.adaptive_setting_mode == 'plateau_based':
+                L = -20
+                R = 5
+                if self.verbose > 0:
+                    bin_search.set_description("Bin search for lower bound")
+                for ii in bin_search:
+                    mid = (L + R) / 2
+                    dimensionalities = self._get_loader_dimensionality(
+                        r=mid,
+                        loader=inner_loader,
+                        use_cache=(ii != 0),
+                        D=D,
+                    )
+                    if np.mean(dimensionalities) > D - 1:
+                        L = mid
+                    else:
+                        R = mid
+                r_lower_bound = L
+                L = -20
+                R = 5
+                if self.verbose > 0:
+                    bin_search = tqdm(range(self.bin_search_iteration_count), desc="Bin search for upper bound")
+                for ii in bin_search:
+                    mid = (L + R) / 2
+                    dimensionalities = self._get_loader_dimensionality(
+                        r=mid,
+                        loader=inner_loader,
+                        use_cache=True,
+                        D=D,
+                    )
+                    if np.mean(dimensionalities) < 1:
+                        R = mid
+                    else:
+                        L = mid
+                r_upper_bound = L
+                
+                if self.verbose > 0:
+                    print(f"Searching for 'r' within range [{r_lower_bound}, {r_upper_bound}] with {self.plateau_based_search_space_count} iterations.")
+                    
+                mx_cnt = 0
+                best = None
+                
+                lst = None
+                curr_count = 0
+                rng = np.linspace(r_lower_bound, r_upper_bound, self.plateau_based_search_space_count)
+                if self.verbose > 0:
+                    rng = tqdm(rng, desc="finding plateau")
+                for r in rng:
+                    dimensionalities = self._get_loader_dimensionality(
+                        r=r,
+                        loader=inner_loader,
+                        use_cache=True,
+                        D=D,
+                    )
+                    dim = int(np.mean(dimensionalities))
+                    if lst is None or dim != lst:
+                        lst = dim
+                        curr_count = 0
+                    curr_count += 1
+                    if curr_count > mx_cnt:
+                        best = r
+                        mx_cnt = curr_count
+                
+                self.evaluate_r = best
+                
+                
+                
         
         if self.verbose > 0:
             print("running with scale:", self.evaluate_r)
