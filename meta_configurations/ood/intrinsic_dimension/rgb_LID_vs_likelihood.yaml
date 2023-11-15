@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: rgb_ID_vs_likelihood
+sweep_name: rgb_LID_vs_likelihood
 entity: dgm-l6
 count: 10000
 method: grid
@@ -63,7 +63,7 @@ sweep_configuration:
 
   dy__upsert:
     - sweep: True
-      sweep_identifier: Y_inner_calculator
+      sweep_identifier: Z_inner_calculator
       sweep_alias:
         - thresholding
         - taylor_approximation
@@ -78,7 +78,8 @@ sweep_configuration:
       sweep_identifier: Y_search_criterion
       sweep_alias:
         - known
-        - ad_hoc
+        - percentile
+        - plateau_based
       values:
         - ood:
             method_args:
@@ -89,19 +90,28 @@ sweep_configuration:
               adaptive_setting_mode: percentile
               percentile: 10
               dimension_tolerance: 0.07
+
+        - ood:
+            method_args:
+              adaptive_setting_mode: plateau_based
+              plateau_based_search_space_count: 100
               
     - sweep: True
-      sweep_identifier: A_pick_counter
+      sweep_identifier: A_subsample_size
       sweep_alias:
-        - small_subsample # Use small subsamples of the dataset for better performance
-        - large_subsample
+      - tiny
+      - medium
+      - huge
       values:
-        - ood:
-            use_dataloader: True
-            pick_count: 128
-        - ood:
-            use_dataloader: True  
-            pick_count: 4096
+      - ood:
+          use_dataloader: True
+          pick_count: 5
+      - ood:
+          use_dataloader: True
+          pick_count: 128
+      - ood:
+          use_dataloader: True
+          pick_count: 4096
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
@@ -205,13 +215,13 @@ sweep_configuration:
               given_mean_lid: 17.449080638985365
         
     - sweep: True
-      sweep_identifier: ood_picker
+      sweep_identifier: C_ood_picker
       sweep_alias:
       - generated
-      - celeba-small
-      - celeba
       - svhn
       - cifar10
+      - celeba-small
+      - celeba
       - tiny-imagenet
       - cifar100
       values:
@@ -226,14 +236,7 @@ sweep_configuration:
                     return get_generated_config(conf)
 
                 function_of_interest: pick_generated
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: celeba-small
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: celeba
+
       - data:
           out_of_distribution:
             dataloader_args:
@@ -242,6 +245,14 @@ sweep_configuration:
           out_of_distribution:
             dataloader_args:
               dataset: cifar10
+      - data:
+          out_of_distribution:
+            dataloader_args:
+              dataset: celeba-small
+      - data:
+          out_of_distribution:
+            dataloader_args:
+              dataset: celeba
       - data:
           out_of_distribution:
             dataloader_args:

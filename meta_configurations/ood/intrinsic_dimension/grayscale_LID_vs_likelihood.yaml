@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: adaptive_fmnist_LID_vs_likelihood
+sweep_name: grayscale_LID_vs_likelihood
 entity: dgm-l6
 count: 10000
 method: grid
@@ -195,7 +195,7 @@ sweep_configuration:
               given_mean_lid: 17.06469430486845
 
     - sweep: True
-      sweep_identifier: ood_picker
+      sweep_identifier: C_ood_picker
       sweep_alias:
       - generated
       - mnist
