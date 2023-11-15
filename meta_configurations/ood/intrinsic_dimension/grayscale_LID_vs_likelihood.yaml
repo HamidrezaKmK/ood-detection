@@ -63,55 +63,6 @@ sweep_configuration:
 
   dy__upsert:
     - sweep: True
-      sweep_identifier: Z_inner_calculator
-      sweep_alias:
-        - thresholding
-        - taylor_approximation
-      values:
-        - ood:
-            method_args:
-              submethod: thresholding
-        - ood:
-            method_args:
-              submethod: taylor_approximation
-    - sweep: True
-      sweep_identifier: Y_search_criterion
-      sweep_alias:
-        - known
-        - percentile
-        - plateau_based
-      values:
-        - ood:
-            method_args:
-              adaptive_setting_mode: given
-              
-        - ood:
-            method_args:
-              adaptive_setting_mode: percentile
-              percentile: 10
-              dimension_tolerance: 0.07
-
-        - ood:
-            method_args:
-              adaptive_setting_mode: plateau_based
-              plateau_based_search_space_count: 100
-    - sweep: True
-      sweep_identifier: A_subsample_size
-      sweep_alias:
-      - tiny
-      - medium
-      - huge
-      values:
-      - ood:
-          use_dataloader: True
-          pick_count: 5
-      - ood:
-          use_dataloader: True
-          pick_count: 128
-      - ood:
-          use_dataloader: True
-          pick_count: 4096
-    - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
         # grayscale flows (Glow and RQ_NSF)
@@ -230,3 +181,58 @@ sweep_configuration:
           out_of_distribution:
             dataloader_args:
               dataset: emnist
+    
+    - sweep: True
+      sweep_identifier: Y_search_criterion
+      sweep_alias:
+        - known
+        - D_halved
+        - percentile
+        - plateau_based
+      values:
+        - ood:
+            method_args:
+              adaptive_setting_mode: given
+        - ood:
+            method_args:
+              given_mean_lid: 392
+              adaptive_setting_mode: given
+        - ood:
+            method_args:
+              adaptive_setting_mode: percentile
+              percentile: 10
+              dimension_tolerance: 0.07
+
+        - ood:
+            method_args:
+              adaptive_setting_mode: plateau_based
+              plateau_based_search_space_count: 100
+    - sweep: True
+      sweep_identifier: Z_inner_calculator
+      sweep_alias:
+        - thresholding
+        - taylor_approximation
+      values:
+        - ood:
+            method_args:
+              submethod: thresholding
+        - ood:
+            method_args:
+              submethod: taylor_approximation
+    - sweep: True
+      sweep_identifier: A_subsample_size
+      sweep_alias:
+      - tiny
+      - medium
+      - huge
+      values:
+      - ood:
+          use_dataloader: True
+          pick_count: 5
+      - ood:
+          use_dataloader: True
+          pick_count: 128
+      - ood:
+          use_dataloader: True
+          pick_count: 4096
+    
