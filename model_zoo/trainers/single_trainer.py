@@ -184,11 +184,14 @@ class BaseTrainer:
 
             imgs.clamp_(self.module.data_min, self.module.data_max)
             grid = torchvision.utils.make_grid(imgs, nrow=GRID_ROWS, pad_value=1, normalize=True, scale_each=True)
-            grid_permuted = grid.permute((1,2,0))
+            
+            
+            # NOTE: not sure if this is needed!
+            # grid_permuted = grid.permute((1,2,0))
 
-            plt.figure()
-            plt.axis("off")
-            plt.imshow(grid_permuted.detach().cpu().numpy())
+            # plt.figure()
+            # plt.axis("off")
+            # plt.imshow(grid_permuted.detach().cpu().numpy())
 
             self.writer.write_image("samples", grid, global_step=self.epoch)
 

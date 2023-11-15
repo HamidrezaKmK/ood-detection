@@ -56,4 +56,4 @@ sweep_configuration:
     dataset:
       sweep: True
       sweep_identifier: B_dataset
-      values: [mnist, fashion-mnist, cifar10, svhn, omniglot, celeba-small, emnist, tiny-imagenet, celeba]
+      values: [mnist, fashion-mnist, cifar10, svhn, cifar100, omniglot, celeba-small, emnist, tiny-imagenet, celeba]

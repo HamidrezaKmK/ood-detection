@@ -2,7 +2,7 @@
 
 import torch
 from ood.base_method import OODBaseMethod
-from .latent_statistics import GaussianConvolutionRateStatsCalculator
+from .latent_statistics import GaussianConvolutionRateStatsCalculator, JacobianThresholdStatsCalculator
 import typing as th
 from ood.methods.intrinsic_dimension.utils import buffer_loader
 from tqdm import tqdm
@@ -141,9 +141,14 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         # Hyper-parameters relating to the scale parameter that is being computed
         evaluate_r: float = -20,
         adaptive_measurement: bool = False,
+        adaptive_setting_mode: th.Literal['percentile', 'given'] = 'percentile',
+        given_mean_lid: th.Optional[float] = None,
         percentile: int = 10,
         dimension_tolerance: float = 0.0,
         adaptive_train_data_buffer_size: int = 15,    
+        bin_search_iteration_count: int = 20,
+        
+        submethod: th.Literal['thresholding', 'taylor_approximation'] = 'taylor_epproximation',
     ):
         """
         Initializes the IntrinsicDimensionScore class for outlier detection using intrinsic dimensionality.
@@ -172,8 +177,13 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
             in_distr_loader=in_distr_loader, 
         )
         
-        self.latent_statistics_calculator = GaussianConvolutionRateStatsCalculator(likelihood_model, **(intrinsic_dimension_calculator_args or {}))
-        
+        self.submethod = submethod
+        if submethod == 'taylor_approximation':
+            self.latent_statistics_calculator = GaussianConvolutionRateStatsCalculator(likelihood_model, **(intrinsic_dimension_calculator_args or {}))
+        elif submethod == 'thresholding':
+            self.latent_statistics_calculator = JacobianThresholdStatsCalculator(likelihood_model, **(intrinsic_dimension_calculator_args or {}))
+        else:
+            raise ValueError(f"Submethod {submethod} unknown!")
         self.verbose = verbose
         
         self.evaluate_r = evaluate_r
@@ -181,10 +191,33 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         
         # When set to True, the adaptive measure will set the scale according to the training data in a smart way
         self.adaptive_measurement = adaptive_measurement
+        self.given_mean_lid = given_mean_lid
+        self.adaptive_setting_mode = adaptive_setting_mode
         self.dimension_tolerance = dimension_tolerance
         self.percentile = percentile
         self.adaptive_train_data_buffer_size = adaptive_train_data_buffer_size
-        
+        self.bin_search_iteration_count = bin_search_iteration_count
+    
+    def _get_loader_dimensionality(
+        self,
+        r: float,
+        loader,
+        use_cache: bool,
+        D: int,
+    ):
+        # A wrapper for getting the dimensionality based on the submethod that is defined
+        if self.submethod == 'taylor_approximation':
+            return self.latent_statistics_calculator.calculate_statistics(
+                        r,
+                        loader=loader,
+                        use_cache=use_cache,
+                    ) + D
+        elif self.submethod == 'thresholding':
+            return self.latent_statistics_calculator.calculate_statistics(
+                        r,
+                        loader=loader,
+                        use_cache=use_cache
+                    )
         
     def run(self):
         
@@ -203,32 +236,48 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
                 with torch.no_grad():
                     likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
                 all_likelihoods = likelihoods if all_likelihoods is None else np.concatenate([all_likelihoods, likelihoods])
-            
-            print("D = ", D)            
+                     
             L = -20.0 
             R = np.log(0.99)
             
             if self.verbose > 0:
-                bin_search = tqdm(range(20), desc="binary search to find the scale")
+                bin_search = tqdm(range(self.bin_search_iteration_count), desc="binary search to find the scale")
             else:
-                bin_search = range(20)
+                bin_search = range(self.bin_search_iteration_count)
             
             # perform a binary search to come up with a scale so that almost all the training data has dimensionality above
             # that threshold
-            for ii in bin_search:
-                mid = (L + R) / 2
-                dimensionalities = self.latent_statistics_calculator.calculate_statistics(
-                    mid,
-                    loader=inner_loader,
-                    use_cache=(ii != 0),
-                )
-                sorted_dim = np.sort(dimensionalities)
-                dim_comp = sorted_dim[int(float(self.percentile) / 100 * len(sorted_dim))]
+            
+            if self.adaptive_setting_mode == 'percentile':
+                for ii in bin_search:
+                    mid = (L + R) / 2
+                    dimensionalities = self._get_loader_dimensionality(
+                        r=mid,
+                        loader=inner_loader,
+                        use_cache=(ii != 0),
+                        D=D,
+                    )
+                    sorted_dim = np.sort(dimensionalities)
+                    dim_comp = sorted_dim[int(float(self.percentile) / 100 * len(sorted_dim))]
 
-                if dim_comp < - D * self.dimension_tolerance:
-                    R = mid
-                else:
-                    L = mid
+                    if dim_comp < D * (1 - self.dimension_tolerance):
+                        R = mid
+                    else:
+                        L = mid
+            elif self.adaptive_setting_mode == 'given':
+                for ii in bin_search:
+                    mid = (L + R) / 2
+                    dimensionalities = self._get_loader_dimensionality(
+                        r=mid,
+                        loader=inner_loader,
+                        use_cache=(ii != 0),
+                        D=D,
+                    )
+                    if np.mean(dimensionalities) > self.given_mean_lid:
+                        L = mid
+                    else:
+                        R = mid
+                
             self.evaluate_r = L
         
         if self.verbose > 0:
@@ -236,8 +285,6 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         
         
         all_likelihoods = None
-        all_dimensionalities = None
-        all_dimensionalities_clamped = None
         
         for x in self.x_loader:
             D = x.numel() // x.shape[0]
@@ -245,32 +292,33 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
                 likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
                 all_likelihoods = np.concatenate([all_likelihoods, likelihoods]) if all_likelihoods is not None else likelihoods
                 
-        inner_dimensionalities  = self.latent_statistics_calculator.calculate_statistics(
-            self.evaluate_r,
+        all_dimensionalities = self._get_loader_dimensionality(
+            r=self.evaluate_r,
             loader=self.x_loader,
             use_cache=False,
+            D=D,
         ) 
         
-        inner_dimensionalities_clamped = np.where(
-            inner_dimensionalities + self.dimension_tolerance * D > 0, 
-            np.zeros_like(inner_dimensionalities), 
-            inner_dimensionalities + self.dimension_tolerance * D
-        )
+        # inner_dimensionalities_clamped = np.where(
+        #     inner_dimensionalities + self.dimension_tolerance * D > 0, 
+        #     np.zeros_like(inner_dimensionalities), 
+        #     inner_dimensionalities + self.dimension_tolerance * D
+        # )
             
-        all_dimensionalities = np.concatenate([all_dimensionalities, inner_dimensionalities]) if all_dimensionalities is not None else inner_dimensionalities
-        all_dimensionalities_clamped = np.concatenate([all_dimensionalities_clamped, inner_dimensionalities_clamped]) if all_dimensionalities_clamped is not None else inner_dimensionalities_clamped
+        # all_dimensionalities = np.concatenate([all_dimensionalities, inner_dimensionalities]) if all_dimensionalities is not None else inner_dimensionalities
+        # all_dimensionalities_clamped = np.concatenate([all_dimensionalities_clamped, inner_dimensionalities_clamped]) if all_dimensionalities_clamped is not None else inner_dimensionalities_clamped
         
         visualize_scatterplots(
             scores = np.stack([all_likelihoods, all_dimensionalities]).T,
-            column_names=["log-likelihood", "relative-ID-(d-D)"],
+            column_names=["log-likelihood", "LID"],
         )
         
-        single_scores = all_likelihoods * np.exp(2 * self.evaluate_r) + all_dimensionalities_clamped
+        # single_scores = all_likelihoods * np.exp(2 * self.evaluate_r) + all_dimensionalities_clamped
        
-        visualize_histogram(
-            scores=single_scores,
-            x_label="heuristic_score",
-        )
+        # visualize_histogram(
+        #     scores=single_scores,
+        #     x_label="heuristic_score",
+        # )
 
 class ReconstructionCheck(OODBaseMethod):
     """

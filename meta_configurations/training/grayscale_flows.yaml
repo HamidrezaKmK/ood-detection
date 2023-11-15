@@ -268,7 +268,7 @@ sweep_configuration:
                           additional_args = {
                             'tails': 'linear',
                             'num_bins': 8,
-                            'tail_bound': 1.0,
+                            'tail_bound': 3.0,
                           }
                     )
         function_of_interest: turn_into_rq_nsf

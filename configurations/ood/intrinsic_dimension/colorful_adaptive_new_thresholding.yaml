@@ -1,0 +1,66 @@
+base_model:
+  config_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/run_config.json
+  checkpoint_dir: checkpoints-zei1ialy/PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final/checkpoints/de_nf_best_valid.pt
+data:
+  # specify the datasets and dataloader configurations for the in and out of distribution data.
+  in_distribution:
+    dataloader_args:
+      make_valid_loader: false
+      dataset: cifar10
+      train_batch_size: 8
+      valid_batch_size: 8
+      test_batch_size: 8
+    pick_loader: train
+  out_of_distribution:
+    dataloader_args:
+      make_valid_loader: false
+      dataset: svhn
+      train_batch_size: 8
+      valid_batch_size: 8
+      test_batch_size: 8
+    pick_loader: test
+ood:
+  # bypass the entire visualization process since there is no need to plot the histograms that take time!
+  bypass_visualization: True
+  
+  # for reproducibility
+  seed: 100
+
+  use_dataloader: True
+  pick_count: 5
+
+  # The OOD detection method in use
+  method: ood.methods.intrinsic_dimension.IntrinsicDimensionOODDetection
+  method_args:
+    # Fast-LIDL-NF
+    intrinsic_dimension_calculator_args:
+      encoding_model_class: ood.methods.intrinsic_dimension.EncodingFlow
+      encoding_model_args:
+        use_functorch: True 
+        use_forward_mode: True
+        use_vmap: False
+        chunk_size: 1
+        verbose: 2
+        # control whether the encoding model also handles the data transform
+        diff_transform: False
+      # verbosity
+      verbose: 0
+    
+    # Hyper-parameters relating to the scale parameter that is being computed
+    adaptive_train_data_buffer_size: 15    
+
+    # for logging args
+    verbose: 2
+    
+    adaptive_measurement: True
+    bin_search_iteration_count: 20
+
+    adaptive_setting_mode: given
+    given_mean_lid: 27.318780602419388
+    submethod: thresholding
+
+  
+logger:
+  project: ood-detection-single-runs
+  entity: dgm-l6
+  name: flow_cifar10_vs_svhn_thresholding
