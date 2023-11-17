@@ -61,6 +61,6 @@ ood:
 
   
 logger:
-  project: ood-detection-single-runs
+  project: ood-detection-sanity-checks
   entity: dgm-l6
   name: flow_fmnist_vs_mnist_taylor
