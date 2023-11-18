@@ -1,4 +1,4 @@
-torch==2.0 # We tested on 2.0 but updating to whatever version should still work!
+torch==2.0 # Using 2.1 should still work with more optimized memory usage.
 numpy
 tensorboard
 pytest
