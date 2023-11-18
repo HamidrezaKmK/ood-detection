@@ -178,6 +178,43 @@ def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str]
     
     return train_dset, valid_dset, test_dset
 
+class RandomImage(SupervisedDataset):
+    """
+    Generates an image based on a given dimension.
+    The image that is generated is random with each pixel
+    of each channel being set to a random value between 0 to 255
+    """
+    def __init__(
+        self,
+        name,
+        role,
+        H: int,
+        W: th.Optional[int] = None,
+        C: int = 1,
+        size: int = 1000,
+        seed: int = 110,
+    ):
+        
+        assert role in ['train', 'valid', 'test']
+        np.random.seed(seed)
+        
+        self.name = name 
+        self.role = role
+        
+        if W is None:
+            W = H
+        
+        
+        random_images = np.random.randint(0, 256, (size, C, H, W), dtype=np.uint8)
+        self.x = torch.from_numpy(random_images).float()
+        self.y = torch.from_numpy(np.arange(size)).long()
+            
+    def get_data_min(self):
+        return torch.min(self.x)
+
+    def get_data_max(self):
+        return torch.max(self.x)
+        
 class Lollipop(SupervisedDataset):
     """
     Samples a lollipop
@@ -384,6 +421,8 @@ def get_datasets_from_class(name, additional_instantiation_args: th.Optional[dic
         data_class = LinearProjectedDataset
     elif name == "lollipop":
         data_class = Lollipop
+    elif name == "random_image":
+        data_class = RandomImage
     else:
         raise ValueError(f"Unknown dataset {name}")
     
@@ -595,7 +634,7 @@ def get_simple_datasets(name, additional_instantiation_args: th.Optional[dict] =
 
 
 def get_generated_datasets(name, dataset_generation_args: th.Optional[dict] = None):    
-    dataset_classes = ["sphere", "klein", "linear_projected", "lollipop"]
+    dataset_classes = ["sphere", "klein", "linear_projected", "lollipop", "random_image"]
     
     get_datasets_fn = get_datasets_from_class if name in dataset_classes else get_simple_datasets
     

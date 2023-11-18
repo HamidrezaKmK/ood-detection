@@ -149,7 +149,7 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         adaptive_train_data_buffer_size: int = 15,    
         bin_search_iteration_count: int = 20,
         
-        submethod: th.Literal['thresholding', 'taylor_approximation'] = 'taylor_epproximation',
+        submethod: th.Literal['thresholding', 'taylor_approximation'] = 'taylor_approximation',
     ):
         """
         Initializes the IntrinsicDimensionScore class for outlier detection using intrinsic dimensionality.

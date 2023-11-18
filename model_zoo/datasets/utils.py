@@ -21,8 +21,9 @@ SUPPORTED_IMAGE_DATASETS = [
     "tiny-imagenet",
 ]
 
+# NOTE: random_image is of generated type, maybe best to move it.
 SUPPORTED_GENERATED_DATASETS = [
-    "sphere", "klein", "two_moons", "linear_projected", "lollipop",
+    "sphere", "klein", "two_moons", "linear_projected", "lollipop", "random_image",
 ]
 
 class TrainerReadyDataset(torch.utils.data.Dataset):
