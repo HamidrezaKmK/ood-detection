@@ -209,6 +209,7 @@ sweep_configuration:
                   expression: |
                     def pick_same(conf):
                       return conf['data']['in_distribution']['dataloader_args']['dataset']
+                  function_of_interest: pick_same
       - data:
           out_of_distribution:
             dataloader_args:

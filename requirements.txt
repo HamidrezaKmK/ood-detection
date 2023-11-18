@@ -1,4 +1,4 @@
-torch
+torch==2.0 # We tested on 2.0 but updating to whatever version should still work!
 numpy
 tensorboard
 pytest
