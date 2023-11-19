@@ -72,7 +72,7 @@ intrinsic_dimension_estimator:
         valid_metrics: [loss]
         test_metrics: [loss]
       sample_freq: null # logs the samples after every two epochs
-      max_epochs: 20
+      max_epochs: 25
       early_stopping_metric: loss
       max_bad_valid_epochs: 30
       max_grad_norm: 1.0
@@ -82,6 +82,8 @@ intrinsic_dimension_estimator:
     verbose: 2
   fitting_args:
     bypass_training: False
+  estimation_args:
+    radii_n: 100
 
 writer:
   logdir: runs
@@ -109,10 +111,10 @@ data:
     - 0.4
     scales:
     - 5.
-    - 10.
+    - 3.0
     - 1.
     - 0.5
-    euclidean_distance: 100.0
+    euclidean_distance: 150.0
     size: 70000
   train_batch_size: 128
   valid_batch_size: 128

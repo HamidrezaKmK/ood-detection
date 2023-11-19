@@ -28,6 +28,7 @@ class SanityCheckRhoR(BaseIntrinsicDimensionEstimationMethod):
         checkpoint_tag: th.Optional[str] = 'latest',
         flow_model_trainer_args: th.Optional[dict] = None,
         verbose: int = 0,
+        submethod: th.Literal['derivative', 'convolution'] = 'convolution',
         **kwargs,
     ):
         # Call the parent class
@@ -80,6 +81,7 @@ class SanityCheckRhoR(BaseIntrinsicDimensionEstimationMethod):
         
         self.checkpoint_tag = checkpoint_tag
 
+        self.submethod = submethod
     
     def fit(
         self,
@@ -101,10 +103,11 @@ class SanityCheckRhoR(BaseIntrinsicDimensionEstimationMethod):
         
         if visualize_data:
             data_vis_img = print_data_2d(
-                list_of_loaders=[self.train_dataloader, self.test_dataloader, [self.module.sample(10) for _ in range(sample_count)]],
-                list_of_labels=['train_split', 'test_split', 'sample'],
-                alphas=[0.2, 0.2, 0.15],
-                batch_limit=10,
+                list_of_loaders=[self.train_dataloader, [self.module.sample(10) for _ in range(sample_count)]],
+                list_of_labels=['datapoints', 'model samples'],
+                alphas=[0.2, 0.2],
+                colors=["#1F78B4", "#dfc27d"],
+                batch_limit=50,
                 close_matplotlib = True,
             )
             self.writer.write_image(
@@ -124,13 +127,24 @@ class SanityCheckRhoR(BaseIntrinsicDimensionEstimationMethod):
             },
         )
         
-        self.rho_r_calculator = GaussianConvolutionStatsCalculator(
-            likelihood_model = self.module,
-            **encoding_model_args,
-            # verbosity
-            verbose = self.verbose,
-            visualize_eigenspectrum=visualize_eigenspectrum,
-        )
+        if self.submethod == 'convolution':
+            self.rho_r_calculator = GaussianConvolutionStatsCalculator(
+                likelihood_model = self.module,
+                **encoding_model_args,
+                # verbosity
+                verbose = self.verbose,
+                visualize_eigenspectrum=visualize_eigenspectrum,
+            )
+        elif self.submethod == 'derivative':
+            self.rho_r_calculator = GaussianConvolutionRateStatsCalculator(
+                likelihood_model = self.module,
+                **encoding_model_args,
+                # verbosity
+                verbose = self.verbose,
+                visualize_eigenspectrum=visualize_eigenspectrum,
+            )
+        else:
+            raise ValueError(f"Submethod {self.submethod} not supported!")
 
     
     def custom_run(
@@ -151,12 +165,14 @@ class SanityCheckRhoR(BaseIntrinsicDimensionEstimationMethod):
             first = True
             for r in rng:
                 D = covariance_matrix.shape[0]
-                R = np.exp(r)
-                cov = covariance_matrix + R ** 2 * np.eye(covariance_matrix.shape[0])
-                # eigs, U = np.linalg.eigh(cov)
-                # cov = U @ np.diag(np.where(eigs < 1e-3, 1e-3, eigs)) @ U.T
-                real_deal = - 0.5 * D * np.log(2 * np.pi) - 0.5 * np.linalg.slogdet(cov).logabsdet 
-                ground_truth.append(np.log(mixture_prob) + real_deal)
+                if self.submethod == 'convolution':
+                    R = np.exp(r)
+                    cov = covariance_matrix + R ** 2 * np.eye(covariance_matrix.shape[0])
+                    real_statistics = - 0.5 * D * np.log(2 * np.pi) - 0.5 * np.linalg.slogdet(cov).logabsdet 
+                    real_statistics += np.log(mixture_prob)
+                elif self.submethod == 'derivative':
+                    real_statistics = lid - D
+                ground_truth.append(real_statistics)
                 estimated.append(
                     self.rho_r_calculator.calculate_statistics(
                         r=r,

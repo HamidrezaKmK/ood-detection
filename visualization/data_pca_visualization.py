@@ -13,6 +13,7 @@ def print_data_2d(
     list_of_loaders: th.List[DataLoader],
     list_of_labels: th.List[str],
     alphas: th.Optional[th.List[float]] = None,
+    colors: th.Optional[th.List] = None,
     pca_idx: int = 0,
     batch_limit: th.Optional[int] = None,
     close_matplotlib: bool = False,
@@ -42,12 +43,15 @@ def print_data_2d(
         pca = PCA(n_components=2)
         pca.fit(list_of_data[pca_idx])
     
-    for label, alpha, X in zip(list_of_labels, alphas, list_of_data):
+    if colors is None:
+        colors = [None for _ in list_of_labels]
+        
+    for label, alpha, X, col in zip(list_of_labels, alphas, list_of_data, colors):
         if X.shape[1] != 2:
             X2d = pca.transform(X)
         else:
             X2d = X
-        plt.scatter(X2d[:, 0].reshape(-1), X2d[:, 1].reshape(-1), label=label, alpha=alpha)
+        plt.scatter(X2d[:, 0].reshape(-1), X2d[:, 1].reshape(-1), c=col, label=label, alpha=alpha)
     plt.legend()
     plt.title("2D visualization of data") 
     # Save the plot to a buffer (in memory)
