@@ -140,47 +140,38 @@ sweep_configuration:
         - sweep: True
           sweep_identifier: manifold_dim
           sweep_alias:
-          - d600
+          - d125
           - d100
-          - d200
-          - d400
+          - d75
+          - d50
           - d800
+          - d400
+          - d200
+          - d600
           values:
-          - manifold_dim: 600
-            size: 120000
+          - manifold_dim: 125
           - manifold_dim: 100
-          - manifold_dim: 200
-          - manifold_dim: 400
+          - manifold_dim: 75
+          - manifold_dim: 50
             # increase the size because of increased sample complexity
           - manifold_dim: 800
+          - manifold_dim: 400
+          - manifold_dim: 200
+          - manifold_dim: 600
+
     
   dy__upsert:
-  - sweep: True
-    sweep_identifier: A_flow_type
-    sweep_alias:
-    - affine
-    - piecewise_rational_quadretic
-    values:
-    - dy__eval:
-        expression: |
-          from meta_configurations import change_coupling_layers
-          def turn_into_glow(conf):
-            return  change_coupling_layers(
-                          conf, 
-                          'AffineCouplingTransform'
-                    )
-        function_of_interest: turn_into_glow
-    - dy__eval:
-        expression: |
-          from meta_configurations import change_coupling_layers
-          def turn_into_rq_nsf(conf):
-            return  change_coupling_layers(
-                          conf, 
-                          'PiecewiseRationalQuadraticCouplingTransform',
-                          additional_args = {
-                            'tails': 'linear',
-                            'num_bins': 8,
-                            'tail_bound': 10.0,
-                          }
-                    )
-        function_of_interest: turn_into_rq_nsf
+  - dy__eval:
+      expression: |
+        from meta_configurations import change_coupling_layers
+        def turn_into_rq_nsf(conf):
+          return  change_coupling_layers(
+                        conf, 
+                        'PiecewiseRationalQuadraticCouplingTransform',
+                        additional_args = {
+                          'tails': 'linear',
+                          'num_bins': 8,
+                          'tail_bound': 10.0,
+                        }
+                  )
+      function_of_interest: turn_into_rq_nsf

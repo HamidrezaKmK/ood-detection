@@ -225,7 +225,8 @@ class GaussianMixture(SupervisedDataset):
         role : th.Literal['train', 'valid', 'test'],
         seed: int = 110,
         manifold_dims: th.Union[th.List[int], int] = 2,
-        mixture_probs: th.Optional[float] = None,
+        mixture_probs: th.Optional[th.List[float]] = None,
+        scales: th.Optional[th.List[float]] = None,
         euclidean_distance: th.Optional[float] = 1,
         ambient_dim: int = 4,
         size: int = 10000,
@@ -257,10 +258,13 @@ class GaussianMixture(SupervisedDataset):
         
         self.x = []
         self.y = []
+        if scales is None:
+            scales = [1.0 for _ in range(len(self.manifold_dims))]
+            
         for i, mdim in enumerate(self.manifold_dims):
             # generate an (almost always) rank 'd' matrix that projects 
             # from 'd' dimensions to 'D' dimensions using Gaussian initialization
-            self.projections.append(np.random.randn(ambient_dim, mdim))   
+            self.projections.append(np.random.randn(ambient_dim, mdim) * scales[i])   
             self.modes.append(i * euclidean_distance * np.random.randn(ambient_dim))
             self.covariance_matrices.append(self.projections[-1] @ self.projections[-1].T)
         

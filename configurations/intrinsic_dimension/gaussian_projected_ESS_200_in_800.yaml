@@ -2,7 +2,9 @@
 intrinsic_dimension_estimator:
   method: dimensions.scikit_dim.SkdimIntrinsicDimensionEstimation
   method_args:
-    estimator_name: ess
+    estimator_name: lpca
+    estimator_args:
+      alphaFO: 0.001
     verbose: 1
     n_jobs: 0
   fitting_args:
@@ -21,10 +23,13 @@ writer:
 data:
   dataset: linear_projected
   additional_dataset_args:
-    manifold_dim: 400
+    manifold_dim: 125
     ambient_dim: 800
-    projection_type: repeat
+    projection_type: random
+    size: 50000
   train_batch_size: 128
   valid_batch_size: 128
   test_batch_size: 128
+
+local: False
 

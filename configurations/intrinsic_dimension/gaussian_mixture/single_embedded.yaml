@@ -90,7 +90,7 @@ writer:
   type: wandb
   entity: dgm-l6
   project: training-dgms
-  name: gaussian_mixture_4_full
+  name: gaussian_mixture_single_embedded
   project: intrinsic-dimension-single-runs
 
 data:
@@ -98,20 +98,9 @@ data:
   additional_dataset_args:
     ambient_dim: 800
     manifold_dims:
-    - 800
-    - 800
-    - 800
-    - 800
+    - 400
     mixture_probs:
-    - 0.1
-    - 0.2
-    - 0.3
-    - 0.4
-    scales:
-    - 5.
-    - 10.
-    - 1.
-    - 0.5
+    - 1.0
     euclidean_distance: 100.0
     size: 70000
   train_batch_size: 128
