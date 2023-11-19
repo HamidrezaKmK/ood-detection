@@ -23,7 +23,13 @@ SUPPORTED_IMAGE_DATASETS = [
 
 # NOTE: random_image is of generated type, maybe best to move it.
 SUPPORTED_GENERATED_DATASETS = [
-    "sphere", "klein", "two_moons", "linear_projected", "lollipop", "random_image",
+    "sphere", 
+    "klein", 
+    "two_moons", 
+    "linear_projected", 
+    "lollipop", 
+    "random_image", 
+    "gaussian_mixture",
 ]
 
 class TrainerReadyDataset(torch.utils.data.Dataset):

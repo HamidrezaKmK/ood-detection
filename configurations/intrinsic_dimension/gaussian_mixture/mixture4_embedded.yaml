@@ -1,0 +1,118 @@
+
+intrinsic_dimension_estimator:
+  method: dimensions.sanity_check.SanityCheckRhoR
+  method_args:
+    ambient_dim: 800
+    flow_model_class: model_zoo.density_estimator.flow.NormalizingFlow
+    flow_model_args:
+      # Data transform args (they are here because they might influence log_prob)
+      flatten: False
+      data_shape: [800]
+
+      denoising_sigma: null
+      dequantize: False
+      scale_data: False
+      whitening_transform: False
+      logit_transform: False
+      clamp_samples: False
+
+      # Base distribution arguments (in this work the base is always Gaussian)
+      base_distribution:
+        class_path: nflows.distributions.StandardNormal
+        init_args:
+          shape: [800]
+      
+
+      transform:
+      - repeat_n: 3
+        content:
+          - class_path: nflows.transforms.normalization.ActNorm
+            init_args:
+              features: 800
+          - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
+            init_args: 
+              coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
+              net:
+                class_path: nflows.nn.nets.resnet.ResidualNet
+                init_args:
+                  hidden_features: 1024
+                  num_blocks: 3
+              mask:
+                dim: 800
+                flip: True
+              tails: linear
+              num_bins: 16
+              tail_bound: 10.0
+          
+          - class_path: nflows.transforms.normalization.ActNorm
+            init_args:
+              features: 800
+          - class_path: model_zoo.density_estimator.flow.ConfigurableCouplingTransform
+            init_args: 
+              coupling_transform_cls: nflows.transforms.PiecewiseRationalQuadraticCouplingTransform
+              net:
+                class_path: nflows.nn.nets.resnet.ResidualNet
+                init_args:
+                  hidden_features: 1024
+                  num_blocks: 3
+              mask:
+                dim: 800
+                flip: False
+              tails: linear
+              num_bins: 16
+              tail_bound: 10.0
+    checkpoint_tag: best_valid
+    flow_model_trainer_args:
+      trainer_cls: model_zoo.trainers.single_trainer.SingleTrainer
+      optimizer:
+        class_path: torch.optim.AdamW
+        init_args:
+          lr: 0.001
+      evaluator:
+        valid_metrics: [loss]
+        test_metrics: [loss]
+      sample_freq: null # logs the samples after every two epochs
+      max_epochs: 50
+      early_stopping_metric: loss
+      max_bad_valid_epochs: 30
+      max_grad_norm: 1.0
+      only_test: False
+      progress_bar: True
+
+    verbose: 2
+  fitting_args:
+    bypass_training: False
+
+writer:
+  logdir: runs
+  make_subdir: True
+  tag_group: flow
+  type: wandb
+  entity: dgm-l6
+  project: training-dgms
+  name: gaussian_mixture_4
+  project: intrinsic-dimension-single-runs
+
+data:
+  dataset: gaussian_mixture
+  additional_dataset_args:
+    ambient_dim: 800
+    manifold_dims:
+    - 100
+    - 200
+    - 800
+    - 400
+    mixture_probs:
+    - 0.25
+    - 0.25
+    - 0.25
+    - 0.25
+    euclidean_distance: 100.0
+    size: 50000
+  train_batch_size: 128
+  valid_batch_size: 128
+  test_batch_size: 128
+
+local: True
+run_type: custom
+

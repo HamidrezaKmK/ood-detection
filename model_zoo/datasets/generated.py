@@ -214,6 +214,74 @@ class RandomImage(SupervisedDataset):
 
     def get_data_max(self):
         return torch.max(self.x)
+
+class GaussianMixture(SupervisedDataset):
+    """
+    Samples a Gaussian mixture
+    """ 
+    def __init__(
+        self,
+        name : str,
+        role : th.Literal['train', 'valid', 'test'],
+        seed: int = 110,
+        manifold_dims: th.Union[th.List[int], int] = 2,
+        mixture_probs: th.Optional[float] = None,
+        euclidean_distance: th.Optional[float] = 1,
+        ambient_dim: int = 4,
+        size: int = 10000,
+    ):
+        assert role in ['train', 'valid', 'test']
+        np.random.seed(seed)
+        
+        self.name = name
+        self.role = role
+        self.manifold_dims = manifold_dims
+        self.ambient_dim = ambient_dim
+        
+        if isinstance(manifold_dims, int):
+            manifold_dims = [manifold_dims]
+            
+        for i, mdim in enumerate(self.manifold_dims):
+            if self.ambient_dim < mdim:
+                raise ValueError(f"Manifold dimension should be less than or equal to the ambient dimension!\nNot the case for ambient dim idx = {i} val = {mdim})")
+           
+        
+        self.projections = []
+        self.modes = []
+        self.covariance_matrices = []
+        
+        mixture_probs = mixture_probs or [1.0]
+        if len(mixture_probs) != len(self.manifold_dims):
+            raise Exception(f"The length of mixture_probs and manifold_dims should match! ({len(mixture_probs)} != {len(self.manifold_dims)})")
+        self.mixture_probs = mixture_probs
+        
+        self.x = []
+        self.y = []
+        for i, mdim in enumerate(self.manifold_dims):
+            # generate an (almost always) rank 'd' matrix that projects 
+            # from 'd' dimensions to 'D' dimensions using Gaussian initialization
+            self.projections.append(np.random.randn(ambient_dim, mdim))   
+            self.modes.append(i * euclidean_distance * np.random.randn(ambient_dim))
+            self.covariance_matrices.append(self.projections[-1] @ self.projections[-1].T)
+        
+            raw_samples = np.random.normal(size=(int(mixture_probs[i] * size), mdim))
+            raw_samples = raw_samples @ self.projections[-1].T + self.modes[-1]
+            
+            self.x.append(torch.from_numpy(raw_samples).float())
+            self.y.append(mdim * torch.ones(raw_samples.shape[0]).long())
+        self.x = torch.cat(self.x)
+        self.y = torch.cat(self.y)
+    
+    def get_data_min(self):
+        return torch.min(self.x)
+
+    def get_data_max(self):
+        return torch.max(self.x)
+    
+    def to(self, device):
+        self.x = self.x.to(device)
+        self.y = self.y.to(device)
+        return self
         
 class Lollipop(SupervisedDataset):
     """
@@ -423,6 +491,8 @@ def get_datasets_from_class(name, additional_instantiation_args: th.Optional[dic
         data_class = Lollipop
     elif name == "random_image":
         data_class = RandomImage
+    elif name == "gaussian_mixture":
+        data_class = GaussianMixture
     else:
         raise ValueError(f"Unknown dataset {name}")
     
@@ -634,7 +704,7 @@ def get_simple_datasets(name, additional_instantiation_args: th.Optional[dict] =
 
 
 def get_generated_datasets(name, dataset_generation_args: th.Optional[dict] = None):    
-    dataset_classes = ["sphere", "klein", "linear_projected", "lollipop", "random_image"]
+    dataset_classes = ["sphere", "klein", "linear_projected", "lollipop", "random_image", "gaussian_mixture"]
     
     get_datasets_fn = get_datasets_from_class if name in dataset_classes else get_simple_datasets
     
