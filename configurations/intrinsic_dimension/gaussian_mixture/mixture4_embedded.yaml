@@ -93,7 +93,7 @@ writer:
   make_subdir: True
   tag_group: flow
   type: wandb
-  entity: dgm-l6
+  entity: platypus-dgm
   project: training-dgms
   name: gaussian_mixture_4_embedded
   project: intrinsic-dimension-single-runs

@@ -70,7 +70,7 @@ We have grouped our experiments into different `yaml` files containing all the h
 
 To run the experiments, we require you to create a Weights & Biases workplace and set up the login information according to the guidelines indicated [here](https://docs.wandb.ai/quickstart).
 
-**Important note:** The current workspace in all the `yaml` files is set to `dgm-l6` in [meta configuration](./meta_configurations/), please change it to whatever workspace or entity you are working with.
+**Important note:** The current workspace in all the `yaml` files is set to `platypus-dgm` in [meta configuration](./meta_configurations/), please change it to whatever workspace or entity you are working with.
 
 ### Running Sweeps
 

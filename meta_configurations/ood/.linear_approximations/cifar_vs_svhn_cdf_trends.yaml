@@ -10,7 +10,7 @@
 
 project: linear-approximations
 sweep_name: radii_trend_cifar_svhn_chi2_comb
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: grid
 

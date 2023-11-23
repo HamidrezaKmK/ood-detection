@@ -1,5 +1,5 @@
 project: laplace-dysweep
-entity: dgm-l6
+entity: platypus-dgm
 default_root_dir: experiments/ood/sweeps
 count: 10000
 

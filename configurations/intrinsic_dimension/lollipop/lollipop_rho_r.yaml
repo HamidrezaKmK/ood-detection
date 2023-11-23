@@ -98,7 +98,7 @@ writer:
   make_subdir: True
   tag_group: flow
   type: wandb
-  entity: dgm-l6
+  entity: platypus-dgm
   project: training-dgms
   name: lollipop
   project: intrinsic-dimension-single-runs

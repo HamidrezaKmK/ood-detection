@@ -240,7 +240,7 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
                 all_likelihoods = likelihoods if all_likelihoods is None else np.concatenate([all_likelihoods, likelihoods])
                      
             L = -20.0 
-            R = np.log(0.99)
+            R = 20.0
             
             if self.verbose > 0:
                 bin_search = tqdm(range(self.bin_search_iteration_count), desc="binary search to find the scale")
@@ -285,7 +285,7 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
                 self.evaluate_r = L
             elif self.adaptive_setting_mode == 'plateau_based':
                 L = -20
-                R = 5
+                R = 20
                 if self.verbose > 0:
                     bin_search.set_description("Bin search for lower bound")
                 for ii in bin_search:

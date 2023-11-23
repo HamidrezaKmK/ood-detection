@@ -92,7 +92,7 @@ writer:
   make_subdir: False
   tag_group: flow
   type: wandb
-  entity: dgm-l6
+  entity: platypus-dgm
   project: training-dgms
   name: my_fast_lid_circle
   project: intrinsic-dimension-single-runs

@@ -3,7 +3,7 @@
 # This contains the Glow models and the Neural Spline Flows
 
 project: training-dgms
-entity: dgm-l6
+entity: platypus-dgm
 sweep_name: colorful_flows_background
 count: 10000
 delete_checkpoints: False
@@ -39,7 +39,7 @@ base_config:
     writer:
       tag_group: flow
       type: wandb
-      entity: dgm-l6
+      entity: platypus-dgm
       project: training-dgms
       
     evaluator:

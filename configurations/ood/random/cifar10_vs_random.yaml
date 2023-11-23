@@ -62,5 +62,5 @@ ood:
   
 logger:
   project: ood-detection-sanity-checks
-  entity: dgm-l6
+  entity: platypus-dgm
   name: flow_cifar10_vs_svhn_thresholding

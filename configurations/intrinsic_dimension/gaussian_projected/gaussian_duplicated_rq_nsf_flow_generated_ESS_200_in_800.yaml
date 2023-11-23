@@ -15,7 +15,7 @@ writer:
   make_subdir: False
   tag_group: flow
   type: wandb
-  entity: dgm-l6
+  entity: platypus-dgm
   project: training-dgms
   name: duplicate_gaussian_flow_generated_ESS
   project: intrinsic-dimension-single-runs

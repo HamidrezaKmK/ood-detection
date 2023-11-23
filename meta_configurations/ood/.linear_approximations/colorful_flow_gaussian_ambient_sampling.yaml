@@ -10,7 +10,7 @@
 
 project: linear-approximations
 sweep_name: colorful-flow-models-sampling-reconstruction
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: random
 

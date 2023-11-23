@@ -2,7 +2,7 @@
 # These examples include projected samples from a Gaussian or a uniform distribution
 project: intrinsic-dimensions
 sweep_name: real_world_lpca
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: grid
 
@@ -30,7 +30,7 @@ base_config:
     make_subdir: False
     tag_group: ESS
     type: wandb
-    entity: dgm-l6
+    entity: platypus-dgm
     project: training-dgms
     name: duplicate_gaussian_toy_example
     project: intrinsic-dimension-single-runs

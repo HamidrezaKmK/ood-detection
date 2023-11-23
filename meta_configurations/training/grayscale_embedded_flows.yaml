@@ -1,6 +1,6 @@
 # This sweep contains all the flow models trained on grayscale images with size [1 x 28 x 28]
 project: training-dgms
-entity: dgm-l6
+entity: platypus-dgm
 sweep_name: grayscale_flows_embedded
 count: 10000
 delete_checkpoints: False
@@ -38,7 +38,7 @@ base_config:
     writer:
       tag_group: flow
       type: wandb
-      entity: dgm-l6
+      entity: platypus-dgm
       project: training-dgms
     
     max_epochs: 120

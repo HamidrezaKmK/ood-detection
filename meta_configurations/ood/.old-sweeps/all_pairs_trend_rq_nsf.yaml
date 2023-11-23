@@ -1,7 +1,7 @@
 # This sweep will contain all the CDF trends across pairs
 # of datasets 
 project: all-pairs-R2-trends
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 
 # Change the name of the run to [in_distribution_dataset]_vs_[out_of_distribution_dataset]_[run_name]

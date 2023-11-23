@@ -4,7 +4,7 @@
 # No sampling is done in this sweep for fast computation
 project: linear-approximations
 sweep_name: colorful-flows-gaussian-conv-rates
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: grid
 

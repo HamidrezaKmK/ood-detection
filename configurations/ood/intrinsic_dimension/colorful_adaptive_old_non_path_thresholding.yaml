@@ -64,5 +64,5 @@ ood:
   
 logger:
   project: ood-detection-single-runs
-  entity: dgm-l6
+  entity: platypus-dgm
   name: flow_cifar10_vs_cifar10_thresholding

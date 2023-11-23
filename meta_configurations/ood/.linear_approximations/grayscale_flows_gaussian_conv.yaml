@@ -10,7 +10,7 @@
 
 project: linear-approximations
 sweep_name: grayscale-flows-gaussian-conv
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: grid
 

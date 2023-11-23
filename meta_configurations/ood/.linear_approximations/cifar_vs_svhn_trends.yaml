@@ -10,7 +10,7 @@
 
 project: sampling
 sweep_name: gaussian-convolution
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: grid
 

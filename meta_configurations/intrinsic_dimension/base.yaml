@@ -2,7 +2,7 @@
 # These examples include projected samples from a Gaussian or a uniform distribution
 project: intrinsic-dimensions
 sweep_name: gaussian_projected_examples_fast_lid
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: grid
 

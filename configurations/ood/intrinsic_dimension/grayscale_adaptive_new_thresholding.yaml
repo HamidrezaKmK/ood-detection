@@ -62,5 +62,5 @@ ood:
   
 logger:
   project: ood-detection-single-runs
-  entity: dgm-l6
+  entity: platypus-dgm
   name: flow_fmnist_vs_mnist_thresholding

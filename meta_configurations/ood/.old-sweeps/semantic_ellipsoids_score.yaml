@@ -1,5 +1,5 @@
 project: semantic-ellipsoids-dysweep
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 run_name_changer:
   function_descriptor: |

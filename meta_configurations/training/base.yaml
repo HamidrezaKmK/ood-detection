@@ -3,7 +3,7 @@
 # This contains the Glow models and the Neural Spline Flows
 
 project: training-dgms
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 
 # Change the name of the run to [flow_type]_[dataset_type]_[previous_run_name]

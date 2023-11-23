@@ -2,7 +2,7 @@
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
 sweep_name: rgb_LID_vs_likelihood_random
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 method: grid
 

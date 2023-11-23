@@ -1,5 +1,5 @@
 project: sampling-latent-dysweep
-entity: dgm-l6
+entity: platypus-dgm
 count: 10000
 
 # BASE configuration which is being used
