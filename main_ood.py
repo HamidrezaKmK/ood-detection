@@ -113,7 +113,7 @@ def standardize_sample_visualizing_format(sample):
     mx = new_sample.max()
     return (new_sample - mn) / (mx - mn)
 
-def run_ood(config: dict, gpu_index: int = 0):
+def run_ood(config: dict, gpu_index: int = 0, checkpoint_dir: th.Optional[str] = None):
     """
     Check the docs to see how the config dictionary looks like.
     This is the dictionary obtained after parsing the YAML file using jsonargparse.
@@ -303,11 +303,14 @@ def run_ood(config: dict, gpu_index: int = 0):
         method_args["x_loader"] = [x[:r]]
     
     method_args["in_distr_loader"] = in_train_loader
+    method_args["checkpoint_dir"] = checkpoint_dir
     
     if device.startswith("cuda"):
         torch.cuda.manual_seed(config["ood"]["seed"])
     torch.manual_seed(config["ood"]["seed"])
     method = dy.eval(config["ood"]["method"])(**method_args)
+    
+    
     # Call the run function of the given method
     method.run()
 
@@ -316,7 +319,7 @@ def dysweep_compatible_run(config, checkpoint_dir, gpu_index: int = 0):
     Function compatible with dysweep
     """
     try:
-        run_ood(config, gpu_index=gpu_index)
+        run_ood(config, gpu_index=gpu_index, checkpoint_dir=checkpoint_dir)
     except Exception as e:
         print("Exception:\n", e)
         print(traceback.format_exc())

@@ -11,12 +11,15 @@ class OODBaseMethod(ABC):
         likelihood_model: torch.nn.Module,
         x_loader: th.Optional[torch.utils.data.DataLoader] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
+        checkpoint_dir: th.Optional[str] = None,
     ) -> None:
         super().__init__()
         self.likelihood_model = likelihood_model
         self.x_loader = x_loader
         self.in_distr_loader = in_distr_loader
+        self.checkpoint_dir = checkpoint_dir
         
     @abstractmethod
     def run(self):
         raise NotImplementedError("run method not implemented!")
+    

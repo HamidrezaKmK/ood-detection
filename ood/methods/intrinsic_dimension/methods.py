@@ -17,6 +17,9 @@ from .utils import buffer_loader, get_device_from_loader
 from .latent_statistics import LatentStatsCalculator
 from .encoding_model import EncodingModel
 import torchvision
+import json
+import os
+from pprint import pprint
 
 class RadiiTrend(OODBaseMethod):
     """
@@ -131,7 +134,8 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         likelihood_model: torch.nn.Module,    
         x_loader: th.Optional[torch.utils.data.DataLoader] = None,
         in_distr_loader: th.Optional[torch.utils.data.DataLoader] = None,
-        
+        checkpoint_dir: th.Optional[str] = None,
+        checkpointing_buffer: th.Optional[int] = None,
         
         # The intrinsic dimension calculator args
         intrinsic_dimension_calculator_args: th.Optional[th.Dict[str, th.Any]] = None,
@@ -176,7 +180,9 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
             x_loader=x_loader, 
             likelihood_model=likelihood_model, 
             in_distr_loader=in_distr_loader, 
+            checkpoint_dir=checkpoint_dir,
         )
+        self.checkpointing_buffer = checkpointing_buffer
         
         self.submethod = submethod
         if submethod == 'taylor_approximation':
@@ -220,7 +226,7 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
                         loader=loader,
                         use_cache=use_cache
                     )
-        
+    
     def run(self):
         
         # use training data to perform adaptive scaling of fast-LIDL
@@ -228,168 +234,205 @@ class IntrinsicDimensionOODDetection(OODBaseMethod):
         buffer = buffer_loader(self.in_distr_loader, self.adaptive_train_data_buffer_size, limit=1)
         for _ in buffer:
             inner_loader = _
+            break
         
-        if self.adaptive_measurement:
-            # get all the likelihoods and detect outliers of likelihood for your training data
-            all_likelihoods = None
-            for x in inner_loader:
-                D = x.numel() // x.shape[0]
+        progress_dict = {}
+        if self.checkpoint_dir is not None and os.path.exists(os.path.join(self.checkpoint_dir, 'progress.json')):
+            with open(os.path.join(self.checkpoint_dir, 'progress.json'), 'r') as file:
+                progress_dict = json.load(file)
 
-                with torch.no_grad():
-                    likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
-                all_likelihoods = likelihoods if all_likelihoods is None else np.concatenate([all_likelihoods, likelihoods])
-                     
-            L = -20.0 
-            R = 20.0
-            
-            if self.verbose > 0:
-                bin_search = tqdm(range(self.bin_search_iteration_count), desc="binary search to find the scale")
-            else:
-                bin_search = range(self.bin_search_iteration_count)
-            
-            # perform a binary search to come up with a scale so that almost all the training data has dimensionality above
-            # that threshold
-            
-            if self.adaptive_setting_mode == 'percentile':
-                for ii in bin_search:
-                    mid = (L + R) / 2
-                    dimensionalities = self._get_loader_dimensionality(
-                        r=mid,
-                        loader=inner_loader,
-                        use_cache=(ii != 0),
-                        D=D,
-                    )
-                    sorted_dim = np.sort(dimensionalities)
-                    dim_comp = sorted_dim[int(float(self.percentile) / 100 * len(sorted_dim))]
+        # Handle selecting the r either adaptive or otherwise      
+        if 'evaluate_r' in progress_dict:
+            self.evaluate_r = progress_dict['evaluate_r']
+        else:
+            if self.adaptive_measurement:
+                # get all the likelihoods and detect outliers of likelihood for your training data
+                all_likelihoods = None
+                for x in inner_loader:
+                    D = x.numel() // x.shape[0]
 
-                    if dim_comp < D * (1 - self.dimension_tolerance):
-                        R = mid
-                    else:
-                        L = mid
-                
-                self.evaluate_r = L
-            elif self.adaptive_setting_mode == 'given':
-                for ii in bin_search:
-                    mid = (L + R) / 2
-                    dimensionalities = self._get_loader_dimensionality(
-                        r=mid,
-                        loader=inner_loader,
-                        use_cache=(ii != 0),
-                        D=D,
-                    )
-                    if np.mean(dimensionalities) > self.given_mean_lid:
-                        L = mid
-                    else:
-                        R = mid
-                
-                self.evaluate_r = L
-            elif self.adaptive_setting_mode == 'plateau_based':
-                L = -20
-                R = 20
-                if self.verbose > 0:
-                    bin_search.set_description("Bin search for lower bound")
-                for ii in bin_search:
-                    mid = (L + R) / 2
-                    dimensionalities = self._get_loader_dimensionality(
-                        r=mid,
-                        loader=inner_loader,
-                        use_cache=(ii != 0),
-                        D=D,
-                    )
-                    if np.mean(dimensionalities) > D - 1:
-                        L = mid
-                    else:
-                        R = mid
-                r_lower_bound = L
-                L = -20
-                R = 5
-                if self.verbose > 0:
-                    bin_search = tqdm(range(self.bin_search_iteration_count), desc="Bin search for upper bound")
-                for ii in bin_search:
-                    mid = (L + R) / 2
-                    dimensionalities = self._get_loader_dimensionality(
-                        r=mid,
-                        loader=inner_loader,
-                        use_cache=True,
-                        D=D,
-                    )
-                    if np.mean(dimensionalities) < 1:
-                        R = mid
-                    else:
-                        L = mid
-                r_upper_bound = L
+                    with torch.no_grad():
+                        likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
+                    all_likelihoods = likelihoods if all_likelihoods is None else np.concatenate([all_likelihoods, likelihoods])
+                        
+                L = -20.0 
+                R = 20.0
                 
                 if self.verbose > 0:
-                    print(f"Searching for 'r' within range [{r_lower_bound}, {r_upper_bound}] with {self.plateau_based_search_space_count} iterations.")
+                    bin_search = tqdm(range(self.bin_search_iteration_count), desc="binary search to find the scale")
+                else:
+                    bin_search = range(self.bin_search_iteration_count)
+                
+                # perform a binary search to come up with a scale so that almost all the training data has dimensionality above
+                # that threshold
+                
+                if self.adaptive_setting_mode == 'percentile':
+                    for ii in bin_search:
+                        mid = (L + R) / 2
+                        dimensionalities = self._get_loader_dimensionality(
+                            r=mid,
+                            loader=inner_loader,
+                            use_cache=(ii != 0),
+                            D=D,
+                        )
+                        sorted_dim = np.sort(dimensionalities)
+                        dim_comp = sorted_dim[int(float(self.percentile) / 100 * len(sorted_dim))]
+
+                        if dim_comp < D * (1 - self.dimension_tolerance):
+                            R = mid
+                        else:
+                            L = mid
                     
-                mx_cnt = 0
-                best = None
+                    self.evaluate_r = L
+                elif self.adaptive_setting_mode == 'given':
+                    for ii in bin_search:
+                        mid = (L + R) / 2
+                        dimensionalities = self._get_loader_dimensionality(
+                            r=mid,
+                            loader=inner_loader,
+                            use_cache=(ii != 0),
+                            D=D,
+                        )
+                        if np.mean(dimensionalities) > self.given_mean_lid:
+                            L = mid
+                        else:
+                            R = mid
+                    
+                    self.evaluate_r = L
+                elif self.adaptive_setting_mode == 'plateau_based':
+                    L = -20
+                    R = 20
+                    if self.verbose > 0:
+                        bin_search.set_description("Bin search for lower bound")
+                    for ii in bin_search:
+                        mid = (L + R) / 2
+                        dimensionalities = self._get_loader_dimensionality(
+                            r=mid,
+                            loader=inner_loader,
+                            use_cache=(ii != 0),
+                            D=D,
+                        )
+                        if np.mean(dimensionalities) > D - 1:
+                            L = mid
+                        else:
+                            R = mid
+                    r_lower_bound = L
+                    L = -20
+                    R = 5
+                    if self.verbose > 0:
+                        bin_search = tqdm(range(self.bin_search_iteration_count), desc="Bin search for upper bound")
+                    for ii in bin_search:
+                        mid = (L + R) / 2
+                        dimensionalities = self._get_loader_dimensionality(
+                            r=mid,
+                            loader=inner_loader,
+                            use_cache=True,
+                            D=D,
+                        )
+                        if np.mean(dimensionalities) < 1:
+                            R = mid
+                        else:
+                            L = mid
+                    r_upper_bound = L
+                    
+                    if self.verbose > 0:
+                        print(f"Searching for 'r' within range [{r_lower_bound}, {r_upper_bound}] with {self.plateau_based_search_space_count} iterations.")
+                        
+                    mx_cnt = 0
+                    best = None
+                    
+                    lst = None
+                    curr_count = 0
+                    rng = np.linspace(r_lower_bound, r_upper_bound, self.plateau_based_search_space_count)
+                    if self.verbose > 0:
+                        rng = tqdm(rng, desc="finding plateau")
+                    for r in rng:
+                        dimensionalities = self._get_loader_dimensionality(
+                            r=r,
+                            loader=inner_loader,
+                            use_cache=True,
+                            D=D,
+                        )
+                        dim = int(np.mean(dimensionalities))
+                        if lst is None or dim != lst:
+                            lst = dim
+                            curr_count = 0
+                        curr_count += 1
+                        if curr_count > mx_cnt:
+                            best = r
+                            mx_cnt = curr_count
+                    
+                    self.evaluate_r = best
                 
-                lst = None
-                curr_count = 0
-                rng = np.linspace(r_lower_bound, r_upper_bound, self.plateau_based_search_space_count)
-                if self.verbose > 0:
-                    rng = tqdm(rng, desc="finding plateau")
-                for r in rng:
-                    dimensionalities = self._get_loader_dimensionality(
-                        r=r,
-                        loader=inner_loader,
-                        use_cache=True,
-                        D=D,
-                    )
-                    dim = int(np.mean(dimensionalities))
-                    if lst is None or dim != lst:
-                        lst = dim
-                        curr_count = 0
-                    curr_count += 1
-                    if curr_count > mx_cnt:
-                        best = r
-                        mx_cnt = curr_count
-                
-                self.evaluate_r = best
-                
-                
-                
+            progress_dict['evaluate_r'] = self.evaluate_r
         
+        with open(os.path.join(self.checkpoint_dir, 'progress.json'), 'w') as file:
+            json.dump(progress_dict, file)
+                
         if self.verbose > 0:
             print("running with scale:", self.evaluate_r)
         
         
+        # All dimensionalities and all likelihoods update
+        all_dimensionalities = None
         all_likelihoods = None
+        if os.path.exists(os.path.join(self.checkpoint_dir, 'all_likelihoods.npy')):
+            all_likelihoods = np.load(os.path.join(self.checkpoint_dir, 'all_likelihoods.npy'), allow_pickle=True)
+        if os.path.exists(os.path.join(self.checkpoint_dir, 'all_dimensionalities.npy')):
+            all_dimensionalities = np.load(os.path.join(self.checkpoint_dir, 'all_dimensionalities.npy'), allow_pickle=True)
         
-        for x in self.x_loader:
-            D = x.numel() // x.shape[0]
-            with torch.no_grad():
-                likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
-                all_likelihoods = np.concatenate([all_likelihoods, likelihoods]) if all_likelihoods is not None else likelihoods
-                
-        all_dimensionalities = self._get_loader_dimensionality(
-            r=self.evaluate_r,
-            loader=self.x_loader,
-            use_cache=False,
-            D=D,
-        ) 
+        idx = 0
         
-        # inner_dimensionalities_clamped = np.where(
-        #     inner_dimensionalities + self.dimension_tolerance * D > 0, 
-        #     np.zeros_like(inner_dimensionalities), 
-        #     inner_dimensionalities + self.dimension_tolerance * D
-        # )
+        
+        for inner_loader in buffer_loader(self.x_loader, self.checkpointing_buffer):
+            idx += 1
+            if 'buffer_progress' in progress_dict:
+                if idx <= progress_dict['buffer_progress']:
+                    continue
+            if self.verbose > 0:
+                print(f"Working with buffer [{idx}]")
             
-        # all_dimensionalities = np.concatenate([all_dimensionalities, inner_dimensionalities]) if all_dimensionalities is not None else inner_dimensionalities
-        # all_dimensionalities_clamped = np.concatenate([all_dimensionalities_clamped, inner_dimensionalities_clamped]) if all_dimensionalities_clamped is not None else inner_dimensionalities_clamped
-        
+            # compute and add likelihoods
+            if self.verbose > 0:
+                print("Computing likelihoods ... ")
+                
+            all_buffer_likelihoods = None
+            for x in inner_loader:
+                D = x.numel() // x.shape[0]
+                with torch.no_grad():
+                    likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
+                    all_buffer_likelihoods = np.concatenate([all_buffer_likelihoods, likelihoods]) if all_buffer_likelihoods is not None else likelihoods
+            
+            if self.verbose > 0:
+                print("Computing dimensionalities ... ")
+                
+            # compute dimensionalities
+            all_buffer_dimensionalities = self._get_loader_dimensionality(
+                r=self.evaluate_r,
+                loader=inner_loader,
+                use_cache=False,
+                D=D,
+            ) 
+            
+            
+            all_dimensionalities = np.concatenate([all_dimensionalities, all_buffer_dimensionalities]) if all_dimensionalities is not None else all_buffer_dimensionalities
+            all_likelihoods = np.concatenate([all_likelihoods, all_buffer_likelihoods]) if all_likelihoods is not None else all_buffer_likelihoods
+            
+            progress_dict['buffer_progress'] = idx
+            
+            np.save(os.path.join(self.checkpoint_dir, 'all_likelihoods.npy'), all_likelihoods)
+            np.save(os.path.join(self.checkpoint_dir, 'all_dimensionalities.npy'), all_dimensionalities)
+            
+            with open(os.path.join(self.checkpoint_dir, 'progress.json'), 'w') as file:
+                json.dump(progress_dict, file)
+            
+            
+            
+
         visualize_scatterplots(
             scores = np.stack([all_likelihoods, all_dimensionalities]).T,
             column_names=["log-likelihood", "LID"],
         )
-        
-        # single_scores = all_likelihoods * np.exp(2 * self.evaluate_r) + all_dimensionalities_clamped
-       
-        # visualize_histogram(
-        #     scores=single_scores,
-        #     x_label="heuristic_score",
-        # )
 
 class ReconstructionCheck(OODBaseMethod):
     """
