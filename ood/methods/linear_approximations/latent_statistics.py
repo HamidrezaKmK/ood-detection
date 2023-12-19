@@ -253,16 +253,12 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
                 var = np.exp(2 * r)
         else:
             var = r ** 2
-        
-        # print(r, var)    
+          
         d = len(z_0)
         log_pdf = -0.5 * d * np.log(2 * np.pi)
         log_pdf = log_pdf - 0.5 * torch.sum(torch.log(jtj_eigvals + var))
-        # print(log_pdf)
         z_ = (jtj_rot.T @ z_0.reshape(-1, 1)).reshape(-1)
         log_pdf = log_pdf - torch.sum(jtj_eigvals * z_ * z_ / (jtj_eigvals + var)) / 2
-        # print(log_pdf)
-        # print(z_)
         return log_pdf
     
                     
@@ -327,8 +323,6 @@ class GaussianConvolutionStatsCalculator(LatentStatsCalculator):
                 if isinstance(val, torch.Tensor):
                     val = val.cpu().item()
                 conv.append(val)
-            print("DONE WITH THIS")
-            print(conv)
                                 
         return np.array(conv)
     

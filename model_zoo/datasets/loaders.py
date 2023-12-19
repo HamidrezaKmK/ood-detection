@@ -33,6 +33,7 @@ def get_loaders(
     shuffle: bool = True,
     dgm_args: th.Optional[th.Dict[str, th.Any]] = None,
     train_ready: bool = False,
+    training_limit: th.Optional[int] = None,
     unsupervised: bool = False,
     additional_dataset_args: th.Optional[dict] = None,
     embedding_network: th.Optional[str] = None,
@@ -76,9 +77,9 @@ def get_loaders(
         valid_dset = OmitLabels(valid_dset)
         test_dset = OmitLabels(test_dset)
     if train_ready:
-        train_dset = TrainerReadyDataset(train_dset)
-        valid_dset = TrainerReadyDataset(valid_dset)
-        test_dset = TrainerReadyDataset(test_dset)
+        train_dset = TrainerReadyDataset(train_dset, training_limit=training_limit)
+        valid_dset = TrainerReadyDataset(valid_dset, training_limit=training_limit)
+        test_dset = TrainerReadyDataset(test_dset, training_limit=training_limit)
     
     
     train_loader = get_loader(train_dset, device, train_batch_size, drop_last=True, shuffle=shuffle)

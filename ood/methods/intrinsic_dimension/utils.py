@@ -18,7 +18,6 @@ def get_device_from_loader(loader):
 
 def buffer_loader(loader, buffer_size: th.Optional[int] = None, limit=None):
     if buffer_size is None:
-        print("HOWDY!")
         yield loader
     else:
     

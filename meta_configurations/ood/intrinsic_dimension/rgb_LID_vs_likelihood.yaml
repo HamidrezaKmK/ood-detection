@@ -33,7 +33,7 @@ base_config:
     seed: 100
     
     # The OOD detection method in use
-    method: ood.methods.intrinsic_dimension.IntrinsicDimensionOODDetection
+    method: ood.methods.intrinsic_dimension.FlowIntrinsicDimensionOODDetection
     method_args:
       checkpointing_buffer: 16
 

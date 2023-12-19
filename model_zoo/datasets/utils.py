@@ -5,6 +5,7 @@ from typing import Any, Tuple
 from .supervised_dataset import SupervisedDataset
 import requests
 from tqdm import tqdm
+import typing as th
 
 # The list of all the datasets that are currently supported:
 SUPPORTED_IMAGE_DATASETS = [
@@ -34,8 +35,9 @@ SUPPORTED_GENERATED_DATASETS = [
 
 class TrainerReadyDataset(torch.utils.data.Dataset):
     # this is a dataset wrapper ready for being passed on to the trainer
-    def __init__(self, dset):
+    def __init__(self, dset, training_limit: th.Optional[int] = None):
         self.dset = dset
+        self.training_limit = training_limit or len(dset)
         
     def get_data_min(self):
         # check if self.dset has a method with the same name
@@ -70,6 +72,8 @@ class TrainerReadyDataset(torch.utils.data.Dataset):
         return self 
     
     def __getitem__(self, index: int):
+        if index > self.training_limit:
+            raise IndexError(f"Index {index} is out of bounds for the dataset of size {self.training_limit}!")
         ret = self.dset[index]
         if not isinstance(ret, tuple):
             return ret, -1, index
@@ -77,7 +81,7 @@ class TrainerReadyDataset(torch.utils.data.Dataset):
             return ret[0], ret[1], index
     
     def __len__(self) -> int:
-        return len(self.dset)
+        return min(self.training_limit, len(self.dset))
     
     @property
     def device(self):
