@@ -30,7 +30,9 @@ class CelebACropped(Dataset):
         valid_fraction: float = 0.1, 
         seed: int = 0,
         device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
     ):
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
         self.root = root 
         
         if not os.path.exists(root):
@@ -70,7 +72,7 @@ class CelebACropped(Dataset):
             raise ValueError(f"Unknown role {role}")
         
         self.transform = transforms.Compose([
-            transforms.Resize((32, 32)),
+            transforms.Resize(self.resize_image, antialias=True),
             transforms.ToTensor(),
         ])
         
@@ -94,7 +96,7 @@ class CelebACropped(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (3, 32, 32)
+        return (3, self.resize_image[0], self.resize_image[1])
     
     def __getitem__(self, idx):
         if idx not in self.cached_values:
@@ -105,7 +107,6 @@ class CelebACropped(Dataset):
             self.cached_values[idx] = torch.clamp(image.to(self.device) * 255, min=0, max=255)
         return self.cached_values[idx]
     
-# TODO: add embedding
 class CelebA(Dataset):
     """
     CelebA PyTorch dataset
@@ -118,13 +119,15 @@ class CelebA(Dataset):
         valid_fraction: float = 0.1, 
         seed: int = 0,
         device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
     ):
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
         self.celeba_dataset = torchvision.datasets.CelebA(
             root=root,
             split=role,
             download=True,
             transform = transforms.Compose([
-                transforms.Resize((32, 32)),
+                transforms.Resize(self.resize_image, antialias=True),
                 transforms.ToTensor(),
             ])
         )
@@ -134,8 +137,12 @@ class CelebA(Dataset):
         
         self.device = device
         
+        self.transform = transforms.Compose([
+            transforms.Resize(self.resize_image, antialias=True),
+        ])
+        
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        return 255 * self.celeba_dataset[index][0].to(self.device), self.celeba_dataset[index][1].to(self.device)
+        return self.transform(255 * self.celeba_dataset[index][0].to(self.device)), self.celeba_dataset[index][1].to(self.device)
 
     def __len__(self) -> int:
         return len(self.celeba_dataset)
@@ -147,13 +154,13 @@ class CelebA(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (3, 32, 32)
+        return (3, self.resize_image[0], self.resize_image[1])
     
     def to(self, device):
         self.device = device
         return self
 
-# TODO: add embedding
+
 class EMNIST(Dataset):
     def __init__(
         self, 
@@ -163,8 +170,9 @@ class EMNIST(Dataset):
         seed: int = 0,
         classes_to_ignore: int = 0, 
         device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
     ):
-        
+        self.resize_image = resize_image if resize_image is not None else (28, 28)
         self.device = device
         self.classes_to_ignore = classes_to_ignore
         # Download and load the EMNIST dataset
@@ -193,7 +201,7 @@ class EMNIST(Dataset):
                 self.indices = self.indices[:valid_size]
         
         self.transforms = transforms.Compose([
-            transforms.Resize((28, 28)),
+            transforms.Resize(self.resize_image, antialias=True),
             transforms.ToTensor(),
         ])
             
@@ -204,7 +212,7 @@ class EMNIST(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (1, 28, 28)
+        return (1, self.resize_image[0], self.resize_image[1])
           
     def __getitem__(self, index):
         # Get the image and label from the original EMNIST dataset for the given index
@@ -220,7 +228,6 @@ class EMNIST(Dataset):
         self.device = device
         return self
 
-# TODO: add embedding
 class EMNISTMinusMNIST(EMNIST):
     def __init__(
         self, 
@@ -229,6 +236,7 @@ class EMNISTMinusMNIST(EMNIST):
         valid_fraction: float = 0.1, 
         seed: int = 0,
         device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
     ):
         super().__init__(
             root=root,
@@ -237,16 +245,18 @@ class EMNISTMinusMNIST(EMNIST):
             seed=seed,
             classes_to_ignore=10,
             device=device,
+            resize_image=resize_image,
         )
     
-# TODO: add embedding  
+
 class Omniglot(Dataset):
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu", resize_image: th.Optional[Tuple[int, int]] = None):
         self.omniglot = torchvision.datasets.Omniglot(
             root=root, 
             background=True, 
             download=True
         )
+        self.resize_image = resize_image if resize_image is not None else (28, 28)
         self.device = device
         # shuffle the dataset deterministically according to the splitting seed
         
@@ -269,7 +279,7 @@ class Omniglot(Dataset):
         self.cached_values = {}
             
         self.transform = transforms.Compose([
-            transforms.Resize((28, 28)),
+            transforms.Resize(self.resize_image, antialias=True),
             transforms.ToTensor(),
         ])  
         
@@ -281,7 +291,7 @@ class Omniglot(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (1, 28, 28)
+        return (1, self.resize_image[0], self.resize_image[1])
            
     def __len__(self):
         return len(self.omniglot)
@@ -307,15 +317,24 @@ class Omniglot(Dataset):
         return self
 
 
-# TODO: add embedding
+
 class TinyImageNet(Dataset):
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+    def __init__(
+        self, 
+        root, 
+        role, 
+        valid_fraction, 
+        seed: int = 0, 
+        device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
+    ):
         #self, root_dir, n_images, train_or_test, transform=None, ):
         """
         Args:
             text_file(string): path to text file
             root_dir(string): directory with all train images
         """
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
         self.root_dir = os.path.join(root, 'tiny-imagenet')
         if not os.path.exists(self.root_dir):
             # download the dataset from http://cs231n.stanford.edu/tiny-imagenet-200.zip
@@ -345,7 +364,7 @@ class TinyImageNet(Dataset):
             os.remove(file_path)
             
         self.transform = transforms.Compose([
-            transforms.Resize((32, 32)),
+            transforms.Resize(self.resize_image, antialias=True),
             transforms.ToTensor(),
         ])
         if role in ['train', 'valid']:
@@ -394,7 +413,7 @@ class TinyImageNet(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (3, 32, 32)
+        return (3, self.resize_image[0], self.resize_image[1])
     
     def __getitem__(self, idx):
         if idx not in self.cached_values:
@@ -409,7 +428,16 @@ class TinyImageNet(Dataset):
 
 class MNIST(SupervisedDataset):
     
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+    def __init__(
+        self,
+        root, 
+        role, 
+        valid_fraction, 
+        seed: int = 0, 
+        device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
+    ):
+        self.resize_image = resize_image if resize_image is not None else (28, 28)
         self.dataset = torchvision.datasets.MNIST(root=root, train=role in ['train', 'valid'], download=True)
         self.images = self.dataset.data.unsqueeze(1).to(torch.uint8)
         self.labels = self.dataset.targets.to(torch.uint8)
@@ -434,13 +462,22 @@ class MNIST(SupervisedDataset):
         images = images.to(dtype=torch.get_default_dtype())
         labels = labels.long()
         
-        super().__init__("mnist", role, x=images, y=labels)
+        super().__init__("mnist", role, x=transforms.Resize(self.resize_image, antialias=True)(images), y=labels)
         
         self.to(device)
 
 class FMNIST(SupervisedDataset):
     
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+    def __init__(
+        self, 
+        root, 
+        role, 
+        valid_fraction, 
+        seed: int = 0, 
+        device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
+    ):
+        self.resize_image = resize_image if resize_image is not None else (28, 28)
         self.dataset = torchvision.datasets.FashionMNIST(root=root, train=role in ['train', 'valid'], download=True)
         self.images = self.dataset.data.unsqueeze(1).to(torch.uint8)
         self.labels = self.dataset.targets.to(torch.uint8)
@@ -465,14 +502,22 @@ class FMNIST(SupervisedDataset):
         images = images.to(dtype=torch.get_default_dtype())
         labels = labels.long()
         
-        super().__init__("fashion-mnist", role, x=images, y=labels)
+        super().__init__("fashion-mnist", role, x=transforms.Resize(self.resize_image, antialias=True)(images), y=labels)
 
         self.to(device)
         
-# TODO: fix this!
+
 class CIFAR10(Dataset):
 
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+    def __init__(
+        self, 
+        root, 
+        role, 
+        valid_fraction, 
+        seed: int = 0, 
+        device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
+    ):
         self.cached_values = {}
         self.dataset = torchvision.datasets.CIFAR10(root=root, train=role in ['train', 'valid'], download=True)
         self.images = self.dataset.data
@@ -498,6 +543,12 @@ class CIFAR10(Dataset):
            
         self.images = images
         self.labels = labels
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
+        # Resize the images using self.resize_image
+        self.transform = transforms.Compose([
+            transforms.Resize(self.resize_image, antialias=True),
+        ])
+        
         
     def __len__(self):
         return len(self.labels)
@@ -515,19 +566,20 @@ class CIFAR10(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (3, 32, 32)
+        return (3, self.resize_image[0], self.resize_image[1])
     
     def __getitem__(self, idx):
         if idx not in self.cached_values:
             
             img = torch.from_numpy(self.images[idx]).to(dtype=torch.get_default_dtype()).to(self.device).permute((2, 0, 1))
-            self.cached_values[idx] = img, self.labels[idx]
+            self.cached_values[idx] = self.transform(img), self.labels[idx]
             
         return self.cached_values[idx]
         
 class CIFAR100(Dataset):
     
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu", resize_image: th.Optional[Tuple[int, int]] = None):
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
         self.cached_values = {}
         self.dataset = torchvision.datasets.CIFAR100(root=root, train=role in ['train', 'valid'], download=True)
         self.images = self.dataset.data
@@ -553,6 +605,11 @@ class CIFAR100(Dataset):
            
         self.images = images
         self.labels = labels
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
+        # Resize the images using self.resize_image
+        self.transform = transforms.Compose([
+            transforms.Resize(self.resize_image, antialias=True),
+        ])
         
     def __len__(self):
         return len(self.labels)
@@ -570,18 +627,20 @@ class CIFAR100(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (3, 32, 32)
+        return (3, self.resize_image[0], self.resize_image[1])
     
     def __getitem__(self, idx):
         if idx not in self.cached_values:
             
             img = torch.from_numpy(self.images[idx]).to(dtype=torch.get_default_dtype()).to(self.device).permute((2, 0, 1))
+            img = self.transform(img)
             self.cached_values[idx] = img, self.labels[idx]
             
         return self.cached_values[idx]
 
 class SVHN(Dataset):
-    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu"):
+    def __init__(self, root, role, valid_fraction, seed: int = 0, device: str = "cpu", resize_image: th.Optional[Tuple[int, int]] = None):
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
         self.cached_values = {}
         self.dataset = torchvision.datasets.SVHN(root=root, split="train" if role in ['valid' or 'train'] else "test", download=True)
         self.images = self.dataset.data
@@ -608,6 +667,12 @@ class SVHN(Dataset):
         self.images = images
         self.labels = labels
         
+        self.resize_image = resize_image if resize_image is not None else (32, 32)
+        # Resize the images using self.resize_image
+        self.transform = transforms.Compose([
+            transforms.Resize(self.resize_image, antialias=True),
+        ])
+        
     def __len__(self):
         return len(self.labels)
 
@@ -624,18 +689,26 @@ class SVHN(Dataset):
         return 255.0
     
     def get_data_shape(self):
-        return (3, 32, 32)
+        return (3, self.resize_image[0], self.resize_image[1])
     
     def __getitem__(self, idx):
         if idx not in self.cached_values:
             
             img = torch.from_numpy(self.images[idx]).to(dtype=torch.get_default_dtype()).to(self.device)
+            img = self.transform(img)
             self.cached_values[idx] = img, self.labels[idx]
             
         return self.cached_values[idx]
     
 
-def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: int = 0, device: str = "cpu"):
+def get_image_datasets_by_class(
+    dataset_name, 
+    data_root, 
+    valid_fraction, 
+    seed: int = 0, 
+    device: str = "cpu",
+    additional_dataset_args: th.Optional[dict] = None,    
+):
     data_dir = os.path.join(data_root, dataset_name)
 
     data_class = {
@@ -653,75 +726,13 @@ def get_image_datasets_by_class(dataset_name, data_root, valid_fraction, seed: i
     }[dataset_name]
 
     
-    train_dset = data_class(root=data_dir, role="train", valid_fraction=valid_fraction, seed=seed, device=device)
-    valid_dset = data_class(root=data_dir, role="valid", valid_fraction=valid_fraction, seed=seed, device=device)
-    test_dset = data_class(root=data_dir, role="test", valid_fraction=valid_fraction, seed=seed, device=device)
+    additional_dataset_args = additional_dataset_args or {}
+    train_dset = data_class(root=data_dir, role="train", valid_fraction=valid_fraction, seed=seed, device=device, **additional_dataset_args)
+    valid_dset = data_class(root=data_dir, role="valid", valid_fraction=valid_fraction, seed=seed, device=device, **additional_dataset_args)
+    test_dset = data_class(root=data_dir, role="test", valid_fraction=valid_fraction, seed=seed, device=device, **additional_dataset_args)
 
     return train_dset, valid_dset, test_dset
 
-
-# def image_tensors_to_dataset(dataset_name, dataset_role, images, labels):
-#     images = images.to(dtype=torch.get_default_dtype())
-#     labels = labels.long()
-#     return SupervisedDataset(dataset_name, dataset_role, x=images, y=labels)
-
-
-# # Returns tuple of form `(images, labels)`. Both are uint8 tensors.
-# # `images` has shape `(nimages, nchannels, nrows, ncols)`, and has
-# # entries in {0, ..., 255}
-# def get_raw_image_tensors(dataset_name, train, data_root):
-#     data_dir = os.path.join(data_root, dataset_name)
-    
-#     if dataset_name == "cifar10":
-#         dataset = torchvision.datasets.CIFAR10(root=data_dir, train=train, download=True)
-#         images = torch.tensor(dataset.data).permute((0, 3, 1, 2))
-#         labels = torch.tensor(dataset.targets)
-        
-#     elif dataset_name == "cifar100":
-#         dataset = torchvision.datasets.CIFAR100(root=data_dir, train=train, download=True)
-#         images = torch.tensor(dataset.data).permute((0, 3, 1, 2))
-#         labels = torch.tensor(dataset.targets)
-    
-#     elif dataset_name == "svhn":
-#         dataset = torchvision.datasets.SVHN(root=data_dir, split="train" if train else "test", download=True)
-#         images = torch.tensor(dataset.data)
-#         labels = torch.tensor(dataset.labels)
-
-#     elif dataset_name in ["mnist", "fashion-mnist"]:
-#         dataset_class = {
-#             "mnist": torchvision.datasets.MNIST,
-#             "fashion-mnist": torchvision.datasets.FashionMNIST,
-#         }[dataset_name]
-#         dataset = dataset_class(root=data_dir, train=train, download=True)
-#         images = dataset.data.unsqueeze(1)
-#         labels = dataset.targets
-#     else:
-#         raise ValueError(f"Unknown dataset {dataset_name}")
-
-#     return images.to(torch.uint8), labels.to(torch.uint8)
-
-
-# def get_torchvision_datasets(dataset_name, data_root, valid_fraction):
-#     images, labels = get_raw_image_tensors(dataset_name, train=True, data_root=data_root)
-
-#     perm = torch.randperm(images.shape[0])
-#     shuffled_images = images[perm]
-#     shuffled_labels = labels[perm]
-
-#     valid_size = int(valid_fraction * images.shape[0])
-#     valid_images = shuffled_images[:valid_size]
-#     valid_labels = shuffled_labels[:valid_size]
-#     train_images = shuffled_images[valid_size:]
-#     train_labels = shuffled_labels[valid_size:]
-
-#     train_dset = image_tensors_to_dataset(dataset_name, "train", train_images, train_labels)
-#     valid_dset = image_tensors_to_dataset(dataset_name, "valid", valid_images, valid_labels)
-    
-#     test_images, test_labels = get_raw_image_tensors(dataset_name, train=False, data_root=data_root)
-#     test_dset = image_tensors_to_dataset(dataset_name, "test", test_images, test_labels)
-
-#     return train_dset, valid_dset, test_dset
-    
 
 def get_image_datasets(
     dataset_name, 
@@ -729,6 +740,7 @@ def get_image_datasets(
     make_valid_dset, 
     embedding_network: th.Optional[str],
     device: str = "cpu",
+    **additional_dataset_args,
 ):
     # Currently hardcoded; could make configurable
     valid_fraction = 0.1 if make_valid_dset else 0
@@ -737,7 +749,13 @@ def get_image_datasets(
     
     # get_datasets_fn = get_torchvision_datasets if dataset_name in torchvision_datasets else get_image_datasets_by_class
     
-    train_dset, valid_dset, test_dset = get_image_datasets_by_class(dataset_name, data_root, valid_fraction, device=device)
+    train_dset, valid_dset, test_dset = get_image_datasets_by_class(
+        dataset_name, 
+        data_root, 
+        valid_fraction, 
+        device=device, 
+        additional_dataset_args=additional_dataset_args
+    )
 
     if embedding_network is not None:
         train_dset = EmbeddingWrapper(

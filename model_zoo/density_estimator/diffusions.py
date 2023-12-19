@@ -11,23 +11,6 @@ import warnings
 from . import DensityEstimator
 from ..utils import batch_or_dataloader
 import dypy as dy
-from diffusers import UNet2DModel
-
-class DiffusersWrapper(nn.Module):
-    def __init__(
-        self,
-        score_network: th.Union[str, torch.nn.Module],
-        *args,
-        **kwargs,
-    ):
-        super().__init__()
-        
-        if isinstance(score_network, str):
-            score_network = dy.eval(score_network)
-        self.score_network = score_network(*args, **kwargs)
-        
-    def forward(self, x, t):
-        return self.score_network(x, t).sample
     
 class ScoreBasedDiffusion(DensityEstimator):
     """
@@ -545,6 +528,8 @@ class ScoreBasedDiffusion(DensityEstimator):
         sigma_t = sigma_t.reshape(-1, *[1 for _ in range(x.dim()-1)])
         
         x_input = torch.sqrt(1. - sigma2_t) * x + sigma_t * eps
+        
+        
         unnormalized_score = self.score_network(x_input, t)
         sq_error = torch.square(unnormalized_score + eps)
         loss = torch.sum(sq_error.flatten(start_dim=1), dim=1)

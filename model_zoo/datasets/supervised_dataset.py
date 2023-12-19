@@ -1,11 +1,18 @@
 import torch
+import typing as th
 from typing import Any, Tuple
-
+from torchvision import transforms
 
 class SupervisedDataset(torch.utils.data.Dataset):
     """Generic implementation of torch Dataset"""
 
-    def __init__(self, name, role, x, y=None):
+    def __init__(
+        self, 
+        name, 
+        role, 
+        x, 
+        y=None,
+    ):
         if y is None:
             y = torch.zeros(x.shape[0]).long()
 
@@ -15,7 +22,7 @@ class SupervisedDataset(torch.utils.data.Dataset):
         self.name = name
         self.role = role
 
-        self.x = x
+        self.x = x 
         self.y = y
 
     def __len__(self) -> int:
