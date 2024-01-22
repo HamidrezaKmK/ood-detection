@@ -1,6 +1,6 @@
 base_model:
-  config_dir: Dec18_18-11-44/config.yaml
-  checkpoint_dir: Dec18_18-11-44/checkpoints/de_score-based-VP-diffusion_best_valid.pt
+  config_dir: checkpoints-znod8v3z/diffusion_cifar10_distinctions_aep6z5pr_final/run_config.json
+  checkpoint_dir: checkpoints-znod8v3z/diffusion_cifar10_distinctions_aep6z5pr_final/checkpoints/de_score-based-VP-diffusion_latest.pt
 data:
   # specify the datasets and dataloader configurations for the in and out of distribution data.
   in_distribution:
@@ -26,7 +26,6 @@ ood:
   samples_visualization: 1
   sampling_kwargs:
     steps: 1000
-    verbose: 1
 
   # for reproducibility
   seed: 50

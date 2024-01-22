@@ -12,7 +12,7 @@ trainer:
     init_args:
       lr: 0.00005
   writer:
-    logdir: runs
+    logdir: /data2/hamid/runs
     make_subdir: True
     tag_group: diffusion
     type: wandb

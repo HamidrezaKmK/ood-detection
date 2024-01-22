@@ -3,6 +3,7 @@ import torch
 from torch import nn
 import typing as th
 import dypy as dy
+from diffusers import UNet2DModel
 
 class BaseNetworkClass(nn.Module):
     def __init__(self, output_split_sizes):
@@ -745,7 +746,6 @@ class ResidualNetwork(BaseNetworkClass):
             x = self.output_linear(x)
         return x
         # return self.final(self.act(self.norm(x)))
-
 
 class DiffusersWrapper(nn.Module):
     def __init__(

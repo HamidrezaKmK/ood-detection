@@ -6,3 +6,10 @@ project: training-dgms
 entity: platypus-dgm
 count: 10000
 
+# Change the name of the run to an apprpriate one according to the configuration
+# See the code for this for more information
+run_name_changer:
+  expression: |
+    from meta_configurations import change_name 
+
+  function_of_interest: change_name

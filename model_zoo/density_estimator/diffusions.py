@@ -11,8 +11,8 @@ import warnings
 from . import DensityEstimator
 from ..utils import batch_or_dataloader
 import dypy as dy
-    
-class ScoreBasedDiffusion(DensityEstimator):
+
+class VESDE_Diffusion(DensityEstimator):
     """
     A simple implementation of SDE-driven diffusion (Song et al. 2020, https://arxiv.org/abs/2011.13456)
 
@@ -22,10 +22,10 @@ class ScoreBasedDiffusion(DensityEstimator):
         (3) fast LID estimates directly with the continuous flow formulation of diffusions.
 
     The code assumes a variance preserving stochastic differential equations (VP-SDE):
-    d x(t) = -1/2 \\beta(t) x(t) dt + sqrt(\\beta(t)) d W(t),
+    d x(t) = sqrt(\\beta(t)) d W(t),
 
     The corresponding probability flow ODE would be as follows:
-    d/dt x(t) = 1/2 . \\beta(t) . x(t) + 1/2 . \\beta(t) . \\nabla_{x(t)}  \\log p_t(x(t))
+    d/dt x(t) =  1/2 . \\beta(t) . \\nabla_{x(t)}  \\log p_t(x(t))
 
     Some notations used in the code:
 
@@ -34,18 +34,18 @@ class ScoreBasedDiffusion(DensityEstimator):
     r(t) := \\log (e^{B(t)} - 1). \\log (from -\\infty to +\\infty)
     """
     
-    model_type = 'score-based-VP-diffusion'
+    model_type = 'score-based-VE-diffusion'
     
     def __init__(
-            self,
-            data_shape: th.Union[th.Tuple, th.List[int]],
-            score_network: th.Union[torch.nn.Module, str],
-            *args,
-            score_network_kwargs: th.Optional[th.Dict] = None,
-            T: float = 1.,
-            beta_min: float = 0.1,
-            beta_max: float = 20,
-            **kwargs,
+        self,
+        data_shape: th.Union[th.Tuple, th.List[int]],
+        score_network: th.Union[torch.nn.Module, str],
+        *args,
+        score_network_kwargs: th.Optional[th.Dict] = None,
+        T: float = 1.,
+        beta_min: float = 0.1,
+        beta_max: float = 20,
+        **kwargs,
     ):
         """
         **Important**
@@ -73,7 +73,6 @@ class ScoreBasedDiffusion(DensityEstimator):
         self.beta_max = beta_max
         self.beta_diff = (self.beta_max - self.beta_min) / self.T # Store this value
 
-        
     def _get_beta(self, t):
         """
         The value of \\beta(t) in the SDE.
@@ -133,16 +132,17 @@ class ScoreBasedDiffusion(DensityEstimator):
         """
         Returns the true score by dividing it again with \\sigma(t) to cancel out the effect of the reparametrization.
         """
+        # print the dtype of t and x
+        t = t.to(x.device).float()
         _, sigma_t = self._get_sigma(t)
-        return self.score_network(x, t.repeat(x.shape[0]).to(x.device)) / sigma_t
+        sigma_t = sigma_t.to(x.device).float()
+        return self.score_network(x, t.repeat(x.shape[0])) / sigma_t
     
     def reverse_mapping(
         self,
         z: torch.Tensor,
         eps: float = 1e-5,
         steps: int = 1000,
-        use_probability_flow: bool = True,
-        verbose: int = 0,
     ):
         """
         This function starts off with a noise z and performs either the reverse probability flow ODE
@@ -163,17 +163,12 @@ class ScoreBasedDiffusion(DensityEstimator):
         with torch.no_grad():
             ts = torch.linspace(self.T, eps, steps=steps).to(device)
             delta_t = (self.T - eps) / (steps - 1)
-            if verbose > 0:
-                ts = tqdm(ts, desc=f"Iterating the " + ('SDE' if not use_probability_flow else 'ODE') + " for sampling")
             for t in ts:
                 score = self.get_true_score(z, t)
                 beta = self._get_beta(t)
-                if use_probability_flow:
-                    z += delta_t * beta * (z + score) / 2.
-                else:
-                    # Use Euler Murayama SDE solver:
-                    z_interim = torch.randn(z.shape).to(device)
-                    z += delta_t * beta * (z / 2. + score) + torch.sqrt(beta * delta_t) * z_interim
+                # Use Euler Murayama SDE solver:
+                z_interim = torch.randn(z.shape).to(device)
+                z += delta_t * beta * score + torch.sqrt(beta * delta_t) * z_interim
         return z
     
     
@@ -245,7 +240,7 @@ class ScoreBasedDiffusion(DensityEstimator):
             
             all_quadretic.append(
                 torch.sum(
-                    v * torch.autograd.functional.jvp(score_fn, x, v=v)[1], 
+                    v * torch.func.jvp(score_fn, (x, ), tangents=(v, ))[1], 
                     dim=tuple(range(1, x.dim()))
                 )
             )
@@ -256,8 +251,8 @@ class ScoreBasedDiffusion(DensityEstimator):
         self,
         x: torch.Tensor,
         t: float,
-        perform_data_transform: bool = True,
         steps: int = 1000,
+        device: th.Optional[torch.device] = None,
         trace_calculation_kwargs: th.Optional[th.Dict] = None,
         verbose: int = 1,
     ):
@@ -277,10 +272,11 @@ class ScoreBasedDiffusion(DensityEstimator):
         Returns:
             A tensor of size (batch_size, ) with the i'th element being the corresponding Gaussian convolution.
         """
-        if perform_data_transform:
-            x = self._data_transform(x)
+        x = self._data_transform(x)
+        
+        if device is None:
+            device = x.device
             
-        device=x.device
         with torch.no_grad():
             trace_calculation_kwargs = trace_calculation_kwargs or {}
             
@@ -291,15 +287,10 @@ class ScoreBasedDiffusion(DensityEstimator):
             device = x.device
             
             # The timestep T probability is N(0, sqrt(1 - sigma_t) X0, sigma_t^2 I) where sigma_t -> 1
-            
-            
             log_p = torch.sum(torch.zeros_like(x), dim=tuple(range(1, x.dim())))
             
             ts = torch.linspace(t, self.T, steps=steps).to(device)
             delta_s = (self.T - t) / (steps - 1)
-            
-            B_t = self._get_B(t)
-            x = math.exp(-B_t/2) * x
             
             rng = tqdm(ts, desc="Iterating the continuous flow") if verbose > 0 else ts
             
@@ -307,20 +298,17 @@ class ScoreBasedDiffusion(DensityEstimator):
                 beta_s = self._get_beta(s)
                 score = self.get_true_score(x, s)                
                 log_p += delta_s * 0.5 * beta_s * self._score_jacobian_trace(x, s, **trace_calculation_kwargs)
-                x += delta_s * beta_s * 0.5 * (x + score)
+                x += delta_s * beta_s * 0.5 * score
 
-            log_p += 0.5 * (self._get_B(self.T) - self._get_B(t)) * d
-            log_p += 0.5 * d * np.log(2 * np.pi) - 0.5 * torch.sum(x * x, dim=tuple(range(1, x.dim())))
-        
-            return  log_p - 0.5 * d * B_t
+            return log_p
     
     @batch_or_dataloader()
     def log_prob(
         self,
         x: torch.Tensor,
-        perform_data_transform: bool = True,
-        eps: float = 1e-5,
+        eps: float = 1e-2,
         steps: int = 1000,
+        device: th.Optional[torch.device] = None,
         trace_calculation_kwargs: th.Optional[th.Dict] = None,
         verbose: int = 1,
     ):
@@ -331,28 +319,27 @@ class ScoreBasedDiffusion(DensityEstimator):
         for small timesteps, the Gaussian that is being convolved with is essentially the degenerate 
         Dirac delta.
         """
-        if perform_data_transform:
-            x = self._data_transform(x)
-        d = x.numel() // x.shape[0]
-        B_eps = self._get_B(eps)
+        x = x.to(device)
+        
         return self.rho_t(
-            x=x * math.exp(B_eps/2) ,
+            x=x ,
             t=eps,
-            perform_data_transform=False,
             steps=steps,
+            device=device,
             trace_calculation_kwargs=trace_calculation_kwargs,
             verbose=verbose,
-        ) + 0.5 * d * B_eps
+        )
+    
+    
     
      
     
     def sample(
         self, 
         n_samples, 
-        eps=1e-5, 
+        eps=1e-2, 
         steps=1000, 
-        use_probability_flow: bool = False,
-        verbose: int = 0,
+        device: th.Optional[torch.device] = None,
     ):
         """
         Producing samples using the reverse mapping function by first sampling from the latent space and them
@@ -361,30 +348,39 @@ class ScoreBasedDiffusion(DensityEstimator):
         Returns:
             A tensor of shape (n_samples, x_shape)
         """
-        device = self.device
-        z = torch.randn((n_samples,) + tuple(self.x_shape)).to(device)
+        if device is None:
+            device = getattr(self, 'device', torch.device('cpu'))
         
-        sample = self.reverse_mapping(
+        sigma2_t, sigma_t = self._get_sigma(torch.tensor(self.T).float().to(device))
+        z = torch.randn((n_samples,) + tuple(self.x_shape)).to(device) * sigma_t
+        
+        ret = self.reverse_mapping(
             z,
             eps=eps,
             steps=steps,
-            use_probability_flow=use_probability_flow,
-            verbose=verbose,
         )
-        
-        return self._inverse_data_transform(sample)
-
+        return self._inverse_data_transform(ret)
+    
     
     def lid(
         self,
-        x: torch.Tensor, 
-        r: th.Optional[float] = None,
+        x: torch.Tensor,
+        r: float,
         perform_data_transform: bool = True,
-        t: float = 1e-5,
-        trace_calculation_kwargs: th.Optional[th.Dict] = None,
-    ): 
+        eps: float = 1e-2,
+        device: th.Optional[torch.device] = None,
+        num_samples: th.Optional[int] = None,
+        max_batch_size: int = 128,
+        verbose: int = 0,
+    ):
         """
-        For a given radius r, this function computes the LID using the instananeous change of variables formula.
+        For a given radius r, this function computes the LID using Stanczuk's thresholding method 
+        with some modifications to fit the VP-SDE formulation.
+        
+        https://arxiv.org/pdf/2212.12611.pdf
+        
+        The estimator is based on sampling a set of noised out points from x, computing their scores, using
+        SVD decomposition and thresholding to get the LID estimate.
         
         If only the input 'x' is given, this function will compute the LID for a very small timestep, or equivalently,
         a very small negative 'r' corresponding to a small scale.
@@ -393,122 +389,52 @@ class ScoreBasedDiffusion(DensityEstimator):
             x: a batch of data to compute the LID for
             r: the scale corresponding to the LID estimate
             t: the timestep (equivalently, one can either set the radius or the timestep for lid estimation)
+            num_samples: the number of samples to use for the estimation, by default it is set to 4 * d with d being the dimension of the data
+            verbose: Toggle showing progress bar or not.
         Returns:
             A Tensor of size (batch_size, ) with the i'th component indicating the LID estimate for the i'th datapoint.
         """
-        device = x.device
-        trace_calculation_kwargs = trace_calculation_kwargs or {} 
-        
         if perform_data_transform:
             x = self._data_transform(x)
-        
-        if r is not None:
-            t, B_t = self._get_r_inv(r)
-        else:
-            t = torch.tensor(t)
-            B_t = self._get_B(t)
-            
-        x, t, B_t = x.to(device).float(), t.to(device).float(), B_t.to(device).float()
-        sigma_t = self._get_sigma(t)[1].to(device).float()
-        
-        batch_size = x.shape[0]
-        d = x.numel() // batch_size
-        return d + sigma_t * self._score_jacobian_trace(
-            torch.exp(-B_t/2) * x,
-            t,
-            true_score=False,
-            **trace_calculation_kwargs,
-        )
-    
-    # TODO: see why this isn't working!
-    def optimized_rho_t(
-        self,
-        x: torch.Tensor,
-        t: float,
-        perform_data_transform: bool = False,
-        steps: int = 1000,
-        trace_calculation_kwargs: th.Optional[th.Dict] = None,
-        verbose: int = 1,
-        get_full_trajectory: bool = False,
-        accuracy: int = 10,
-    ):
-        # NOTE: 
-        #   This implementation of the log_prob seams to fail because it evaluates scores on places that it has not been trained on
-        """
-        A numerically optizimed version of the density computation.
-        It also has an option to return the full trajectory of the ODE solver.
-        
-        Returns:
-            Union of (log_p, trajectory) if get_full_trajectory is True else log_p
-        """
-        if perform_data_transform:
-            x = self._data_transform(x)
-        
-        device = x.device
-        warnings.warn("This function is not working properly! Check the implementation.")
-        trace_calculation_kwargs = trace_calculation_kwargs or {}
-        with torch.no_grad():
-            
-            x = x.to(device)
-            
-            batch_size = x.shape[0]
-            d = x.numel() // batch_size
-            device = x.device
-            
-            
-            log_p = torch.sum(torch.zeros_like(x), dim=tuple(range(1, x.dim())))
-            B_T = self._get_B(self.T)
-            log_p += - 0.5 * d * (np.log(2 * np.pi) + B_T) # NOTE: This is still an approximation
-            
-            ts = torch.linspace(self.T, t, steps=steps).to(device)
-            delta_s = (self.T - t) / (steps - 1)
-            
-            rng = tqdm(ts, desc="ODE solver for convolution") if verbose > 0 else ts
-            if get_full_trajectory:
-                trajectory = []
-            
-            for s in rng:
-                beta_s = self._get_beta(s)
-                B_s = self._get_B(s)  
-                log_p -= delta_s * 0.5 * beta_s * self._score_jacobian_trace(torch.exp(-B_s/2) * x, s, **trace_calculation_kwargs)
-                
-                if get_full_trajectory:
-                    trajectory = [(s, log_p.cpu().numpy())] + trajectory
-
-            return log_p if not get_full_trajectory else (log_p, trajectory)
-    
-    def optimized_log_prob(
-        self,
-        x: torch.Tensor,
-        perform_data_transform: bool = True,
-        eps: float = 1e-5,
-        steps: int = 1000,
-        trace_calculation_kwargs: th.Optional[th.Dict] = None,
-        verbose: int = 1,
-    ):
-        # NOTE: 
-        #   This implementation of the log_prob seams to fail because it evaluates scores on places that it has not been trained on
-        """
-        The optimized log probability using the optimized convolutions.
-        """
-        if perform_data_transform:
-            x = self._data_transform(x)
-        device = x.device
-        warnings.warn("This function is not working properly! Check the implementation.")
         d = x.numel() // x.shape[0]
-        B_eps = self._get_B(eps)
-        return self.optimized_log_prob(
-            x=x * math.exp(B_eps/2) ,
-            t=eps,
-            steps=steps,
-            device=device,
-            perform_data_transform=False,
-            trace_calculation_kwargs=trace_calculation_kwargs,
-            verbose=verbose,
-            get_full_trajectory=False,
-        ) + 0.5 * d * B_eps
+        batch_size = x.shape[0]
+        if num_samples is None:
+            num_samples = 4 * d
+            
+        if device is None:
+            device = x.device
+        x = x.to(device)
+        
+        if not isinstance(eps, torch.Tensor):
+            eps = torch.tensor(eps)
+        eps = torch.where(eps > 1., self.T * torch.ones_like(eps), eps)
+        sigma2_t, sigma_t = self._get_sigma(eps)
+        sigma2_t, sigma_t = sigma2_t.to(device).float(), sigma_t.to(device).float()
+        # for each datapoint in the batch, get n_sample noised out points
+        # where for each point x_0, the samples are drawn from N(x_0 * sqrt(1 - sigma2_t), sigma2_t I)   
+        noise = torch.randn((batch_size*num_samples, *x.shape[1:])).to(device) 
+        x = repeat(x, 'b ... -> (b c) ...', c=num_samples)
+        x_eps = x + sigma_t * noise
+        
+        # Compute scores for each sampled point
+        scores = []
+        for batch in x_eps.split(max_batch_size):
+            batch = batch.to(x.device)
+            scores.append(self.get_true_score(batch, eps))
+        
+        # Get the singular values of the score to compute the normal space
+        scores = torch.cat(scores)
+        scores = scores.reshape((batch_size, num_samples, d))
+        singular_vals = torch.linalg.svdvals(scores) 
+        
+        # count the number of singular values that are more than the threshold
+        threshold = math.exp(-r)
+        lid = (singular_vals < threshold).sum(dim=1)
+        
+        return lid
+        
     
-     
+    
     @batch_or_dataloader(agg_func=lambda x: torch.mean(torch.Tensor(x)))
     def loss(self, x):
         """
@@ -519,21 +445,20 @@ class ScoreBasedDiffusion(DensityEstimator):
         which corresponds to the denoising score matching loss.
         """
         x = self._data_transform(x)
-        
         t = self.T * torch.rand(x.shape[0], device=x.device) # Take a random timestep between [0, T]
         
         eps = torch.randn_like(x) # Take random noise of the same shape as the input
         sigma2_t, sigma_t = self._get_sigma(t)
         sigma2_t = sigma2_t.reshape(-1, *[1 for _ in range(x.dim()-1)])
         sigma_t = sigma_t.reshape(-1, *[1 for _ in range(x.dim()-1)])
-        
-        x_input = torch.sqrt(1. - sigma2_t) * x + sigma_t * eps
-        
-        
+        x_input = x + sigma_t * eps
         unnormalized_score = self.score_network(x_input, t)
         sq_error = torch.square(unnormalized_score + eps)
         loss = torch.sum(sq_error.flatten(start_dim=1), dim=1)
         return loss.mean()
+    
+
+    
 
     
     

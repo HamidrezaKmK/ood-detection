@@ -27,6 +27,15 @@ def get_coupling(conf):
     
     return None
 
+def change_name(conf, run_name):
+    if conf['trainer']['writer']['tag_group'] == 'flow':
+        coupling_type = get_coupling(conf)
+        return f"{coupling_type}_{conf['data']['dataset']}_{run_name}"
+    elif conf['trainer']['writer']['tag_group'] == 'diffusion':
+        return f"diffusion_{conf['data']['dataset']}_{run_name}"
+    else:
+        return f"{conf['data']['dataset']}_{run_name}"
+  
 def change_coupling_layers(conf, coupling_name: str, additional_args: th.Optional[dict] = None):
     """
     This function takes in an entire configuration

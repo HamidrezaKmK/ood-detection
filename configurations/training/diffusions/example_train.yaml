@@ -12,7 +12,7 @@ trainer:
     init_args:
       lr: 0.00005
   writer:
-    logdir: runs
+    logdir: /data2/hamid/runs
     make_subdir: True
     tag_group: diffusion
     type: wandb
@@ -35,7 +35,7 @@ trainer:
 # Settings from the new configurations
 model:
   is_gae: false
-  class_path: model_zoo.density_estimator.diffusions.ScoreBasedDiffusion
+  class_path: model_zoo.density_estimator.diffusions.VESDE_Diffusion
   init_args:
     # Data transform args (they are here because they might influence log_prob)
     flatten: False
@@ -50,13 +50,13 @@ model:
 
     score_network: model_zoo.networks.neural_networks.UNet
     score_network_kwargs:
-      image_channels: 3
+      image_channels: 3 
       n_channels: 64
-      ch_mults: [1, 2, 2, 4]
+      ch_mults: [1, 2, 4, 4]
       is_attn: [False, False, True, True]
       n_blocks: 2
+
 
     T: 1.0
     beta_min: 0.1
     beta_max: 20.
-    
