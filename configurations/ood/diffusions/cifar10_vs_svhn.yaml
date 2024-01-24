@@ -20,27 +20,36 @@ data:
       test_batch_size: 8
     pick_loader: test
 ood:
-  # bypass the entire visualization process since there is no need to plot the histograms that take time!
-  bypass_visualization: False
-  histogram_limit: 64
-  samples_visualization: 1
-  sampling_kwargs:
-    steps: 1000
-
-  # for reproducibility
   seed: 50
+  bypass_visualization: True
+  use_dataloader: True
+  pick_count: 8
 
-  log_prob_kwargs:
-    steps: 25
-    verbose: 0
-    trace_calculation_kwargs:
-      method: hutchinson_rademacher
-      sample_count: 25
   # The OOD detection method in use
-  method: null
-
+  method: ood.methods.intrinsic_dimension.diffusion_method.DiffusionIntrinsicDimensionOODDetection
+  method_args:
+    intrinsic_dimension_calculator_args:
+      num_samples: 500
+      eps: 0.01
+      max_batch_size: 8
+    log_prob_kwargs:
+      steps: 25
+      verbose: 0
+      trace_calculation_kwargs:
+        method: hutchinson_rademacher
+        sample_count: 10
+    # for logging args
+    verbose: 1
+    
+    # Hyper-parameters relating to the scale parameter that is being computed
+    evaluate_r: -20
+    adaptive_measurement: True
+    given_mean_lid: 193
+    adaptive_train_data_buffer_size: 8  
+    bin_search_iteration_count: 10
+    checkpointing_buffer: 5
   
 logger:
   project: ood-detection-sanity-checks
   entity: platypus-dgm
-  name: diffusion_cifar10_vs_svhn
+  name: diffusion_likelihood_vs_LID_cifar10_vs_svhn

@@ -84,8 +84,9 @@ class BaseTrainer:
 
             self.train_for_epoch()
             valid_loss = self._validate()
-
-            if self.early_stopping_metric:
+            
+            # TODO: something weird is happening here
+            if self.early_stopping_metric is not None and self.early_stopping_metric != 'None':
                 if valid_loss < self.best_valid_loss:
                     self.bad_valid_epochs = 0
                     self.best_valid_loss = valid_loss

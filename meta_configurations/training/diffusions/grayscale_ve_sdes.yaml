@@ -57,21 +57,38 @@ base_config:
       logit_transform: False
       clamp_samples: False
 
-      score_network: model_zoo.networks.neural_networks.UNet
+      score_network: model_zoo.networks.neural_networks.DiffusersWrapper
       score_network_kwargs:
-        image_channels: 1 
-        n_channels: 64
-        ch_mults: [1, 2, 4, 4]
-        is_attn: [False, False, True, True]
-        n_blocks: 2
+        score_network: diffusers.UNet2DModel
+        sample_size: 32  # The target image resolution
+        in_channels: 1  # The number of input channels, 3 for RGB images
+        out_channels: 1  # The number of output channels
+        layers_per_block: 2  # How many ResNet layers to use per UNet block
+        block_out_channels:
+          - 128
+          - 128
+          - 256
+          - 256
+          - 512
+          - 512  # The number of output channels for each UNet block
+        down_block_types:
+          - DownBlock2D  # A regular ResNet downsampling block
+          - DownBlock2D
+          - DownBlock2D
+          - DownBlock2D
+          - AttnDownBlock2D  # A ResNet downsampling block with spatial self-attention
+          - DownBlock2D
+        up_block_types:
+          - UpBlock2D  # A regular ResNet upsampling block
+          - AttnUpBlock2D  # A ResNet upsampling block with spatial self-attention
+          - UpBlock2D
+          - UpBlock2D
+          - UpBlock2D
+          - UpBlock2D
 
       T: 1.0
       beta_min: 0.1
-      beta_max: 20.
-
-      T: 1.0
-      beta_min: 0.1
-      beta_max: 20.
+      beta_max: 500.
     
 
 sweep_configuration:

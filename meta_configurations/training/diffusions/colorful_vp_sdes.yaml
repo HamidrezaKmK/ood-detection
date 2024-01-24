@@ -1,6 +1,6 @@
 project: training-dgms
 entity: platypus-dgm
-sweep_name: colorful_ve_sde_diffusions
+sweep_name: colorful_vp_sde_diffusions
 count: 10000
 delete_checkpoints: False
 
@@ -28,9 +28,9 @@ base_config:
       valid_metrics: [loss]
       test_metrics: [loss]
 
-    sample_freq: 1 # logs the samples after every two epochs
+    sample_freq: 1 # logs the samples after every two ear
     max_epochs: 200
-    early_stopping_metric: loss
+    early_stopping_metric: null
     max_bad_valid_epochs: 200
     max_grad_norm: 1.0
     only_test: False
@@ -40,7 +40,7 @@ base_config:
   # Settings from the new configurations
   model:
     is_gae: false
-    class_path: model_zoo.density_estimator.diffusions.VESDE_Diffusion
+    class_path: model_zoo.density_estimator.diffusions.VPSDE_Diffusion
     init_args:
       # Data transform args (they are here because they might influence log_prob)
       flatten: False
@@ -84,7 +84,7 @@ base_config:
 
       T: 1.0
       beta_min: 0.1
-      beta_max: 500.
+      beta_max: 20.
     
 
 sweep_configuration:
@@ -92,4 +92,4 @@ sweep_configuration:
     dataset:
       sweep_identifier: B_dataset
       sweep: True
-      values: ['cifar10', 'svhn', 'celeba-small', 'tiny-imagenet', 'cifar100', 'celeba']
+      values: ['cifar10', 'svhn',  'celeba-small', 'tiny-imagenet', 'cifar100', 'celeba']

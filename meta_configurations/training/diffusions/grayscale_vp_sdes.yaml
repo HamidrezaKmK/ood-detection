@@ -1,8 +1,9 @@
 project: training-dgms
 entity: platypus-dgm
-sweep_name: colorful_ve_sde_diffusions
+sweep_name: grayscale_vp_sde_diffusions
 count: 10000
 delete_checkpoints: False
+
 
 base_config:
   data:
@@ -10,6 +11,9 @@ base_config:
     train_batch_size: 128
     valid_batch_size: 128
     test_batch_size: 128
+    additional_dataset_args:
+      resize_image: [32, 32]
+    
 
 
   trainer:
@@ -29,9 +33,9 @@ base_config:
       test_metrics: [loss]
 
     sample_freq: 1 # logs the samples after every two epochs
-    max_epochs: 200
-    early_stopping_metric: loss
-    max_bad_valid_epochs: 200
+    max_epochs: 50
+    early_stopping_metric: null
+    max_bad_valid_epochs: 50
     max_grad_norm: 1.0
     only_test: False
     progress_bar: True
@@ -40,11 +44,11 @@ base_config:
   # Settings from the new configurations
   model:
     is_gae: false
-    class_path: model_zoo.density_estimator.diffusions.VESDE_Diffusion
+    class_path: model_zoo.density_estimator.diffusions.VPSDE_Diffusion
     init_args:
       # Data transform args (they are here because they might influence log_prob)
       flatten: False
-      data_shape: [3, 32, 32]
+      data_shape: [1, 32, 32]
       denoising_sigma: null
       dequantize: True
       scale_data: False
@@ -57,8 +61,8 @@ base_config:
       score_network_kwargs:
         score_network: diffusers.UNet2DModel
         sample_size: 32  # The target image resolution
-        in_channels: 3  # The number of input channels, 3 for RGB images
-        out_channels: 3  # The number of output channels
+        in_channels: 1  # The number of input channels, 3 for RGB images
+        out_channels: 1  # The number of output channels
         layers_per_block: 2  # How many ResNet layers to use per UNet block
         block_out_channels:
           - 128
@@ -84,7 +88,7 @@ base_config:
 
       T: 1.0
       beta_min: 0.1
-      beta_max: 500.
+      beta_max: 20.
     
 
 sweep_configuration:
@@ -92,4 +96,4 @@ sweep_configuration:
     dataset:
       sweep_identifier: B_dataset
       sweep: True
-      values: ['cifar10', 'svhn', 'celeba-small', 'tiny-imagenet', 'cifar100', 'celeba']
+      values: ['fashion-mnist', 'omniglot', 'mnist', 'emnist']

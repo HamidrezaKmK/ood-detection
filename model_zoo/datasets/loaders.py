@@ -61,7 +61,7 @@ def get_loaders(
         train_dset, valid_dset, test_dset = get_generated_datasets(dataset, additional_dataset_args)
         
     elif dataset == 'dgm-generated':
-        train_dset, valid_dset, test_dset = get_dgm_generated_datasets(data_root, dgm_args, **additional_dataset_args)
+        train_dset, valid_dset, test_dset = get_dgm_generated_datasets(data_root, dgm_args, device=device, **additional_dataset_args)
         
     else:
         raise ValueError(f"Unknown dataset {dataset}, please check model_zoo/datasets/utils.py for supported ones!")
