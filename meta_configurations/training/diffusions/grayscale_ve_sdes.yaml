@@ -33,9 +33,9 @@ base_config:
       test_metrics: [loss]
 
     sample_freq: 1 # logs the samples after every two epochs
-    max_epochs: 50
+    max_epochs: 70
     early_stopping_metric: loss
-    max_bad_valid_epochs: 50
+    max_bad_valid_epochs: 70
     max_grad_norm: 1.0
     only_test: False
     progress_bar: True
@@ -88,7 +88,7 @@ base_config:
 
       T: 1.0
       beta_min: 0.1
-      beta_max: 500.
+      beta_max: 20.
     
 
 sweep_configuration:

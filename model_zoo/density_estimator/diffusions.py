@@ -360,7 +360,7 @@ class ScoreBasedDiffusion(DensityEstimator):
     def sample(
         self, 
         n_samples, 
-        eps=1e-5, 
+        eps=1e-2, 
         steps=1000, 
         device: th.Optional[torch.device] = None,
     ):
@@ -491,9 +491,35 @@ class VESDE_Diffusion(ScoreBasedDiffusion):
     def _get_center(self, x, t):
         return x
     
-    def _get_initial_log_prob(self, x):
-        return 0.0
+    
+    def _get_initial_log_prob(self, x, t):
+        d = x.numel() // x.shape[0]
+        if not isinstance(t, torch.Tensor):
+            t = torch.tensor(t).float().to(x.device)
+        sigma2_t, _ = self._get_sigma(torch.tensor(self.T).float().to(x.device))
+        sigma2_t = sigma2_t.squeeze().item()
+        ret = 0.5 * d * np.log(2 * np.pi)
+        ret = -0.5 * torch.sum(x * x, dim=tuple(range(1, x.dim()))) / sigma2_t + ret.item()
+        return ret
 
+    # The following helps with model stability but makes the samples worse
+    # def _get_unnormalized_score(self, x, t):
+    #     """ Returns the output of the network """
+    #     t = t.to(x.device).float()
+    #     _, sigma_t = self._get_sigma(t)
+    #     sigma_t = sigma_t.to(x.device).float()
+    #     return self.score_network(x / (1. + sigma_t), t.repeat(x.shape[0]))
+    
+    # def get_true_score(self, x, t):
+    #     """
+    #     Returns the true score by dividing it again with \\sigma(t) to cancel out the effect of the reparametrization.
+    #     """
+    #     # print the dtype of t and x
+    #     t = t.to(x.device).float()
+    #     _, sigma_t = self._get_sigma(t)
+    #     sigma_t = sigma_t.to(x.device).float()
+    #     return self.score_network(x / (1. + sigma_t), t.repeat(x.shape[0])) / sigma_t
+    
 
 
 class VPSDE_Diffusion(ScoreBasedDiffusion):
