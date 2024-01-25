@@ -20,16 +20,16 @@ base_config:
     in_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 8
-        valid_batch_size: 8
-        test_batch_size: 8
+        train_batch_size: 128
+        valid_batch_size: 128
+        test_batch_size: 128
       pick_loader: train
     out_of_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 8
-        valid_batch_size: 8
-        test_batch_size: 8
+        train_batch_size: 128
+        valid_batch_size: 128
+        test_batch_size: 128
       pick_loader: test
   ood:
     # bypass the entire visualization process since there is no need to plot the histograms that take time!
@@ -46,7 +46,7 @@ base_config:
       intrinsic_dimension_calculator_args:
         num_samples: 500
         eps: 0.01
-        max_batch_size: 8
+        max_batch_size: 128
       log_prob_kwargs:
         steps: 25
         verbose: 0
@@ -183,11 +183,10 @@ sweep_configuration:
       values:
         - ood:
             use_dataloader: True
-            pick_count: 16
+            pick_count: 4
         - ood:
             use_dataloader: True
-            pick_count: 512
+            pick_count: 32
         - ood:
             use_dataloader: True
-            pick_count: 4096
-    
+            pick_count: 256
