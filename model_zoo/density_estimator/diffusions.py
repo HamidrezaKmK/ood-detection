@@ -360,7 +360,7 @@ class ScoreBasedDiffusion(DensityEstimator):
     def sample(
         self, 
         n_samples, 
-        eps=1e-2, 
+        eps=1e-4, 
         steps=1000, 
         device: th.Optional[torch.device] = None,
     ):
