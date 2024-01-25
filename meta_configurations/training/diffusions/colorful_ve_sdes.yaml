@@ -87,9 +87,6 @@ base_config:
           - UpBlock2D
           - UpBlock2D
 
-      T: 1.0
-      beta_min: 0.1
-      beta_max: 50.
     
 
 sweep_configuration:

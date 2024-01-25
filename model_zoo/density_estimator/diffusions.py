@@ -99,33 +99,7 @@ class ScoreBasedDiffusion(DensityEstimator):
         """
         return self.beta_min * t + self.beta_diff * t * t / 2.
     
-    
-    def _get_r_inv(
-        self,
-        r,
-    ):
-        """
-        Calculates the time and the corresponding B(t) for a given radius such that r(t) := 1/2 * log(e^B(t) - 1)
-        (This function also returns B_t because one needs to compute it either ways to get t)
-        """
-        if isinstance(r, float):
-            r = torch.tensor(r)
-        B_t = torch.logaddexp(torch.tensor(2.0).float() * r, torch.tensor(0.0).float().to(r.device))
-        t = (torch.sqrt(self.beta_min * self.beta_min + 2 * self.beta_diff * B_t) - self.beta_min) / self.beta_diff
-        return t, B_t
-        
-    
-    def _get_r(
-        self,
-        t,
-    ):
-        """
-        Returns r(t)
-        """
-        B_t = self._get_B(t)
-        if isinstance(B_t, float):
-            return 0.5 * math.log(math.exp(B_t) - 1)
-        return 0.5 * torch.log(torch.exp(B_t) - 1)
+
     
     
     def _get_sigma(self, t):
@@ -374,8 +348,8 @@ class ScoreBasedDiffusion(DensityEstimator):
         if device is None:
             device = getattr(self, 'device', torch.device('cpu'))
         
-        sigma2_t, sigma_t = self._get_sigma(torch.tensor(self.T).float().to(device))
-        z = torch.randn((n_samples,) + tuple(self.x_shape)).to(device) * sigma_t
+        _, sigma_T = self._get_sigma(torch.tensor(self.T).float().to(device))
+        z = torch.randn((n_samples,) + tuple(self.x_shape)).to(device) * sigma_T
         
         ret = self.reverse_mapping(
             z,
@@ -439,7 +413,12 @@ class ScoreBasedDiffusion(DensityEstimator):
         
         # Compute scores for each sampled point
         scores = []
-        for batch in x_eps.split(max_batch_size):
+        if verbose > 0:
+            tt = x_eps.split(max_batch_size)
+            rng = tqdm(x_eps.split(max_batch_size), total=len(tt), desc="Computing scores")
+        else:
+            rng = x_eps.split(max_batch_size)
+        for batch in rng:
             batch = batch.to(x.device)
             beta_eps = self._get_beta(eps)
             drift = self._get_drift(batch, eps).cpu() if use_drift else 0.0
@@ -484,6 +463,55 @@ class ScoreBasedDiffusion(DensityEstimator):
 class VESDE_Diffusion(ScoreBasedDiffusion):
     
     model_type = "VESDE_Diffusion"
+    
+    def __init__(
+        self,
+        *args,
+        T: float = 1.,
+        g_min: float = -5,
+        g_max: float = 5,
+        **kwargs,
+    ):
+        self.T = T
+        self.g_min = g_min
+        self.g_max = g_max
+        self.g_diff = (self.g_max - self.g_min) / self.T # Store this value
+        return super().__init__(
+            *args,
+            T=T,
+            beta_min=math.exp(g_min)/self.g_diff,
+            beta_max=math.exp(g_max)/self.g_diff,
+            **kwargs,
+        )
+            
+    def _get_beta(self, t):
+        """
+        The value of \\beta(t) in the SDE.
+        Here, we assume that \\beta(t) linearly increases from `beta_min` to `beta_max`.
+        """
+        if isinstance(t, torch.Tensor):
+            return torch.exp(self.g_min + self.g_diff * t) * self.g_diff
+        else:
+            return math.exp(self.g_min + self.g_diff * t) * self.g_diff
+    
+    def _get_B(
+        self,
+        t,
+    ):
+        """
+        The integral of \\beta(t) from time 0 to t.
+        """
+        if isinstance(t, torch.Tensor):
+            return (torch.exp(self.g_min + self.g_diff * t) - math.exp(self.g_min))
+        
+        return (math.exp(self.g_min + self.g_diff * t) - math.exp(self.g_min))
+    
+    
+    def _get_sigma(self, t):
+        """ Return both \\sigma^2(t) and \\sigma(t) """
+        sigma2_t = self._get_B(t)
+        sigma2_t = sigma2_t[..., None]
+        return sigma2_t, torch.sqrt(sigma2_t)
     
     def _get_drift(self, x, t):
         return torch.zeros_like(x)
