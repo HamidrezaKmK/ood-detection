@@ -17,7 +17,7 @@ base_config:
     optimizer:
       class_path: torch.optim.AdamW
       init_args:
-        lr: 0.000005
+        lr: 0.00005
       # lr_scheduler:
           # the class of the scheduler, an example is torch.optim.lr_scheduler.ExponentialLR
           # class_path: torch.optim.lr_scheduler.ExponentialLR
@@ -87,7 +87,9 @@ base_config:
           - UpBlock2D
           - UpBlock2D
 
-    
+      
+      g_min: -10
+      g_max: 10
 
 sweep_configuration:
   data:
