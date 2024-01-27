@@ -171,9 +171,9 @@ sweep_configuration:
               dataloader_args:
                 dataset: tiny-imagenet
         - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: cifar100
+            out_of_distribution:
+              dataloader_args:
+                dataset: cifar100
     - sweep: True
       sweep_identifier: A_subsample_size # run on different subsample sizes to tradeoff speed for accuracy!
       sweep_alias:
