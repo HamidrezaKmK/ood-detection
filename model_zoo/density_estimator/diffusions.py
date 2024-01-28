@@ -429,7 +429,7 @@ class ScoreBasedDiffusion(DensityEstimator):
             # Get the singular values of the score to compute the normal space
             scores = torch.cat(scores)
             scores = scores.reshape((batch_size, num_samples, d))
-            self.singular_vals = torch.linalg.svdvals(scores) 
+            self.singular_vals = torch.linalg.svdvals(scores.to(device)).cpu() 
         # count the number of singular values that are more than the threshold
         threshold = math.exp(-r)
         lid = (self.singular_vals < threshold).sum(dim=1)
