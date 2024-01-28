@@ -141,6 +141,9 @@ sweep_configuration:
                 dataset: fashion-mnist
                 additional_dataset_args:
                   resize_image: [32, 32]
+            ood:
+              method_args:
+                given_mean_lid: 245 # Obtained by LPCA with threshold 0.001
         - base_model:
             config_dir: checkpoints-nyigwix7/diffusion_fashion-mnist_ofter_gjry9qpu_final/run_config.json
             checkpoint_dir: checkpoints-nyigwix7/diffusion_fashion-mnist_ofter_gjry9qpu_final/checkpoints/de_VESDE_Diffusion_best_valid.pt
@@ -255,7 +258,7 @@ sweep_configuration:
       sweep_alias:
       - tiny
       - medium
-      - huge
+      - hugeS
       values:
       - ood:
           use_dataloader: True
