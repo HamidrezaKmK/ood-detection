@@ -369,6 +369,7 @@ class ScoreBasedDiffusion(DensityEstimator):
         max_batch_size: int = 128,
         use_drift: bool = True,
         verbose: int = 0,
+        use_cache: bool = False,
     ):
         """
         For a given radius r, this function computes the LID using Stanczuk's thresholding method 
@@ -412,27 +413,26 @@ class ScoreBasedDiffusion(DensityEstimator):
         x_eps = self._get_center(x, eps) + sigma_t * noise
         
         # Compute scores for each sampled point
-        scores = []
-        if verbose > 0:
-            tt = x_eps.split(max_batch_size)
-            rng = tqdm(x_eps.split(max_batch_size), total=len(tt), desc="Computing scores")
-        else:
-            rng = x_eps.split(max_batch_size)
-        for batch in rng:
-            batch = batch.to(x.device)
-            beta_eps = self._get_beta(eps)
-            drift = self._get_drift(batch, eps).cpu() if use_drift else 0.0
-            diffus = beta_eps * self.get_true_score(batch, eps).cpu()
-            scores.append((drift - diffus).detach().cpu())
-        
-        # Get the singular values of the score to compute the normal space
-        scores = torch.cat(scores)
-        scores = scores.reshape((batch_size, num_samples, d))
-        singular_vals = torch.linalg.svdvals(scores) 
-        
+        if not use_cache:
+            scores = []
+            if verbose > 0:
+                tt = x_eps.split(max_batch_size)
+                rng = tqdm(x_eps.split(max_batch_size), total=len(tt), desc="Computing scores")
+            else:
+                rng = x_eps.split(max_batch_size)
+            for batch in rng:
+                batch = batch.to(x.device)
+                beta_eps = self._get_beta(eps)
+                drift = self._get_drift(batch, eps).cpu() if use_drift else 0.0
+                diffus = self.get_true_score(batch, eps).cpu() * beta_eps
+                scores.append((drift - diffus).detach().cpu())
+            # Get the singular values of the score to compute the normal space
+            scores = torch.cat(scores)
+            scores = scores.reshape((batch_size, num_samples, d))
+            self.singular_vals = torch.linalg.svdvals(scores) 
         # count the number of singular values that are more than the threshold
         threshold = math.exp(-r)
-        lid = (singular_vals < threshold).sum(dim=1)
+        lid = (self.singular_vals < threshold).sum(dim=1)
         
         return lid
         

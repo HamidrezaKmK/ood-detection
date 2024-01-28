@@ -218,7 +218,7 @@ class RandomImage(SupervisedDataset):
     def get_data_max(self):
         return torch.max(self.x)
 
-class GaussianMixture(SupervisedDataset):
+class ProjectedMixture(SupervisedDataset):
     """
     Samples a Gaussian mixture
     """ 
@@ -230,6 +230,10 @@ class GaussianMixture(SupervisedDataset):
         manifold_dims: th.Union[th.List[int], int] = 2,
         mixture_probs: th.Optional[th.List[float]] = None,
         scales: th.Optional[th.List[float]] = None,
+        
+        sample_distr: str = 'normal', # other types are 'uniform', 'laplace', and basically any type that np.random supports
+        sample_args: th.Optional[dict] = None,
+        
         euclidean_distance: th.Optional[float] = 1,
         ambient_dim: int = 4,
         size: int = 10000,
@@ -270,8 +274,10 @@ class GaussianMixture(SupervisedDataset):
             self.projections.append(np.random.randn(ambient_dim, mdim) * scales[i])   
             self.modes.append(i * euclidean_distance * np.random.randn(ambient_dim))
             self.covariance_matrices.append(self.projections[-1] @ self.projections[-1].T)
-        
-            raw_samples = np.random.normal(size=(int(mixture_probs[i] * size), mdim))
+
+            
+            sampler = dy.eval(f"numpy.random.{sample_distr}")
+            raw_samples = sampler(**(sample_args or {}), size=(int(mixture_probs[i] * size), mdim))
             raw_samples = raw_samples @ self.projections[-1].T + self.modes[-1]
             
             self.x.append(torch.from_numpy(raw_samples).float())
@@ -522,7 +528,7 @@ def get_datasets_from_class(name, additional_instantiation_args: th.Optional[dic
     elif name == "random_image":
         data_class = RandomImage
     elif name == "gaussian_mixture":
-        data_class = GaussianMixture
+        data_class = ProjectedMixture
     else:
         raise ValueError(f"Unknown dataset {name}")
     
