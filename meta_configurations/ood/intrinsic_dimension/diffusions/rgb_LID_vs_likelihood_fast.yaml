@@ -98,7 +98,7 @@ sweep_configuration:
           data:
             in_distribution:
               dataloader_args:
-                evaluate_r: cifar100
+                dataset: cifar100
           ood:
             method_args:
               evaluate_r: -5.46875 # obtained by LPCA with threshold 0.001
