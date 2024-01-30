@@ -191,3 +191,7 @@ hamid_notebook.ipynb
 !meta_run_train.sh
 !meta_run_two_step_train.sh
 !meta_run_intrinsic_dimension.sh
+
+notebooks/figures/*
+notebooks/generated_tabulars/*
+notebooks/tables/*

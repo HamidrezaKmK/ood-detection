@@ -28,6 +28,7 @@ def get_roc_graph(
     all_y = all_y.flatten()
     
     if compute_limit:
+        compute_limit = min(compute_limit, len(all_x))
         msk = np.array([True] * compute_limit + [False] * (len(all_x) - compute_limit))
         np.random.shuffle(msk)
         all_x = all_x[msk]

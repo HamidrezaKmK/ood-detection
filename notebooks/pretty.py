@@ -159,7 +159,7 @@ def plot_kde_raw(
     idx = 0
     for x, label, color in zip(x_values, labels, colors):
         density = sns.kdeplot(x, bw_adjust=0.5, color=color).get_lines()[-1].get_data()
-        ax.fill_between(density[0], 0, density[1], color=color, label=label, alpha=0.5, hatch=hashlines[idx % len(hashlines)])
+        ax.fill_between(density[0], 0, density[1] , color=color, label=label, alpha=0.5, hatch=hashlines[idx % len(hashlines)])
         idx += 1
     
     y_label = y_label or 'Density'
