@@ -61,13 +61,52 @@ sweep_configuration:
 
   dy__upsert:
     - sweep: True
-      sweep_identifier: A_num_steps
+      sweep_identifier: A_A_num_samples
+      sweep_alias:
+        - A_1
+        - A_5
+        - A_10
+        - A_25
+        - A_75
+        - A_100
+        - A_500
+      values:
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                sample_count: 1
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                sample_count: 5
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                sample_count: 10
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                sample_count: 25
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                sample_count: 75
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                sample_count: 100
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                sample_count: 500
+    - sweep: True
+      sweep_identifier: A_B_num_steps
       sweep_alias:
         - A_2
         - A_3
         - A_5
         - A_10
-        - A_20
+        - A_25
         - A_50
         - A_100
         - A_200
@@ -93,7 +132,7 @@ sweep_configuration:
         - ood:
             method_args:
               log_prob_kwargs:
-                steps: 20
+                steps: 25
         - ood:
             method_args:
               log_prob_kwargs:

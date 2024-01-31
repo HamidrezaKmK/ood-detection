@@ -62,17 +62,17 @@ class DiffusionLikelihoodHPTuning(OODBaseMethod):
         auc = get_auc(x, y)
 
         visualize_scatterplots(
-            scores = np.stack([[auc], [time_spent]]).T,
-            column_names=["auc", "time"],
+            scores = np.stack([[time_spent], [auc]]).T,
+            column_names=["time", "auc"],
         )
         num_steps = self.log_prob_kwargs.get("steps", 1000)
         num_samples = self.log_prob_kwargs.get("trace_calculation_kwargs", {}).get("sample_count", 100)
         
         visualize_scatterplots(
-            scores = np.stack([[auc], [num_steps]]).T,
-            column_names=["auc", "num_steps"],
+            scores = np.stack([[num_steps], [auc]]).T,
+            column_names=["num_steps", "auc"],
         )
         visualize_scatterplots(
-            scores = np.stack([[auc], [num_samples]]).T,
-            column_names=["auc", "num_samples"],
+            scores = np.stack([[num_samples], [auc]]).T,
+            column_names=["num_samples", "auc"],
         )
