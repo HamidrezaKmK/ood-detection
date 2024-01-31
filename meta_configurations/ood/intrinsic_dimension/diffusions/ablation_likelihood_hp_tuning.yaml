@@ -1,0 +1,145 @@
+# This sweep compares the likelihood values of in and out of distribution
+# for all the dataset pairs, containing the DGM generated ones
+project: final-report
+sweep_name: ablation_likelihood_hp_tuning_samples_500
+entity: platypus-dgm
+count: 10000
+method: grid
+
+# Change the name of the run to [in_distribution_dataset]_vs_[out_of_distribution_dataset]_[run_name]
+# using the dysweep name changer for better readability
+run_name_changer:
+  expression: |
+    from meta_configurations import *
+  function_of_interest: ood_run_name_changer
+
+# BASE configuration which is being used
+base_config:
+  data:
+    # specify the datasets and dataloader configurations for the in and out of distribution data.
+    in_distribution:
+      dataloader_args:
+        make_valid_loader: false
+        train_batch_size: 32
+        valid_batch_size: 32
+        test_batch_size: 32
+        additional_dataset_args:
+          resize_image: [32, 32]
+      pick_loader: train
+    out_of_distribution:
+      dataloader_args:
+        make_valid_loader: false
+        train_batch_size: 32
+        valid_batch_size: 32
+        test_batch_size: 32
+      pick_loader: test
+  ood:
+    # bypass the entire visualization process since there is no need to plot the histograms that take time!
+    bypass_visualization: True
+  
+    use_dataloader: True
+    pick_count: 1
+
+    # for reproducibility
+    seed: 100
+    
+    # The OOD detection method in use
+    method: ood.methods.diffusion_likelihood_hp_tuning.DiffusionLikelihoodHPTuning
+    method_args:
+      log_prob_kwargs:
+        steps: 25
+        verbose: 1
+        trace_calculation_kwargs:
+          method: hutchinson_rademacher
+          sample_count: 500
+          parallel_batch_size: 512 
+        verbose: 2
+      # for logging args
+      verbose: 2
+      
+sweep_configuration:
+
+  dy__upsert:
+    - sweep: True
+      sweep_identifier: A_num_steps
+      sweep_alias:
+        - A_2
+        - A_3
+        - A_5
+        - A_10
+        - A_20
+        - A_50
+        - A_100
+        - A_200
+        - A_500
+        - A_1000
+      values:
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 2
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 3
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 5
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 10
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 20
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 50
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 100
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 200
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 500
+        - ood:
+            method_args:
+              log_prob_kwargs:
+                steps: 1000
+    - sweep: True
+      sweep_identifier: B_task
+      sweep_alias:
+        - fmnist_vs_mnist
+        - cifar10_vs_svhn
+      values:
+        - base_model:
+            config_dir: checkpoints-hg9x5r0n/diffusion_fashion-mnist_interparental_bxnuw7zk_final/run_config.json
+            checkpoint_dir: checkpoints-hg9x5r0n/diffusion_fashion-mnist_interparental_bxnuw7zk_final/checkpoints/de_score-based-VP-diffusion_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: fashion-mnist
+            out_of_distribution:
+              dataloader_args:
+                dataset: mnist
+                additional_dataset_args:
+                  resize_image: [32, 32]
+        - base_model:
+            config_dir: checkpoints-znod8v3z/diffusion_cifar10_distinctions_aep6z5pr_final/run_config.json
+            checkpoint_dir: checkpoints-znod8v3z/diffusion_cifar10_distinctions_aep6z5pr_final/checkpoints/de_score-based-VP-diffusion_latest.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: cifar10
+            out_of_distribution:
+              dataloader_args:
+                dataset: svhn
+        
