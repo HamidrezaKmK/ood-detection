@@ -166,6 +166,8 @@ class ScoreBasedDiffusion(DensityEstimator):
         sample_count: th.Optional[int] = 100,
         custom_score: th.Optional[th.Callable] = None, 
         true_score: bool = True,
+        parallel_batch_size: int = 128,
+        verbose: int = 0,
     ):
         """
         This function computes tr(\\nabla_x s_{\\theta}(x, t)) using Jacobian vector products.
@@ -194,7 +196,6 @@ class ScoreBasedDiffusion(DensityEstimator):
         Returns:
             traces (torch.Tensor): A tensor of size [batch_size,] where traces[i] is the trace computed for 'i'
         """
-        
         if custom_score:
             score_fn = functools.partial(custom_score, t=t)
         elif true_score:
@@ -204,31 +205,80 @@ class ScoreBasedDiffusion(DensityEstimator):
             
         torch.manual_seed(100)
     
+        batch_size = x.shape[0]
+        data_shape = x.shape[1:]
+        
         all_quadretic = []
         if method == 'deterministic': 
             d = x.numel() // x.shape[0]
             sample_count = d
-        
-        for i in range(sample_count):
-            if method == 'hutchinson_gaussian':
-                warnings.warn("The Gaussian-based hutchinson estimator is not the best! Try 'hutchinson_rademacher' instead.")
-                v = torch.randn_like(x)
-            elif method == 'hutchinson_rademacher':
-                v = torch.randint_like(x, low=0, high=2).float() * 2 - 1.
-            elif method == 'deterministic':
-                v = torch.zeros(d).to(x.device).float()
-                v[i] = math.sqrt(d)
-                v = v.unsqueeze(0).repeat(x.shape[0], 1).reshape(x.shape)
-            else:
-                raise ValueError(f"Method {method} for trace computation not defined!")
             
+        if method == 'hutchinson_gaussian':
+            warnings.warn("The Gaussian-based hutchinson estimator is not the best! Try 'hutchinson_rademacher' instead.")
+            all_v = torch.randn(size=(batch_size * sample_count, *data_shape)).cpu().float()
+        elif method == 'hutchinson_rademacher':
+            all_v = torch.randint(size=(batch_size * sample_count, *data_shape), low=0, high=2).cpu().float() * 2 - 1.
+        elif method == 'deterministic':
+            all_v = torch.eye(d).cpu().float()
+            all_v = all_v.repeat_interleave(batch_size, dim=0).reshape((batch_size * sample_count, *data_shape))
+        else:
+            raise ValueError(f"Method {method} for trace computation not defined!")
+        
+        all_x = x.cpu().unsqueeze(0).repeat(sample_count, *[1 for _ in range(x.dim())]).reshape(batch_size * sample_count, *data_shape)
+        
+        all_quadretic = []
+        rng = list(zip(all_v.split(parallel_batch_size), all_x.split(parallel_batch_size)))
+        if verbose > 0:
+            rng = tqdm(rng, desc="Computing traces")
+        for vv in rng:
+            v_batch, x_batch = vv
+            v_batch = v_batch.to(x.device)
+            x_batch = x_batch.to(x.device)
             all_quadretic.append(
                 torch.sum(
-                    v * torch.func.jvp(score_fn, (x, ), tangents=(v, ))[1], 
+                    v_batch * torch.func.jvp(score_fn, (x_batch, ), tangents=(v_batch, ))[1], 
                     dim=tuple(range(1, x.dim()))
                 )
             )
-        return torch.stack(all_quadretic).mean(dim=0)
+        all_quadretic = torch.cat(all_quadretic)
+        all_quadretic = all_quadretic.reshape((sample_count, x.shape[0]))
+        return all_quadretic.mean(dim=0)
+
+        
+        # if custom_score:
+        #     score_fn = functools.partial(custom_score, t=t)
+        # elif true_score:
+        #     score_fn = functools.partial(self.get_true_score, t=t)
+        # else:
+        #     score_fn = functools.partial(self._get_unnormalized_score, t=t)
+            
+        # torch.manual_seed(100)
+    
+        # all_quadretic = []
+        # if method == 'deterministic': 
+        #     d = x.numel() // x.shape[0]
+        #     sample_count = d
+        
+        # for i in range(sample_count):
+        #     if method == 'hutchinson_gaussian':
+        #         warnings.warn("The Gaussian-based hutchinson estimator is not the best! Try 'hutchinson_rademacher' instead.")
+        #         v = torch.randn_like(x)
+        #     elif method == 'hutchinson_rademacher':
+        #         v = torch.randint_like(x, low=0, high=2).float() * 2 - 1.
+        #     elif method == 'deterministic':
+        #         v = torch.zeros(d).to(x.device).float()
+        #         v[i] = math.sqrt(d)
+        #         v = v.unsqueeze(0).repeat(x.shape[0], 1).reshape(x.shape)
+        #     else:
+        #         raise ValueError(f"Method {method} for trace computation not defined!")
+            
+        #     all_quadretic.append(
+        #         torch.sum(
+        #             v * torch.func.jvp(score_fn, (x, ), tangents=(v, ))[1], 
+        #             dim=tuple(range(1, x.dim()))
+        #         )
+        #     )
+        # return torch.stack(all_quadretic).mean(dim=0)
     
     
     def rho_t(
@@ -288,7 +338,7 @@ class ScoreBasedDiffusion(DensityEstimator):
             for s in rng:
                 beta_s = self._get_beta(s)
                 score = self.get_true_score(x, s)                
-                log_p -= delta_s * 0.5 * beta_s * self._score_jacobian_trace(x, s, **trace_calculation_kwargs)
+                log_p -= delta_s * 0.5 * beta_s * self._score_jacobian_trace(x, s, **trace_calculation_kwargs, verbose=verbose-1)
                 # NOTE: changes made here
                 x -= delta_s * beta_s * 0.5 * score - delta_s * self._get_drift(x, s)
             
