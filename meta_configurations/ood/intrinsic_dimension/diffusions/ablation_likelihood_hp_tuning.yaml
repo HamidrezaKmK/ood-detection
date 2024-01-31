@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: ablation_likelihood_hp_tuning_samples_500
+sweep_name: ablation_likelihood_hp_tuning_samples
 entity: platypus-dgm
 count: 10000
 method: grid
@@ -20,18 +20,18 @@ base_config:
     in_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 32
-        valid_batch_size: 32
-        test_batch_size: 32
+        train_batch_size: 8
+        valid_batch_size: 8
+        test_batch_size: 8
         additional_dataset_args:
           resize_image: [32, 32]
       pick_loader: train
     out_of_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 32
-        valid_batch_size: 32
-        test_batch_size: 32
+        train_batch_size: 8
+        valid_batch_size: 8
+        test_batch_size: 8
       pick_loader: test
   ood:
     # bypass the entire visualization process since there is no need to plot the histograms that take time!
@@ -158,6 +158,8 @@ sweep_configuration:
       sweep_alias:
         - fmnist_vs_mnist
         - cifar10_vs_svhn
+        - svhn_vs_cifar10
+        - mnist_vs_fmnist
       values:
         - base_model:
             config_dir: checkpoints-hg9x5r0n/diffusion_fashion-mnist_interparental_bxnuw7zk_final/run_config.json
@@ -181,4 +183,26 @@ sweep_configuration:
             out_of_distribution:
               dataloader_args:
                 dataset: svhn
+        - base_model:
+            config_dir: checkpoints-znod8v3z/diffusion_svhn_regretless_ixiwzx2l_final/run_config.json
+            checkpoint_dir: checkpoints-znod8v3z/diffusion_svhn_regretless_ixiwzx2l_final/checkpoints/de_score-based-VP-diffusion_latest.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: svhn
+            out_of_distribution:
+              dataloader_args:
+                dataset: cifar10
+        - base_model:
+            config_dir: checkpoints-hg9x5r0n/diffusion_mnist_tweeting_1ou4vbuo_final/run_config.json
+            checkpoint_dir: checkpoints-hg9x5r0n/diffusion_mnist_tweeting_1ou4vbuo_final/checkpoints/de_score-based-VP-diffusion_best_valid.pt
+          data:
+            in_distribution:
+              dataloader_args:
+                dataset: mnist
+            out_of_distribution:
+              dataloader_args:
+                dataset: fashion-mnist
+                additional_dataset_args:
+                  resize_image: [32, 32]
         
