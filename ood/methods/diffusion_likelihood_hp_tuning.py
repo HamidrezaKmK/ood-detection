@@ -97,11 +97,11 @@ class DiffusionLikelihoodHPTuning(OODBaseMethod):
             column_names=["num_samples", "mean_out_log_prob"],
         )
         visualize_scatterplots(
-            scores = np.stack([[num_steps], [std_in_log_probs]]).T,
+            scores = np.stack([[num_steps], [mean_in_log_probs]]).T,
             column_names=["num_steps", "mean_in_log_prob"],
         ) 
         visualize_scatterplots(
-            scores = np.stack([[num_steps], [std_out_log_probs]]).T,
+            scores = np.stack([[num_steps], [mean_out_log_probs]]).T,
             column_names=["num_steps", "mean_out_log_prob"],
         )
         

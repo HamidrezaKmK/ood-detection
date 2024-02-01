@@ -93,6 +93,21 @@ def ood_run_name_changer(conf, run_name):
     ret += f"_{run_name}"
     return ret
 
+def hp_tuning_run_name_changer(conf, run_name):
+    """
+    This run changer takes a look at the configuration and sets a name for that
+    run appropriately.
+    The scheme here is [trained_dataset]_vs_[ood_dataset]_[test_or_train_split]
+    """
+    ret = conf['data']['in_distribution']['dataloader_args']['dataset']
+    ret += '_vs_'
+    ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']
+    ret += f"_{conf['data']['out_of_distribution']['pick_loader']}"
+    ret += f"_num_samples_{conf['ood']['method_args']['log_prob_kwargs']['trace_calculation_kwargs']['sample_count']}"
+    ret += f"_num_steps_{conf['ood']['method_args']['log_prob_kwargs']['steps']}"
+    ret += f"_{run_name}"
+    return ret
+
 def intrinsic_dimension_run_name_changer(conf, run_name):
     """
     Change the run appropriately for the dataset under consideration
