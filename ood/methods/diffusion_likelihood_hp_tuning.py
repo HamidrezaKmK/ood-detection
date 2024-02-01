@@ -61,10 +61,7 @@ class DiffusionLikelihoodHPTuning(OODBaseMethod):
         x, y = get_convex_hull(x, y)
         auc = get_auc(x, y)
 
-        visualize_scatterplots(
-            scores = np.stack([[time_spent], [auc]]).T,
-            column_names=["time", "auc"],
-        )
+        # AUC analysis
         num_steps = self.log_prob_kwargs.get("steps", 1000)
         num_samples = self.log_prob_kwargs.get("trace_calculation_kwargs", {}).get("sample_count", 100)
         
@@ -72,7 +69,38 @@ class DiffusionLikelihoodHPTuning(OODBaseMethod):
             scores = np.stack([[num_steps], [auc]]).T,
             column_names=["num_steps", "auc"],
         )
+        
+        # time analysis
         visualize_scatterplots(
-            scores = np.stack([[num_samples], [auc]]).T,
-            column_names=["num_samples", "auc"],
+            scores = np.stack([[num_samples], [time_spent]]).T,
+            column_names=["num_samples", "time"],
+        ) 
+        visualize_scatterplots(
+            scores = np.stack([[num_steps], [time_spent]]).T,
+            column_names=["num_steps", "time"],
         )
+        
+        # average log prob analysis
+        mean_in_log_probs = np.mean(in_log_probs)
+        mean_out_log_probs = np.mean(out_log_probs)
+        visualize_scatterplots(
+            scores = np.stack([[num_samples], [mean_in_log_probs]]).T,
+            column_names=["num_samples", "mean_in_log_prob"],
+        ) 
+        visualize_scatterplots(
+            scores = np.stack([[num_steps], [mean_out_log_probs]]).T,
+            column_names=["num_steps", "mean_out_log_prob"],
+        )
+        
+        # STD log prob analysis
+        std_in_log_probs = np.std(in_log_probs)
+        std_out_log_probs = np.std(out_log_probs)
+        visualize_scatterplots(
+            scores = np.stack([[num_samples], [std_in_log_probs]]).T,
+            column_names=["num_samples", "std_in_log_probs"],
+        ) 
+        visualize_scatterplots(
+            scores = np.stack([[num_steps], [std_out_log_probs]]).T,
+            column_names=["num_steps", "std_out_log_probs"],
+        )
+        
