@@ -21,6 +21,7 @@ class FastFlowLID(BaseIntrinsicDimensionEstimationMethod):
     def __init__(
         self,
         *args,
+        flow_model: th.Optional[NormalizingFlow] = None,
         flow_model_class: th.Optional[str] = None,
         flow_model_args: th.Optional[dict] = None,
         checkpoint_tag: th.Optional[str] = 'latest',
@@ -47,79 +48,60 @@ class FastFlowLID(BaseIntrinsicDimensionEstimationMethod):
         self.regression_points = np.array(regression_points or [0, 0.1]) # TIP: small scale regression steps are always more accurate!
         self.submethod = submethod
         
-        self.module = dy.eval(flow_model_class)(**flow_model_args).to(self.device)
-        if not isinstance(self.module, NormalizingFlow):
-            raise Exception("The module is not a normalizing flow.")
-        
-        self.module.set_optimizer(
-            flow_model_trainer_args['optimizer']
-        )
+        if flow_model is None:
+            self.module = dy.eval(flow_model_class)(**flow_model_args).to(self.device)
+            if not isinstance(self.module, NormalizingFlow):
+                raise Exception("The module is not a normalizing flow.")
             
-        # Additional args used for trainer.
-        additional_args = flow_model_trainer_args.get('additional_init_args', None) or {}
+            self.module.set_optimizer(
+                flow_model_trainer_args['optimizer']
+            )
+                
+            # Additional args used for trainer.
+            additional_args = flow_model_trainer_args.get('additional_init_args', None) or {}
+            
+            # Set an evaluator that gets called after each epoch of the trainer
+            # for potential early stopping or evaluation
+            evaluator = get_evaluator(
+                self.module,
+                train_loader=self.train_dataloader, valid_loader=self.valid_dataloader, test_loader=self.test_dataloader,
+                valid_metrics=flow_model_trainer_args['evaluator']["valid_metrics"],
+                test_metrics=flow_model_trainer_args['evaluator']["test_metrics"],
+                **flow_model_trainer_args['evaluator'].get("metric_kwargs", {}),
+            )
         
-        # Set an evaluator that gets called after each epoch of the trainer
-        # for potential early stopping or evaluation
-        evaluator = get_evaluator(
-            self.module,
-            train_loader=self.train_dataloader, valid_loader=self.valid_dataloader, test_loader=self.test_dataloader,
-            valid_metrics=flow_model_trainer_args['evaluator']["valid_metrics"],
-            test_metrics=flow_model_trainer_args['evaluator']["test_metrics"],
-            **flow_model_trainer_args['evaluator'].get("metric_kwargs", {}),
-        )
-    
-        self.trainer: BaseTrainer = dy.eval(flow_model_trainer_args['trainer_cls'])(
-            self.module,
-            ckpt_prefix="de",   
-            train_loader=self.train_dataloader,
-            valid_loader=self.valid_dataloader,
-            test_loader=self.test_dataloader,
-            writer=self.writer,
-            max_epochs=flow_model_trainer_args['max_epochs'],
-            early_stopping_metric=flow_model_trainer_args['early_stopping_metric'],
-            max_bad_valid_epochs=flow_model_trainer_args['max_bad_valid_epochs'],
-            max_grad_norm=flow_model_trainer_args['max_grad_norm'],
-            evaluator=evaluator,
-            only_test=flow_model_trainer_args['only_test'],
-            sample_freq=flow_model_trainer_args['sample_freq'],
-            progress_bar=flow_model_trainer_args['progress_bar'],
-            **additional_args
-        )
-        
-        self.checkpoint_tag = checkpoint_tag
-
-    
-    def fit(
+            self.trainer: BaseTrainer = dy.eval(flow_model_trainer_args['trainer_cls'])(
+                self.module,
+                ckpt_prefix="de",   
+                train_loader=self.train_dataloader,
+                valid_loader=self.valid_dataloader,
+                test_loader=self.test_dataloader,
+                writer=self.writer,
+                max_epochs=flow_model_trainer_args['max_epochs'],
+                early_stopping_metric=flow_model_trainer_args['early_stopping_metric'],
+                max_bad_valid_epochs=flow_model_trainer_args['max_bad_valid_epochs'],
+                max_grad_norm=flow_model_trainer_args['max_grad_norm'],
+                evaluator=evaluator,
+                only_test=flow_model_trainer_args['only_test'],
+                sample_freq=flow_model_trainer_args['sample_freq'],
+                progress_bar=flow_model_trainer_args['progress_bar'],
+                **additional_args
+            )
+            
+            self.checkpoint_tag = checkpoint_tag
+        else:
+            self.module = flow_model
+            self.checkpoint_tag = None
+            
+    def setup_method(
         self,
         use_functorch: bool = True,
         use_forward_model: bool = True,
         use_vmap: bool = False,
         chunk_size: int = 1,
         diff_transform: bool = False,
-        visualize_data: bool = False,
         visualize_eigenspectrum: bool = False,
-        bypass_training: bool = False,
-        sample_count: int = 10,
     ):
-        self.trainer.load_checkpoint('latest')
-        # The actual training loop
-        if not bypass_training:
-            self.trainer.train()
-        self.trainer.load_checkpoint(self.checkpoint_tag)
-        
-        if visualize_data:
-            data_vis_img = print_data_2d(
-                list_of_loaders=[self.train_dataloader, self.test_dataloader, [self.module.sample(10) for _ in range(sample_count)]],
-                list_of_labels=['train_split', 'test_split', 'sample'],
-                alphas=[0.2, 0.2, 0.7],
-                batch_limit=10,
-                close_matplotlib = True,
-            )
-            self.writer.write_image(
-                tag='samples_2d',
-                img_tensor=data_vis_img,
-            )
-        
         encoding_model_args = dict(
             encoding_model_class= 'ood.intrinsic_dimension.EncodingFlow',
             encoding_model_args = {
@@ -155,6 +137,48 @@ class FastFlowLID(BaseIntrinsicDimensionEstimationMethod):
                 verbose = self.verbose,
                 visualize_eigenspectrum=visualize_eigenspectrum,
             )
+        else:
+            raise ValueError(f"Unknown submethod {self.submethod}")
+        
+    def fit(
+        self,
+        use_functorch: bool = True,
+        use_forward_model: bool = True,
+        use_vmap: bool = False,
+        chunk_size: int = 1,
+        diff_transform: bool = False,
+        visualize_data: bool = False,
+        visualize_eigenspectrum: bool = False,
+        bypass_training: bool = False,
+        sample_count: int = 10,
+    ):
+        self.trainer.load_checkpoint('latest')
+        # The actual training loop
+        if not bypass_training:
+            self.trainer.train()
+        self.trainer.load_checkpoint(self.checkpoint_tag)
+        
+        if visualize_data:
+            data_vis_img = print_data_2d(
+                list_of_loaders=[self.train_dataloader, self.test_dataloader, [self.module.sample(10) for _ in range(sample_count)]],
+                list_of_labels=['train_split', 'test_split', 'sample'],
+                alphas=[0.2, 0.2, 0.7],
+                batch_limit=10,
+                close_matplotlib = True,
+            )
+            self.writer.write_image(
+                tag='samples_2d',
+                img_tensor=data_vis_img,
+            )
+        
+        self.setup_method(
+            use_functorch=use_functorch,
+            use_forward_model=use_forward_model,
+            use_vmap=use_vmap,
+            chunk_size=chunk_size,
+            diff_transform=diff_transform,
+            visualize_eigenspectrum=visualize_eigenspectrum,
+        )
         
     def _calc_lid(self, x, r: float, use_cache: bool = False, visualize_eigen_tag: str = ""):
         if self.submethod == 'fast_regression':

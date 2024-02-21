@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: grayscale_ID_vs_likelihood
+sweep_name: grayscale_LID_vs_likelihood
 entity: platypus-dgm
 count: 10000
 method: grid
@@ -24,19 +24,20 @@ base_config:
     out_of_distribution:
       dataloader_args:
         make_valid_loader: false
+      pick_loader: test
   ood:
     # bypass the entire visualization process since there is no need to plot the histograms that take time!
     bypass_visualization: True
-    
+  
+
     # for reproducibility
     seed: 100
-    # the number of batches under consideration -> Makes a total of 1024 datapoints
-    
-    pick_count: 128
     
     # The OOD detection method in use
-    method: ood.methods.intrinsic_dimension.IntrinsicDimensionOODDetection
+    method: ood.methods.intrinsic_dimension.FlowIntrinsicDimensionOODDetection
     method_args:
+      checkpointing_buffer: 16
+
       # Fast-LIDL-NF
       intrinsic_dimension_calculator_args:
         encoding_model_class: ood.methods.intrinsic_dimension.EncodingFlow
@@ -51,88 +52,12 @@ base_config:
         # verbosity
         verbose: 0
       
-      # Hyper-parameters relating to the scale parameter that is being computed
-      adaptive_train_data_buffer_size: 15    
-
       # for logging args
       verbose: 2
-      
       
 sweep_configuration:
 
   dy__upsert:
-    - sweep: True
-      sweep_identifier: A_scale_choosing
-      sweep_alias:
-      - fixed-20
-      - fixed-10
-      - fixed-4
-      - adaptive-p10-tol0.01
-      - adaptive-p10-tol0.05
-      - adaptive-p10-tol0.07
-      - adaptive-p10-tol0.33
-      - adaptive-p5-tol0.01
-      - adaptive-p5-tol0.05
-      - adaptive-p5-tol0.07
-      - adaptive-p5-tol0.33
-      values:
-      - ood:
-          method_args:
-            evaluate_r: -20
-            adaptive_measurement: False
-      
-      - ood:
-          method_args:
-            evaluate_r: -10
-            adaptive_measurement: False
-      
-      - ood:
-          method_args:
-            evaluate_r: -4
-            adaptive_measurement: False
-      
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 10
-            dimension_tolerance: 0.01
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 10
-            dimension_tolerance: 0.05
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 10
-            dimension_tolerance: 0.07
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 10
-            dimension_tolerance: 0.33
-
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 5
-            dimension_tolerance: 0.01
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 5
-            dimension_tolerance: 0.05
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 5
-            dimension_tolerance: 0.07
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            percentile: 5
-            dimension_tolerance: 0.33
-
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
@@ -157,6 +82,10 @@ sweep_configuration:
                 train_batch_size: 8
                 valid_batch_size: 8
                 test_batch_size: 8
+          ood:
+            method_args:
+              given_mean_lid: 409 # Obtained by LPCA with threshold 0.001
+              # given_mean_lid: 25.433158452938162 # obtained by ESS
         - base_model:
             config_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_mnist_agenizing_xhkxy2eu_final/run_config.json
             checkpoint_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_mnist_agenizing_xhkxy2eu_final/checkpoints/de_nf_best_valid.pt
@@ -172,6 +101,10 @@ sweep_configuration:
                 train_batch_size: 8
                 valid_batch_size: 8
                 test_batch_size: 8
+          ood:
+            method_args:
+              given_mean_lid: 335 # Obtained by LPCA with threshold 0.001
+              # given_mean_lid: 18.89335279088203 # Obtained by ESS default
         - base_model:
             config_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_fashion-mnist_barroom_sax6meoj_final/run_config.json
             checkpoint_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_fashion-mnist_barroom_sax6meoj_final/checkpoints/de_nf_best_valid.pt
@@ -187,6 +120,11 @@ sweep_configuration:
                 train_batch_size: 8
                 valid_batch_size: 8
                 test_batch_size: 8
+          ood:
+            method_args:
+              given_mean_lid: 245 # Obtained by LPCA with threshold 0.001
+              # given_mean_lid: 18.003913760563528 # obtained by ESS default
+
         - base_model:
             config_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_emnist_papillous_jr5k61wg_final/run_config.json
             checkpoint_dir: checkpoints-443rgkyn/PiecewiseRationalQuadraticCouplingTransform_emnist_papillous_jr5k61wg_final/checkpoints/de_nf_best_valid.pt
@@ -202,13 +140,17 @@ sweep_configuration:
                 train_batch_size: 8
                 valid_batch_size: 8
                 test_batch_size: 8
-        
+          ood:
+            method_args:
+              given_mean_lid: 245 # Obtained by LPCA with threshold 0.001
+              # given_mean_lid: 17.06469430486845 # obtained by ESS default
+
     - sweep: True
-      sweep_identifier: ood_picker
+      sweep_identifier: C_ood_picker
       sweep_alias:
       - generated
       - mnist
-      - fashion-mnist
+      - fmnist
       - omniglot
       - emnist
       values:
@@ -239,8 +181,60 @@ sweep_configuration:
           out_of_distribution:
             dataloader_args:
               dataset: emnist
-    - data:
-        out_of_distribution:
-          pick_loader:
-            sweep: True
-            values: [train, test]
+
+    
+    - sweep: True
+      sweep_identifier: Y_r_selection
+      sweep_alias:
+        - fixed
+        - percentile
+        - LPCA
+      values:
+      - ood:
+          method_args:
+            evaluate_r: -20
+            adaptive_measurement: False
+      - ood:
+          method_args:
+            adaptive_measurement: True
+            adaptive_setting_mode: percentile
+            percentile: 10
+            dimension_tolerance: 0.07
+            bin_search_iteration_count: 20
+            adaptive_train_data_buffer_size: 15
+      - ood:
+          method_args:
+            adaptive_measurement: True
+            adaptive_setting_mode: given 
+            bin_search_iteration_count: 20
+            adaptive_train_data_buffer_size: 15
+
+    - sweep: True
+      sweep_identifier: Z_inner_criterion
+      sweep_alias:
+        - thresholding
+        - taylor_approximation
+      values:
+        - ood:
+            method_args:
+              submethod: thresholding
+        - ood:
+            method_args:
+              submethod: taylor_approximation
+    - sweep: True
+      sweep_identifier: A_subsample_size # run on different subsample sizes to tradeoff speed for accuracy!
+      sweep_alias:
+      - tiny
+      - medium
+      - huge
+      values:
+      - ood:
+          use_dataloader: True
+          pick_count: 16
+      - ood:
+          use_dataloader: True
+          pick_count: 512
+      - ood:
+          use_dataloader: True
+          pick_count: 4096
+    

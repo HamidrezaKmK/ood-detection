@@ -22,6 +22,13 @@ import os
 from tqdm import tqdm
 from math import sqrt
 
+
+# Needed for log_prob
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+torch.backends.cuda.enable_math_sdp(True)
+
+
 @dataclass
 class OODConfig:
     base_model: dict
@@ -35,6 +42,7 @@ def plot_likelihood_ood_histogram(
     data_loader_in: torch.utils.data.DataLoader,
     data_loader_out: torch.utils.data.DataLoader,
     limit: th.Optional[int] = None,
+    log_prob_kwargs: th.Optional[dict] = None,
 ):
     """
     Run the model on the in-distribution and out-of-distribution data
@@ -55,7 +63,7 @@ def plot_likelihood_ood_histogram(
         log_probs = []
         for x in tqdm(dloader, desc=f"Calculating likelihoods for {description}"):
             with torch.no_grad():
-                t = model.log_prob(x).cpu()
+                t = model.log_prob(x, **(log_prob_kwargs or {})).cpu()
             # turn t into a list of floats
             t = t.flatten()
             t = t.tolist()
@@ -109,9 +117,10 @@ def standardize_sample_visualizing_format(sample):
             new_shape = list(new_sample.shape[:-1]) + new_shape
         new_sample = new_sample.reshape(new_shape)
         new_sample = new_sample.unsqueeze(-3)
-    mn = new_sample.min()
-    mx = new_sample.max()
-    return (new_sample - mn) / (mx - mn)
+        mn = new_sample.min()
+        mx = new_sample.max()
+        return (new_sample - mn) / (mx - mn)
+    return sample
 
 def run_ood(config: dict, gpu_index: int = 0, checkpoint_dir: th.Optional[str] = None):
     """
@@ -219,20 +228,21 @@ def run_ood(config: dict, gpu_index: int = 0, checkpoint_dir: th.Optional[str] =
         # generate 9 samples from the model if bypass sampling is not set to True
         if 'samples_visualization' in config['ood']:
             if config['ood']['samples_visualization'] > 0:
-                with torch.no_grad():
-                    def log_samples():
-                        samples = standardize_sample_visualizing_format(model.sample(9))
-                        samples = torchvision.utils.make_grid(samples, nrow=3)
-                        wandb.log(
-                            {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
-                    # set torch seed for reproducibility
-                    if config["ood"]["seed"] is not None:
-                        if device.startswith("cuda"):
-                            torch.cuda.manual_seed(config["ood"]["seed"])
-                        torch.manual_seed(config["ood"]["seed"])
-                        log_samples()
-                    else:
-                        log_samples()
+                # with torch.no_grad():
+                def log_samples():
+                    samples = model.sample(9, **config['ood'].get('sampling_kwargs', {}))
+                    # samples = standardize_sample_visualizing_format(samples)
+                    samples = torchvision.utils.make_grid(samples, nrow=3)
+                    wandb.log(
+                        {"data/model_generated": [wandb.Image(samples, caption="model generated")]})
+                # set torch seed for reproducibility
+                if config["ood"]["seed"] is not None:
+                    if device.startswith("cuda"):
+                        torch.cuda.manual_seed(config["ood"]["seed"])
+                    torch.manual_seed(config["ood"]["seed"])
+                    log_samples()
+                else:
+                    log_samples()
                         
             if config['ood']['samples_visualization'] > 1:
                 wandb.log({"data/most_probable": 
@@ -251,6 +261,7 @@ def run_ood(config: dict, gpu_index: int = 0, checkpoint_dir: th.Optional[str] =
                 in_loader,
                 out_loader,
                 limit=limit,
+                log_prob_kwargs=config['ood'].get('log_prob_kwargs', {}),
             )
             wandb.log({"likelihood_ood_histogram": [wandb.Image(
                 img_array, caption="Histogram of log likelihoods")]})

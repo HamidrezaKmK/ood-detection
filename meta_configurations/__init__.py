@@ -27,6 +27,15 @@ def get_coupling(conf):
     
     return None
 
+def change_name(conf, run_name):
+    if conf['trainer']['writer']['tag_group'] == 'flow':
+        coupling_type = get_coupling(conf)
+        return f"{coupling_type}_{conf['data']['dataset']}_{run_name}"
+    elif conf['trainer']['writer']['tag_group'] == 'diffusion':
+        return f"diffusion_{conf['data']['dataset']}_{run_name}"
+    else:
+        return f"{conf['data']['dataset']}_{run_name}"
+  
 def change_coupling_layers(conf, coupling_name: str, additional_args: th.Optional[dict] = None):
     """
     This function takes in an entire configuration
@@ -81,6 +90,21 @@ def ood_run_name_changer(conf, run_name):
     ret += '_vs_'
     ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']
     ret += f"_{conf['data']['out_of_distribution']['pick_loader']}"
+    ret += f"_{run_name}"
+    return ret
+
+def hp_tuning_run_name_changer(conf, run_name):
+    """
+    This run changer takes a look at the configuration and sets a name for that
+    run appropriately.
+    The scheme here is [trained_dataset]_vs_[ood_dataset]_[test_or_train_split]
+    """
+    ret = conf['data']['in_distribution']['dataloader_args']['dataset']
+    ret += '_vs_'
+    ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']
+    ret += f"_{conf['data']['out_of_distribution']['pick_loader']}"
+    ret += f"_num_samples_{conf['ood']['method_args']['log_prob_kwargs']['trace_calculation_kwargs']['sample_count']}"
+    ret += f"_num_steps_{conf['ood']['method_args']['log_prob_kwargs']['steps']}"
     ret += f"_{run_name}"
     return ret
 

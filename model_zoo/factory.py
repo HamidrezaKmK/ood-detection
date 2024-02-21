@@ -7,7 +7,7 @@ from . import TwoStepDensityEstimator, GaussianVAE, AdversarialVariationalBayes
 from .networks import MLP, CNN, T_CNN, GaussianMixtureLSTM
 from .networks import SimpleFlowTransform
 from .generalized_autoencoder import AutoEncoder, WassersteinAutoEncoder, BiGAN
-from .density_estimator import NormalizingFlow, EnergyBasedModel, GaussianMixtureLSTMModel
+from .density_estimator import NormalizingFlow, GaussianMixtureLSTMModel
 from pprint import pprint
 
 

@@ -161,7 +161,7 @@ class DGMGeneratedDataset(SupervisedDataset):
                 
         return self.cached_indices[idx]
 
-def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str] = None):
+def get_dgm_generated_datasets(data_root, dgm_args, device: th.Optional[str] = None, identifier: th.Optional[str] = None):
     if identifier is None:
         checkpoint_dir = dgm_args['model_loading_config']['checkpoint_dir']
         # split checkpoint_dir according to the os path separator
@@ -169,6 +169,9 @@ def get_dgm_generated_datasets(data_root, dgm_args, identifier: th.Optional[str]
         identifier = '_'.join(separated)
         # replace dots with underscores
         identifier = identifier.replace('.', '_')
+    
+    if device is not None:
+        dgm_args['device'] = device
         
     train_dset = DGMGeneratedDataset(data_root, identifier=identifier, **dgm_args)
     
@@ -215,7 +218,7 @@ class RandomImage(SupervisedDataset):
     def get_data_max(self):
         return torch.max(self.x)
 
-class GaussianMixture(SupervisedDataset):
+class ProjectedMixture(SupervisedDataset):
     """
     Samples a Gaussian mixture
     """ 
@@ -227,6 +230,10 @@ class GaussianMixture(SupervisedDataset):
         manifold_dims: th.Union[th.List[int], int] = 2,
         mixture_probs: th.Optional[th.List[float]] = None,
         scales: th.Optional[th.List[float]] = None,
+        
+        sample_distr: str = 'normal', # other types are 'uniform', 'laplace', and basically any type that np.random supports
+        sample_args: th.Optional[dict] = None,
+        
         euclidean_distance: th.Optional[float] = 1,
         ambient_dim: int = 4,
         size: int = 10000,
@@ -267,8 +274,10 @@ class GaussianMixture(SupervisedDataset):
             self.projections.append(np.random.randn(ambient_dim, mdim) * scales[i])   
             self.modes.append(i * euclidean_distance * np.random.randn(ambient_dim))
             self.covariance_matrices.append(self.projections[-1] @ self.projections[-1].T)
-        
-            raw_samples = np.random.normal(size=(int(mixture_probs[i] * size), mdim))
+
+            
+            sampler = dy.eval(f"numpy.random.{sample_distr}")
+            raw_samples = sampler(**(sample_args or {}), size=(int(mixture_probs[i] * size), mdim))
             raw_samples = raw_samples @ self.projections[-1].T + self.modes[-1]
             
             self.x.append(torch.from_numpy(raw_samples).float())
@@ -295,43 +304,66 @@ class Lollipop(SupervisedDataset):
         self, 
         name, 
         role, 
-        size: int = 1000,
-        seed: int = 110, 
+        d: int,
+        size: int,
+        center_loc: th.Tuple[float, float] = (3.0, 3.0), 
+        radius: float = 1.0,
+        stick_end_loc: th.Tuple[float, float] = (1.5, 1.5),
+        dot_loc: th.Tuple[float, float] = (0.0, 0.0),
+        candy_ratio: float = 4,
+        stick_ratio: float = 2,
+        dot_ratio: float = 1,
+        seed: int = 0,
     ):
         assert role in ['train', 'valid', 'test']
         np.random.seed(seed)
+        torch.manual_seed(seed)
         
-        self.name = name
-        self.role = role
-
+        dot_loc = torch.Tensor(dot_loc)
+        center_loc = torch.Tensor(center_loc)
+        stick_end_loc = torch.Tensor(stick_end_loc)
+        
         # Generate points for the lollipop surface (circle with radius 1 at (0, 2))
-        circle_x = []
-        circle_y = []
-        r = np.random.uniform(0, 1, size=4 * size)
-        r = np.sqrt(r)
-        theta = np.random.uniform(0, 2 * np.pi, size=4 * size)
-        circle_x = np.cos(theta) * r
-        circle_y = np.sin(theta) * r + 2 
-
-        # Generate points for the lollipop stick (line from (0, 0) to (0, 1))
-        stick_x = np.zeros(2 * size)
-        stick_y = np.linspace(0, 1, 2 * size)
-
-        # Generate a set of points at (0, -1)
-        point_x = np.zeros(size)
-        point_y = -np.ones(size)
+        candy_count = int(size * candy_ratio / (candy_ratio + stick_ratio + dot_ratio))
+        stick_count = int(size * stick_ratio / (candy_ratio + stick_ratio + dot_ratio))
+        dot_count = size - candy_count - stick_count
         
-        self.x = np.concatenate([np.stack([circle_x, circle_y]), np.stack([stick_x, stick_y]), np.stack([point_x, point_y])], axis=-1).T
-        self.y = np.concatenate([np.repeat(2, 4 * size), np.repeat(1, 2 * size), np.repeat(0, size)], axis=-1)
         
-        self.x = torch.from_numpy(self.x).float()
-        self.y = torch.from_numpy(self.y).long()
+        # Sample the candy itself:
+        # Generate N random radii and angles
+        radii = torch.sqrt(torch.rand(candy_count)) * radius
+        angles = torch.rand(candy_count) * 2 * torch.pi
+        # Calculate the x and y coordinates of the points within the circle
+        candy_samples = torch.stack([center_loc[0] + radii * torch.cos(angles), center_loc[1] + radii * torch.sin(angles)]).T
         
-    def get_data_min(self):
-        return torch.min(self.x)
+        
+        dist = torch.norm(stick_end_loc - center_loc)
+        stick_start_loc = (radius / dist * stick_end_loc + (1 - radius / dist) * center_loc)
+        coeff = torch.rand(stick_count).reshape(-1, 1)
+        
+        stick_samples = coeff @ stick_start_loc.reshape(1, -1) + (1 - coeff) @ stick_end_loc.reshape(1, -1) 
+        
+        dot_samples = dot_loc.unsqueeze(0).repeat(dot_count, 1)
+        
+        self.data_projected = torch.cat([candy_samples, stick_samples, dot_samples])
+        self.lid = torch.cat(
+            [
+                2 * torch.ones(len(candy_samples)),
+                1 * torch.ones(len(stick_samples)),
+                0 * torch.ones(len(dot_samples)),
+            ]
+        )
+        self.data = self.data_projected @ torch.randn((2, d))
+        
+        
+        perm = torch.randperm(size)
+        self.data_projected = self.data_projected[perm, :]
+        self.data = self.data[perm, :]
+        self.lid = self.lid[perm]
+        
 
-    def get_data_max(self):
-        return torch.max(self.x)
+    def project_2d(self):
+        return self.data_projected
     
 class LinearProjectedDataset(SupervisedDataset):
     """
@@ -496,7 +528,7 @@ def get_datasets_from_class(name, additional_instantiation_args: th.Optional[dic
     elif name == "random_image":
         data_class = RandomImage
     elif name == "gaussian_mixture":
-        data_class = GaussianMixture
+        data_class = ProjectedMixture
     else:
         raise ValueError(f"Unknown dataset {name}")
     

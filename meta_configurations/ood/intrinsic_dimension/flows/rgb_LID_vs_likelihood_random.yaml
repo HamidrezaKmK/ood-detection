@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: rgb_LID_vs_likelihood
+sweep_name: rgb_LID_vs_likelihood_random
 entity: platypus-dgm
 count: 10000
 method: grid
@@ -29,14 +29,16 @@ base_config:
     # bypass the entire visualization process since there is no need to plot the histograms that take time!
     bypass_visualization: True
     
+    # use subsamples
+    use_dataloader: True
+    pick_count: 128
+
     # for reproducibility
     seed: 100
     
     # The OOD detection method in use
-    method: ood.methods.intrinsic_dimension.IntrinsicDimensionOODDetection
+    method: ood.methods.intrinsic_dimension.FlowIntrinsicDimensionOODDetection
     method_args:
-      checkpointing_buffer: 16
-
       # Fast-LIDL-NF
       intrinsic_dimension_calculator_args:
         encoding_model_class: ood.methods.intrinsic_dimension.EncodingFlow
@@ -51,14 +53,32 @@ base_config:
         # verbosity
         verbose: 0
       
+      # Hyper-parameters relating to the scale parameter that is being computed
+      adaptive_train_data_buffer_size: 15    
+
       # for logging args
       verbose: 2
       
+      adaptive_setting_mode: given
+      adaptive_measurement: True
+      bin_search_iteration_count: 20
       
       
 sweep_configuration:
 
   dy__upsert:
+    - sweep: True
+      sweep_identifier: A_inner_calculator
+      sweep_alias:
+        - taylor_approximation
+        - thresholding
+      values:
+        - ood:
+            method_args:
+              submethod: taylor_approximation
+        - ood:
+            method_args:
+              submethod: thresholding
     - sweep: True
       sweep_identifier: B_in_distribution_model
       sweep_alias:
@@ -165,18 +185,31 @@ sweep_configuration:
             method_args:
               given_mean_lid: 169 # obtained by LPCA with threshold 0.001
               # given_mean_lid: 17.449080638985365 # obtained by ESS
-        
     - sweep: True
       sweep_identifier: C_ood_picker
       sweep_alias:
+      - random
+      - same
       - generated
-      - svhn
-      - cifar10
-      - celeba-small
-      - celeba
-      - tiny-imagenet
-      - cifar100
       values:
+      - data:
+          out_of_distribution:
+            dataloader_args:
+              dataset: random_image
+              additional_dataset_args:
+                H: 32
+                W: 32
+                C: 3
+                size: 10000
+      - data:
+          out_of_distribution:
+            dataloader_args:
+              dataset:
+                dy__eval:
+                  expression: |
+                    def pick_same(conf):
+                      return conf['data']['in_distribution']['dataloader_args']['dataset']
+                  function_of_interest: pick_same
       - data:
           out_of_distribution:
             dataloader_args:
@@ -189,84 +222,4 @@ sweep_configuration:
 
                 function_of_interest: pick_generated
 
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: svhn
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: cifar10
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: celeba-small
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: celeba
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: tiny-imagenet
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: cifar100
-
-    - sweep: True
-      sweep_identifier: Z_inner_calculator
-      sweep_alias:
-        - thresholding
-        - taylor_approximation
-      values:
-        - ood:
-            method_args:
-              submethod: thresholding
-        - ood:
-            method_args:
-              submethod: taylor_approximation
-    - sweep: True
-      sweep_identifier: Y_r_selection
-      sweep_alias:
-        - fixed
-        - percentile
-        - LPCA
-      values:
-      - ood:
-          method_args:
-            evaluate_r: -20
-            adaptive_measurement: False
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            adaptive_setting_mode: percentile
-            percentile: 10
-            dimension_tolerance: 0.07
-            bin_search_iteration_count: 20
-            adaptive_train_data_buffer_size: 15
-      - ood:
-          method_args:
-            adaptive_measurement: True
-            adaptive_setting_mode: given 
-            bin_search_iteration_count: 20
-            adaptive_train_data_buffer_size: 15
-
-    - sweep: True
-      sweep_identifier: A_subsample_size # run on different subsample sizes to tradeoff speed for accuracy!
-      sweep_alias:
-      - tiny
-      - medium
-      - huge
-      values:
-      - ood:
-          use_dataloader: True
-          pick_count: 16
-      - ood:
-          use_dataloader: True
-          pick_count: 512
-      - ood:
-          use_dataloader: True
-          pick_count: 4096
-              
-    
+     

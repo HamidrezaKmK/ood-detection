@@ -104,7 +104,7 @@ class RadiiTrend(OODBaseMethod):
             with_std=self.with_std,
         )
 
-class IntrinsicDimensionOODDetection(OODBaseMethod):
+class FlowIntrinsicDimensionOODDetection(OODBaseMethod):
     """
     This method computes the intrinsic dimensionality using intrinsic dimension.
     

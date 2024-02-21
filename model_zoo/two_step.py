@@ -102,6 +102,7 @@ class TwoStepComponent(nn.Module):
             denoising_sigma=None,
             dequantize=False,
             scale_data=False,
+            scale_data_to_n1_1=False,
             whitening_transform=False,
             background_augmentation: th.Optional[float] = None,
             logit_transform=False,
@@ -111,12 +112,18 @@ class TwoStepComponent(nn.Module):
 
         assert not (scale_data and whitening_transform), \
             "Cannot use both a scaling and a whitening transform"
+        assert not (scale_data and scale_data_to_n1_1), \
+            "Cannot use both a scaling and a scaling to (-1,1) transform"
+        assert not (scale_data_to_n1_1 and whitening_transform), \
+            "Cannot use both a scaling to (-1,1) and a whitening transform"
+
 
         self.flatten = flatten
         self.data_shape = data_shape
         self.denoising_sigma = denoising_sigma
         self.dequantize = dequantize
         self.scale_data = scale_data
+        self.scale_data_to_n1_1 = scale_data_to_n1_1
         self.whitening_transform = whitening_transform
         self.logit_transform = logit_transform
         self.background_augmentation = background_augmentation
@@ -215,29 +222,6 @@ class TwoStepComponent(nn.Module):
             if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 raise NotImplementedError("ReduceLROnPlateau is not integrated yet!")
         
-    #     self._get_lr_scheduler(
-    #         optim=self.optimizer,
-    #         use_scheduler=cfg.get("use_lr_scheduler", False),
-    #         cfg=cfg
-    #     )
-
-    # def _get_lr_scheduler(self, optim, use_scheduler, cfg):
-    #     if use_scheduler:
-    #         # NOTE: Only coding cosine LR scheduler right now
-    #         # NOTE: Use LR scheduling every train step, not every epoch
-    #         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    #             optimizer=optim,
-    #             T_max=cfg["max_epochs"]*(cfg["train_dataset_size"]//cfg["train_batch_size"]),
-    #             eta_min=0.
-    #         )
-    #     else:
-    #         lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-    #             optimizer=optim,
-    #             lr_lambda=lambda step: 1.
-    #         )
-
-    #     return lr_scheduler
-
     def set_whitening_params(self, mu, sigma):
         self.whitening_mu = torch.reshape(mu, self._get_whiten_dims())
         self.whitening_sigma = torch.reshape(sigma, self._get_whiten_dims())
@@ -258,6 +242,8 @@ class TwoStepComponent(nn.Module):
             data = data + torch.rand_like(data)
         if self.scale_data:
             data = data / (self.abs_data_max + self.dequantize)
+        elif self.scale_data_to_n1_1:
+            data = 2. * (data - self.data_min) / (self.data_range + self.dequantize) - 1.
         elif self.whitening_transform:
             data = data - self.whitening_mu
             data = data / self.whitening_sigma
@@ -280,6 +266,8 @@ class TwoStepComponent(nn.Module):
                 data = data * (self.abs_data_max + 1.0)
             else:
                 data = data * self.abs_data_max
+        elif self.scale_data_to_n1_1:
+            data = 0.5 * (data + 1.) * (self.data_range + self.dequantize) + self.data_min
         elif self.whitening_transform:
             data = data * self.whitening_sigma
             data = data + self.whitening_mu
@@ -294,3 +282,7 @@ class TwoStepComponent(nn.Module):
     @property
     def abs_data_max(self):
         return max(self.data_min.abs(), self.data_max.abs())
+
+    @property
+    def data_range(self):
+        return self.data_max - self.data_min
