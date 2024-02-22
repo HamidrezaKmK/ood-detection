@@ -160,10 +160,10 @@ After doing so, you can export the scatterplot to get a set of likelihood and LI
 While configuring the `yaml` file is sufficient to reproduce our experiments, we have also set up a system for our large-scale experiments involving running all of the different methods for different in-distribution/OOD pairs.
 To achieve that, we use [dysweep](https://github.com/HamidrezaKmK/dysweep), which is an integration with weights and biases that enables sweeping over different configurations systematically.
 For example, let us say that one wants to train a model architecture on all the different datasets. Instead of copying a `yaml` configuration for each dataset and replacing the corresponding dataset, we specify a *meta-configuration* which is itself a `yaml` file. 
-When running this meta configuration using the `dysweep` library, a [sweep](https://docs.wandb.ai/guides/sweeps) object would be created in your W&B page that agents from different machines (or possibly different processes within one machine) can connect to. Each agent then performs one of the tasks entailed by this `yaml` configuration. In this example, each agent will train a model on one of the datasets that were specified. 
+When running this meta configuration using the `dysweep` library, a [sweep](https://docs.wandb.ai/guides/sweeps) object would be created in your W&B page that agents from different machines (or possibly different processes within one machine) can connect to. Each agent then performs one of the tasks entailed by this `yaml` configuration. In this example, each agent will train the model and pick a dataset to train on. 
 This allows us to facilitate multiple machines or possibly a cluster of machines with parallelism enabled for our computations, and also, groups all of our relevant experiments within a W&B sweep abstraction. 
 
-We have grouped our experiments into different `yaml` files in the directory [meta configuration](./meta_configurations/). These files contain all the hyperparameter setup necessary down to the detail and provide an overview of a **group** of relevant experiments. You may check the dysweep documentation to see how they work.
+We have grouped our experiments into different `yaml` files in the directory [meta configuration](./meta_configurations/). These files contain all the hyperparameter setup necessary down to the detail and provide an overview of a *group* of relevant experiments. You may check the dysweep documentation to see how they work.
 
 ### Running Sweeps
 
@@ -175,14 +175,16 @@ For example, to run a sweep server that handles training all the grayscale image
 ```bash
 dysweep_create --config ./meta_configuration/training/flows/grayscale_flows.yaml
 ```
-After running each sweep, you will be given a sweep identifier from the server which would in turn allow you to run the actual experiments in parallel. 
-To initiate a process that takes an experiment from the sweep server and run it, you may run the following:
+After running each sweep, you will be given a sweep identifier from the W&B server which would in turn allow you to run the experiments associated with that meta configuration in parallel. 
+Run the following code snippets to instantiate an agent that connects to the server and performs a job:
 ```bash
 ./meta_run_train.sh <sweep-id> # if the sweep is pertaining to a model training task
 ./meta_run_ood.sh <sweep-id> # if the sweep is pertaining to an OOD detection task
 ```
 
-You can check the list of all the sweeps in the files included within the [meta configuration](./meta_configurations/) directory. You may access some of the main experiment groups in the following:
+This will create a `dysweep_logs` directory in which you can access all of the sweeps and checkpoints associated with the runs. In case you want to train a set of models for example, you can run the `meta_run_train.sh` file and then access all the model checkpoints through the `dysweep_logs/checkpoints-<sweep-id>` directory.
+
+Some of the main experiment groups with their appropriate `yaml` files include:
 
 1. Train both neural spline flows and affine flows on all the grayscale datasets [here](./meta_configurations/).
 2. Train both neural spline flows and affine flows on all the RGB datasets [here](TODO).
