@@ -1,38 +1,43 @@
-# OOD Detection for Likelihood-based Deep Generative Models
+# OOD Detection with Likelihood-based Deep Generative Models
 
 <p align="center">
   <img src="./figures/fig2-aria-1.png" alt="Explanation of OOD failure" />
 </p>
 
-Intuitively, when one trains a likelihood-based model, it increases the likelihood for the training (in-distribution), one might also reasonably assume that since the likelihoods integrate to zero (they are a valid density) they would obtain low likelihoods on out-of-distribution. Paradoxically, based on the research presented in ["Do deep generative models know what they don't know?"](https://arxiv.org/abs/1810.09136), likelihood values alone are not a reliable indicator for whether a datapoint is OOD or not, and in many cases, the out-of-distribution data *consistently* get assigned higher likelihoods.
-On the flip side, these generative models are capable of generating high-quality in-distribution data. Thus, the clues for OOD detection likely exist within these models, even if they aren't directly tied to the likelihood values.
-To unravel this, our exploration encompasses the complete likelihood landscape or their learned density. Through this, we aim to elucidate these complexities and enhance approaches for OOD detection.
+# Overview
 
-**Note**: This codebase is based on the generative models in [two_step_zoo](https://github.com/layer6ai/two_step_zoo), containing code from the paper ["Diagnosing and Fixing Manifold Overfitting in Deep Generative Models"](https://arxiv.org/abs/2204.07172) accepted to TMLR in July 2022. Here, the models hyperparameters are tailored for this particular application.
+In many likelihood-based generative models, the model specifies a density function over all the possible datapoints, and the training process typically aims to increase the density for training (in-distribution) data. We know that densities integrate to one over all the possible datapoints, and as a consequence, one can reasonably assume that this would also decrease the density regions that are far apart from the training data, i.e., out-of-distribution (OOD) regions. Paradoxically, based on research first presented in Nalisnick et al.'s work titled ["Do deep generative models know what they don't know?"](https://arxiv.org/abs/1810.09136), likelihood values (or probability densities) alone are not a reliable indicator for whether a datapoint is OOD or not, and in many cases, the OOD data *consistently* gets higher likelihoods assigned (see the figure above).
+
+On the flip side, the generative models that exhibit such pathological behavior are simultaneously capable of generating high-quality in-distribution data. Thus, the information required for OOD detection likely exists within these models, it just might not be the likelihood values alone. One important observation is that since OOD data is never generated from a generative model, the area around them (i.e., local probability mass around the OOD region) should have densities that integrate to a small probability. Thus using local probability *masses* instead of using mere probability *densities* seems like a more reasonable approach for OOD detection using generative models. To unravel this, we explore methods that take the entire high-dimensional density landscape induced by the generative model into consideration for OOD detection. 
+
+This repository contains our ideas to tackle this problem alongside implementation of some recent relevant OOD detection baselines on a large set of models and datasets. The methods that are included are:
+
+1. Likelihood ratio method for normalizing flows by [Ren et al.](https://arxiv.org/abs/1906.02845)
+2. Complexity method for flow models by [Serrà et al.](https://arxiv.org/abs/1909.11480)
+3. Likelihood ratio method for diffusion models by [Goodier et al.](https://arxiv.org/pdf/2310.17432.pdf) 
+4. Reconstruction-based OOD detection with diffusions by [Graham et al.](https://arxiv.org/pdf/2211.07740.pdf)
+5. Likelihood OOD detection based on LID estimates for diffusions and normalizing flows by [Kamkari et al.](TODO)
+
 
 ## Setup
 
-**Make sure that your Python is `3.9` or higher; otherwise, some of the new autodiff functionalities we use might break. Also, you should install the nflows package from [here](https://github.com/HamidrezaKmK/nflows) which is a version of `nflows` that makes it functional for RQ-NSFs. All of these are automatically handled in the environment files.**
+### Environment
 
-In terms of Python environments, we support both `pip` and `conda`.
+**The codebase uses functional autodiff features that were recently added to `pytorch`. Make sure that your Python is `3.9` or higher; otherwise, some of the new autodiff functionalities we use might break. You should also install the `nflows` package from [here](https://github.com/HamidrezaKmK/nflows) which enables functional autodiff for the flow models such as the neural spline flows that we are using.**
 
-To install the requirements with `pip` run the following:
-
-```bash
-pip install -r requirements.txt
-```
-
-As for `conda`, you may run the following:
+Create the following conda environment to handle dependencies.
 
 ```bash
+# This creates an environment called 'ood-detection':
 conda env create -f env.yml 
-# This creates an environment called 'ood-detection' that you can activate
+# You can activate it as follows:
+conda activate ood-detection
 ```
 
-## Custom Environment Variables
+### Custom Environment Variables
 
-We have optionally introduced dynamic directory allocation. 
-You have the option to specify environment variables for directories where checkpoints or datasets are stored. If not set, the code will default to creating a `runs` directory for model checkpoints and a `data` directory for dataset details.
+The codebase uses a handful of datasets and generative models for OOD detection. All of the model checkpoints should be accessible through the `MODEL_DIR` directory and all of the data should be accessible through the `DATA_DIR` directory.
+You have the option to specify environment variables that contain these directories, in fact, it is recommended to set this in the beginning. If not set, however, the code will create a `runs` directory for the model checkpoints and `data` directory for the datasets in the current working directory.
 
 ```bash
 # Set the directory where you store all the model checkpoints
@@ -40,56 +45,149 @@ dotenv set MODEL_DIR <root-path-to-model-configurations-and-weights>
 # Set the directory where you store all the datasets
 dotenv set DATA_DIR <root-path-to-data-directory>
 ```
+### Weights & Biases
+
+We facilitate features from Weights & Biases (W&B) heavily in our experiments, especially for logging our results. In fact, our experiments use a two-fold mindset where we first run experiments that log important information onto W&B, and then, use the exports from W&B to evaluate the performance of OOD detection methods. Thus, we require you to create a Weights & Biases workplace and set up the login information according to the guidelines indicated [here](https://docs.wandb.ai/quickstart).
+
+**Note:** The current `yaml` configurations creates a default workspace named `platypus-dgm`! You can change the workspace by changing that keyword to anything you want in all the `yaml` files under [meta configuration](./meta_configurations/) or [configurations](./configurations/).
+
+### Model Checkpoints (Optional)
+
+To easily reproduce our results without the need for training, we have pre-trained a set of models for the datasets under consideration and you may access their corresponding checkpoints through [this](https://drive.google.com/drive/folders/1w1MK90eNSONRvPqUM86Bfjafrd4JxGTv?usp=sharing) link. Once you have downloaded the model checkpoints the `MODEL_DIR` directory should have the following structure. This is an optional step and you can always use our codebase itself to train your models from scratch.
+
+(TODO: add likelihood ratio models!)
+
+```
+MODEL_DIR/
+|-- checkpoints-443rgkyn/ (flow model (affine/spline flow) checkpoints trained on grayscale datasets)
+|   |-- PiecewiseRationalQuadraticCouplingTransform_mnist_agenizing_xhkxy2eu_final
+|   |-- PiecewiseRationalQuadraticCouplingTransform_fashion-mnist_barroom_sax6meoj_final
+|   |-- PiecewiseRationalQuadraticCouplingTransform_omniglot_polysynthetic_v816f4eg_final
+|   |-- PiecewiseRationalQuadraticCouplingTransform_emnist_papillous_jr5k61wg_final
+|   |-- AffineCouplingTransform_mnist_unforgettably_6a8il0rr_final
+|   |-- AffineCouplingTransform_fashion-mnist_spritzer_ahbuahyr_final
+|   |-- AffineCouplingTransform_omniglot_sarcophaguses_24z9ios4_final
+|   |-- AffineCouplingTransform_emnist_josey_zkejz05t_final
+|-- checkpoints-zei1ialy/ (flow model (affine/spline flow) checkpoints trained on RGB datasets)
+|   |-- PiecewiseRationalQuadraticCouplingTransform_cifar10_heteronomous_owjcfa1x_final
+|   |-- PiecewiseRationalQuadraticCouplingTransform_svhn_hittitics_znujejsh_final
+|   |-- PiecewiseRationalQuadraticCouplingTransform_cifar100_unindigenous_42n5ww2b_final
+|   |-- PiecewiseRationalQuadraticCouplingTransform_tiny-imagenet_directors_zk9ezaia_final
+|   |-- PiecewiseRationalQuadraticCouplingTransform_celeba-small_loculose_8fvoxku1_final
+|   |-- AffineCouplingTransform_cifar10_loller_neht0raf_final
+|   |-- AffineCouplingTransform_svhn_loricae_8552bnt7_final
+|   |-- AffineCouplingTransform_cifar100_dependable_rurkoi3l_final
+|   |-- AffineCouplingTransform_tiny-imagenet_mediofrontal_i007b0qb_final
+|   |-- AffineCouplingTransform_celeba-small_ricinus_y3xyffia_final
+|-- checkpoints-znod8v3z/ (score-based diffusion model checkpoints trained on grayscale datasets)
+|   |-- diffusion_celeba_pelias_96yglzw3_final   
+|   |-- diffusion_cifar100_acemetic_avmihhcs_final
+|   |-- diffusion_svhn_regretless_ixiwzx2l_final
+|   |-- diffusion_celeba-small_petroleum_uhtqybca_final
+|   |-- diffusion_cifar10_distinctions_aep6z5pr_final
+|   |-- diffusion_tiny-imagenet_autolavage_84hvhvrz_final
+|-- checkpoints-hg9x5r0n/ (score-based diffusion model checkpoints trained on RGB datasets)
+|   |-- diffusion_emnist_iridomyrmex_7wnmityc_final
+|   |-- diffusion_fashion-mnist_interparental_bxnuw7zk_final
+|   |-- diffusion_mnist_tweeting_1ou4vbuo_final
+|   |-- diffusion_omniglot_polacre_txgcp3yt_final
+```
+
+**Note:** The naming convention here is also used for [large-scale experimentation](#large-scale-experiments-with-dysweep-optional). If you want to train your own models for any reason, you may need to change the checkpoint directory in the [meta configuration](./meta_configurations/) directory.
+
+For the data, the code will automatically try to download all the datasets in the appropriate directory; however, we have also included the datasets that we have considered [here](https://drive.google.com/file/d/1-0WjxAYBNGzWU_lI85ow9TJrgNYu2za_/view?usp=sharing). Once downloaded, you may extract it in your custom data folder and it should contain the following subdirectories:
+
+```
+DATA_DIR/
+|-- celeba
+|-- celeba-small
+|-- cifar10
+|-- cifar100
+|-- emnist
+|-- mnist
+|-- fashion-mnist
+|-- omniglot
+|-- svhn
+|-- tiny-imagenet
+```
 
 ## Running Single Experiments
 
-The project is divided into two sections:
+We either train models or use pre-trained models for OOD detection. Thus, we have *two* main runnable files `train.py` and `main_ood.py`:
 
-1. **Training likelihood-based models**: 
-The codes for model training lie within the [model_zoo](./model_zoo/) directory. To run a specific model, define a training configuration and run `train.py` on that configuration. For example, to train a Neural Spline Flow on Fashion-MNIST, there is a training configuration defined at [train_config](configurations/training/example_train.yaml). We use `jsonargparse` to define all your configurations in a `yaml` file, so you can run the following:
+### Training likelihood-based models
+The codes for model training can be found in the [model_zoo](./model_zoo/) directory and is based off of the [`two-step-zoo`](https://github.com/layer6ai-labs/two_step_zoo) codebase.
+To train a specific model, define a model and training configuration as a `yaml` file and run `train.py` on that configuration. 
+For example, to train a neural spline flow on Fashion-MNIST, there is a training configuration defined [here](configurations/training/flows/example_train.yaml). By running the following code, the script will start to train the model and log into the appropriate W&B page that you have set up. Also, model checkpoints would be stored in the `MODEL_DIR` directory that you have set up.
 
 ```bash
 python train.py --config configurations/training/example_train.yaml 
-# please refer to setting up weights and biases if you ran into related errors here
+# please refer to setting up W&B if you ran into related errors here
 ```
 
-2. **Performing OOD-detection**: The codebase for OOD-detection lies within the [ood](./ood/) directory. Every OOD detection method is encapsulated within a class that inherits a base class defined in [OODMethodBaseClass](./ood/base_method.py). To run experiments on OOD detection, one can pick any likelihood-based model with specific checkpoints, specify an *in-distribution* dataset and an *out-of-distribution* dataset, and run the method. The `main_ood.py` is the runner script for this. Similar to the training configurations, we use `jsonargparse` to define all your configurations in a `yaml` file, so you can run the following example that performs a basic OOD detection technique on a Neural Spline Flow trained on Fashion-MNIST and then tests it on MNIST to see the pathology:
+The configuration file is quite involved, but for the most part, there is no need to understand every single hyperparameter.
+In case you want to extend the codebase and change the model configurations that we have used, check our [guide](./docs/configs.md) alongside the comments in the `yaml` files to see the appropriate meaning of each of the hyperparameters.
+
+
+### Performing OOD detection
+The methods for OOD detection can be found in the [ood](./ood/) directory. For better maintainability, all of the methods are implemented as classes that inherit [`OODBaseMethod`](./ood/base_method.py). Any likelihood-based OOD detection method that we support takes in an *in-distribution* and *out-of-distribution* dataset alongside a *model* configuration and checkpoint.
+In turn, the `main_ood.py` runs the appropriate OOD detection method and logs intermediate outputs on the W&B page.
+Similar to the training configurations, we use `yaml` files to configure our OOD detection tasks.
+For example, you can run the following script that runs the local intrinsic dimension (LID) OOD detection script based on a neural spline flow assuming fashion-mnist is the in-distribution dataset and mnist is the OOD dataset.
 
 ```bash
-python main_ood.py --config configurations/ood/simple_rq_nsf_fmnist_mnist.yaml
+python main_ood.py --config configurations/ood/LID_ood_example.yaml
+# TODO: complete and check this!
 ```
 
-For more information on how to define these configurations, please check out our [guide](./docs/configs.md) alongside the comments in the `yaml` files that we have provided.
+Similar to training, for more information on how to define your customized `yaml` configurations, please check out our [guide](./docs/configs.md) alongside the comments in the `yaml` files that we have provided.
 
-## Weights and Biases Integration and Sweeps
 
-We use [dysweep](https://github.com/HamidrezaKmK/dysweep), which is an integration with weights and biases for systematic experimentation (similar to [Hydra](https://hydra.cc/) but specific to Weights & Biases). 
-We have grouped our experiments into different `yaml` files containing all the hyperparameter setup necessary down to the detail. Each file contains an overview of a **group** of relevant experiments; this integration groups together our experiments and performs sweeps that allow for parallelism. For an overview of our grouped experiments, please refer to the directory [meta configuration](./meta_configurations/).
+Running the `main_ood.py` script will not directly produce an evaluation metric such as the area under the receiver operator characteristic curve (AUC-ROC) that we have been showing in our paper. In fact, it logs interim interpretable plots that can then be further processed to come up with these evaluation metrics. We have indeed already exported and stored the appropriate tables in the [notebooks](./notebooks/) directory for ease of use.
 
-### Setting up Weights and Biases
+As an example, the LID-based technique logs a scatterplot in W&B juxtaposing the likelihood and LID estimate for a large subsample of the datapoints in the `mnist` dataset. 
+You can then run the following script to log the LID and likelihood estimate for `fashion-mnist` datapoints as well:
 
-To run the experiments, we require you to create a Weights & Biases workplace and set up the login information according to the guidelines indicated [here](https://docs.wandb.ai/quickstart).
+```bash
+python main_ood.py --config configurations/ood/LID_ood_example_in_distr.yaml 
+# TODO: complete and check this!
+```
 
-**Important note:** The current workspace in all the `yaml` files is set to `platypus-dgm` in [meta configuration](./meta_configurations/), please change it to whatever workspace or entity you are working with.
+After doing so, you can export the scatterplot to get a set of likelihood and LID estimates for each individual point and further process it to get the (AUC-ROC) metric. For a thorough guide on how to get the exact evaluation metrics that we have considered please check the [evaluation](./notebooks/final_evaluations.ipynb) Jupyter notebook.
+
+## Large-scale Experiments with Dysweep (Optional)
+
+While configuring the `yaml` file is sufficient to reproduce our experiments, we have also set up a system for our large-scale experiments involving running all of the different methods for different in-distribution/OOD pairs.
+To achieve that, we use [dysweep](https://github.com/HamidrezaKmK/dysweep), which is an integration with weights and biases that enables sweeping over different configurations systematically.
+For example, let us say that one wants to train a model architecture on all the different datasets. Instead of copying a `yaml` configuration for each dataset and replacing the corresponding dataset, we specify a *meta-configuration* which is itself a `yaml` file. 
+When running this meta configuration using the `dysweep` library, a [sweep](https://docs.wandb.ai/guides/sweeps) object would be created in your W&B page that agents from different machines (or possibly different processes within one machine) can connect to. Each agent then performs one of the tasks entailed by this `yaml` configuration. In this example, each agent will train a model on one of the datasets that were specified. 
+This allows us to facilitate multiple machines or possibly a cluster of machines with parallelism enabled for our computations, and also, groups all of our relevant experiments within a W&B sweep abstraction. 
+
+We have grouped our experiments into different `yaml` files in the directory [meta configuration](./meta_configurations/). These files contain all the hyperparameter setup necessary down to the detail and provide an overview of a **group** of relevant experiments. You may check the dysweep documentation to see how they work.
 
 ### Running Sweeps
 
-Weights & Biases creates sweep servers that help you to simultaneously run different experiments.
-Every `yaml` file in [meta configuration](./meta_configurations/) contains information in a sweep that can be run using the following:
+Every `yaml` file in [meta configuration](./meta_configurations/) contains information about that group of experiments. Run the following code to create a sweep object:
 ```bash
 dysweep_create --config <path-to-meta-configuration>
 ```
-For example, to run a sweep server that handles training all the greyscale images, you may run the following:
+For example, to run a sweep server that handles training all the grayscale images, you may run the following:
 ```bash
-dysweep_create --config ./meta_configuration/training/grayscale_flows.yaml
+dysweep_create --config ./meta_configuration/training/flows/grayscale_flows.yaml
 ```
-After running each sweep, you will be given a sweep identifier from the sweep server which would in turn allow you to run the actual experiments in parallel. To initiate a process that takes an experiment from the sweep server and run it, you may run the following:
+After running each sweep, you will be given a sweep identifier from the server which would in turn allow you to run the actual experiments in parallel. 
+To initiate a process that takes an experiment from the sweep server and run it, you may run the following:
 ```bash
 ./meta_run_train.sh <sweep-id> # if the sweep is pertaining to a model training task
 ./meta_run_ood.sh <sweep-id> # if the sweep is pertaining to an OOD detection task
 ```
 
-## Reproducing work based on this codebase
+You can check the list of all the sweeps in the files included within the [meta configuration](./meta_configurations/) directory. You may access some of the main experiment groups in the following:
 
-* For the local intrinsic dimension (LID) based method, please check [here](docs/reproduce_lid.md).
-* For benchmarks on the LID estimation method that we employ, please check [here](docs/lid_estimation_comparison.md).
+1. Train both neural spline flows and affine flows on all the grayscale datasets [here](./meta_configurations/).
+2. Train both neural spline flows and affine flows on all the RGB datasets [here](TODO).
+3. Train both neural spline flows and affine flows on all the RGB datasets [here](TODO).
+4. Run LID OOD-detection on flow models for grayscale [here](TODO).
+5. Run LID OOD-detection on diffusion models for RGB [here](TODO).
+6. Run likelihood ratio method for OOD detection on grayscale [here](TODO).
+6. Run likelihood ratio method for OOD detection on grayscale [here](TODO).

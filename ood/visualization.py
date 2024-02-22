@@ -1,7 +1,7 @@
 """
 This code is intended for visualization purposes on weights and biases.
 The tables and figures on weights and biases are then used to produce the
-actual plots in the paper.
+actual evaluation metrics in the paper.
 """
 import numpy as np
 import typing as th
