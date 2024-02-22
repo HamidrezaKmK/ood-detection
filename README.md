@@ -184,11 +184,15 @@ Run the following code snippets to instantiate an agent that connects to the ser
 
 This will create a `dysweep_logs` directory in which you can access all of the sweeps and checkpoints associated with the runs. In case you want to train a set of models for example, you can run the `meta_run_train.sh` file and then access all the model checkpoints through the `dysweep_logs/checkpoints-<sweep-id>` directory.
 
-Some of the main experiment groups with their appropriate `yaml` files include:
+### Running Main Experiments of the Paper
 
-1. Train both neural spline flows and affine flows on all the grayscale datasets [here](./meta_configurations/).
-2. Train both neural spline flows and affine flows on all the RGB datasets [here](TODO).
-3. Train both neural spline flows and affine flows on all the RGB datasets [here](TODO).
+Some of the main experiment groups with their appropriate `yaml` files that are used in the paper are included in the following. Make sure to use `dysweep_create` to run these meta configurations and then use the appropriate `bash` running script as many times needed to have all your experiments logged into W&B.
+
+1. Train both neural spline flows and affine flows on all the grayscale datasets: [`meta_configurations/training/flows/grayscale_flows.yaml`](meta_configurations/training/flows/grayscale_flows.yaml).
+2. Train both neural spline flows and affine flows on all the RGB datasets: [`meta_configurations/training/flows/colorful_flows.yaml`](meta_configurations/training/flows/colorful_flows.yaml).
+3. Train VP-SDE and VE-SDE diffusion models on all the RGB datasets: [`meta_configurations/training/flows/colorful_flows.yaml`](meta_configurations/training/flows/colorful_flows.yaml).
+3. Train both neural spline flows and affine flows on all the grayscale datasets with random perturbations for Ren et al. [here](TODO).
+3. Train both neural spline flows and affine flows on all the RGB datasets with random perturbations for Ren et al. [here](TODO).
 4. Run LID OOD-detection on flow models for grayscale [here](TODO).
 5. Run LID OOD-detection on diffusion models for RGB [here](TODO).
 6. Run likelihood ratio method for OOD detection on grayscale [here](TODO).

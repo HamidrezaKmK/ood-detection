@@ -78,15 +78,11 @@ base_config:
           class_path: torch.optim.AdamW
           init_args:
             lr: 0.001
-        evaluator:
-          valid_metrics: [loss]
-          test_metrics: [loss]
         sample_freq: null # logs the samples after every two epochs
         max_epochs: 20
         early_stopping_metric: loss
         max_bad_valid_epochs: 30
         max_grad_norm: 1.0
-        only_test: False
         progress_bar: True
 
       verbose: 2

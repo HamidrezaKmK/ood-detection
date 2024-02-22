@@ -1,12 +1,12 @@
 import time
 import skdim
-from dimensions.base_method import BaseIntrinsicDimensionEstimationMethod
+from dimensions.base_method import BaseLIDEstimationMethod
 import typing as th
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
-class SkdimIntrinsicDimensionEstimation(BaseIntrinsicDimensionEstimationMethod):
+class SkdimIntrinsicDimensionEstimation(BaseLIDEstimationMethod):
     def __init__(
         self,
         estimator_name: th.Literal[

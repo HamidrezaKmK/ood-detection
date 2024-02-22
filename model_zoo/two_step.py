@@ -1,3 +1,6 @@
+# This code is not used at all and is an artifact from the two_step_zoo repo.
+# However, I have kept it here for possible future use.
+
 from abc import abstractmethod
 import numpy as np
 import torch
@@ -162,7 +165,14 @@ class TwoStepComponent(nn.Module):
 
     def train_batch(self, x, max_grad_norm=None, trainer=None, **kwargs):
         self.optimizer.zero_grad()
-
+        
+        # print(self.device)
+        for param in self.parameters():
+            if str(param.device) != 'cuda:0':
+                print(param.device, param)
+        print(x.device)
+        print("DBG ---")
+        x = x.contiguous().to(self.device)
         loss = self.loss(x, **kwargs)
         loss.backward()
 

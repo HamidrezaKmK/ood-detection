@@ -4,7 +4,7 @@ import typing as th
 import numpy as np
 from model_zoo import Writer
 
-class BaseIntrinsicDimensionEstimationMethod:
+class BaseLIDEstimationMethod:
     """
     This is a base module for estimating local intrinsic dimension.
     

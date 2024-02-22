@@ -1,3 +1,5 @@
+# An example yaml file for training a diffusion model
+# change the data.dataset to any other grayscale dataset such as: fashion-mnist, mnist, omniglot, etc.
 data:
   dataset: fashion-mnist
   make_valid_loader: true

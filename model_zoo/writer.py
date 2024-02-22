@@ -1,5 +1,6 @@
 # NOTE: The below file is modified from commit `aeaf5fd` of
 #       https://github.com/jrmcornish/cif/blob/master/cif/writer.py
+# and then modified again to fit Weights & Biases logging.
 
 import os
 import datetime
@@ -9,7 +10,7 @@ import typing as th
 
 import numpy as np
 import torch
-
+from dotenv import load_dotenv
 # from tensorboardX import SummaryWriter
 
 import wandb
@@ -49,24 +50,31 @@ class Writer:
 
     def __init__(
         self, 
-        logdir, 
-        make_subdir, 
-        tag_group, 
+        tag_group,
+        logdir: th.Optional[str] = None,
+        make_subdir: bool = True, 
         type: th.Literal['tensorboard', 'wandb'] = 'tensorboard',
         name: th.Optional[str] = None,
         redirect_streams: bool = False,
         config: th.Optional[dict] = None,
         **kwargs
     ):
-        
+        # add model_dir as a prefix to logdir if it is available
+        load_dotenv()
+        if os.getenv("MODEL_DIR") is not None:
+            _pref = os.getenv("MODEL_DIR")
+            logdir = _pref if logdir is None else os.path.join(_pref, logdir)
+            
         os.makedirs(logdir, exist_ok=True)
-        logdir_name = '' if name is None else name.split(RUN_NAME_SPLIT)[0]
+            
         if make_subdir:
-            if len(logdir_name) == 0:
+            if name is None:
                 timestamp = datetime.datetime.now().strftime('%b%d_%H-%M-%S')
                 logdir = os.path.join(logdir, timestamp)
             else:
-                logdir = os.path.join(logdir, logdir_name)
+                # if name contains RUN_NAME_SPLIT, then we assume that the first part is the run name
+                logdir = os.path.join(logdir, name.split(RUN_NAME_SPLIT)[0])
+                
             os.makedirs(logdir, exist_ok=True)
         
         if config is not None:
@@ -75,7 +83,8 @@ class Writer:
             
         self.type = type
         if type == 'tensorboard':
-            
+            raise NotImplementedError("TensorboardX is not supported anymore. Please use W&B for logging.")
+            # TODO: fix tensorboard as well
             from tensorboardX import SummaryWriter
             self._writer = SummaryWriter(logdir=logdir, **kwargs)
 
@@ -102,19 +111,6 @@ class Writer:
                 primary_file=self._STDERR,
                 secondary_file=open(os.path.join(logdir, "stderr"), "a")
             )
-#  writer.write_table(
-#             name='LID_data',
-#             data=table,
-#             columns = ['predicted_lid', 'true_lid', 'idx'],
-#         )
-        
-#         writer.log_scatterplot(
-#             name='LID_scatterplot',
-#             title="LID estimation scatterplot",
-#             data_table='LID_data',
-#             x='predicted_lid',
-#             y='true_lid',
-#         )
 
     def write_table(
         self,
@@ -220,32 +216,3 @@ class Writer:
     def _tag(self, tag):
         return f"{self._tag_group}/{tag}"
         
-
-def get_writer(cmd_line_args, **kwargs):
-    two_step = ("shared_cfg" in kwargs)
-
-    if cmd_line_args.load_dir and not (two_step and cmd_line_args.load_pretrained_gae):
-        # NOTE: In this case, operate in the existing directory
-        writer = Writer(
-            logdir=cmd_line_args.load_dir,
-            make_subdir=False,
-            tag_group=cmd_line_args.dataset
-            **kwargs['additional_writer_args'],
-        )
-    else:
-        cfg = kwargs["shared_cfg"] if two_step else kwargs["cfg"]
-        writer = Writer(
-            logdir=cfg["logdir_root"],
-            make_subdir=True,
-            tag_group=cmd_line_args.dataset,
-            **kwargs['additional_writer_args'],
-        )
-
-    if two_step:
-        writer.write_json(tag="gae_config", data=kwargs["gae_cfg"])
-        writer.write_json(tag="de_config", data=kwargs["de_cfg"])
-        writer.write_json(tag="shared_config", data=kwargs["shared_cfg"])
-    else:
-        writer.write_json(tag="config", data=kwargs["cfg"])
-
-    return writer

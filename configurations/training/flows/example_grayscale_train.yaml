@@ -1,3 +1,6 @@
+# Example of a flow (neural spline flow) configuration for training on grayscale images
+# change the data.dataset to any other grayscale dataset such as: fashion-mnist, mnist, omniglot, etc.
+
 data:
   dataset: fashion-mnist
   make_valid_loader: true
@@ -11,30 +14,26 @@ trainer:
     class_path: torch.optim.AdamW
     init_args:
       lr: 0.001
+
+  # W&B settings
   writer:
-    logdir: runs
     make_subdir: True
     tag_group: flow
     type: wandb
     entity: platypus-dgm
     project: training-dgms
     
-  evaluator:
-    valid_metrics: [loss]
-    test_metrics: [loss]
 
   sample_freq: 1 # logs the samples after every two epochs
   max_epochs: 400
   early_stopping_metric: loss
   max_bad_valid_epochs: 30
   max_grad_norm: 1.0
-  only_test: False
   progress_bar: True
     
 
-# Settings from the new configurations
+# The flow architecture
 model:
-  is_gae: false
   class_path: model_zoo.density_estimator.flow.NormalizingFlow
   init_args:
     # Data transform args (they are here because they might influence log_prob)

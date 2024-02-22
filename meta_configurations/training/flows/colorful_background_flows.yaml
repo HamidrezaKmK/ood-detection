@@ -1,6 +1,5 @@
-# This sweep contains the training configuration of all the RGB flow models 
-# trained on a colorful image of size [3 x 32 x 32]
-# This contains the Glow models and the Neural Spline Flows
+# This sweep contains all the flow model training modules that are used for the Likelihood ratio method (Ren et al.)
+# It trains all the "RGB" flow models on the colorful images of size [3 x 32 x 32]
 
 project: training-dgms
 entity: platypus-dgm
@@ -11,12 +10,8 @@ delete_checkpoints: False
 # Change the name of the run to [flow_type]_[dataset_type]_[previous_run_name]
 run_name_changer:
   expression: |
-    from meta_configurations import get_coupling 
-
-    def func(conf, run_name):
-      coupling_type = get_coupling(conf)
-      return f"{coupling_type}_{conf['data']['dataset']}_{run_name}"
-  function_of_interest: func
+    from meta_configurations import * 
+  function_of_interest: change_name
 
 # BASE configuration which is being used
 base_config:
@@ -42,22 +37,17 @@ base_config:
       entity: platypus-dgm
       project: training-dgms
       
-    evaluator:
-      valid_metrics: [loss]
-      test_metrics: [loss]
 
     sample_freq: 1 # logs the samples after every two epochs
     max_epochs: 100
     early_stopping_metric: loss
     max_bad_valid_epochs: 100
     max_grad_norm: 1.0
-    only_test: False
     progress_bar: True
       
 
   # Settings from the new configurations
   model:
-    is_gae: false
     class_path: model_zoo.density_estimator.flow.NormalizingFlow
     init_args:
       # Data transform args (they are here because they might influence log_prob)

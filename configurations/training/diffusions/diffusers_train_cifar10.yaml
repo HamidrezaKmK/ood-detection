@@ -18,23 +18,17 @@ trainer:
     type: wandb
     entity: platypus-dgm
     project: training-dgms
-    
-  evaluator:
-    valid_metrics: [loss]
-    test_metrics: [loss]
 
   sample_freq: 1 # logs the samples after every two epochs
   max_epochs: 400
   early_stopping_metric: loss
   max_bad_valid_epochs: 30
   max_grad_norm: 1.0
-  only_test: False
   progress_bar: True
     
 
 # Settings from the new configurations
 model:
-  is_gae: false
   class_path: model_zoo.density_estimator.diffusions.ScoreBasedDiffusion
   init_args:
     # Data transform args (they are here because they might influence log_prob)

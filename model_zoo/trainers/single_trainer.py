@@ -5,7 +5,6 @@ import torch
 import torchvision.utils
 import typing as th
 
-from model_zoo.evaluators import NullEvaluator
 
 
 class BaseTrainer:
@@ -29,10 +28,6 @@ class BaseTrainer:
         early_stopping_metric=None,
         max_bad_valid_epochs=None,
         max_grad_norm=None,
-
-        evaluator=None,
-
-        only_test=False,
         
         sample_freq: th.Optional[int] = None,
         progress_bar: th.Optional[bool] = True,
@@ -61,21 +56,12 @@ class BaseTrainer:
         self.iteration = 0
         self.epoch = 0
 
-        if evaluator is None:
-            self.evaluator = NullEvaluator(
-                module, valid_loader=valid_loader, test_loader=test_loader)
-        else:
-            self.evaluator = evaluator
 
-        self.only_test = only_test
         
         self.sample_freq = sample_freq
         self.progress_bar = progress_bar
 
     def train(self):
-        if self.only_test:
-            self._test()
-            return
 
         self.update_transform_parameters()
 
@@ -83,7 +69,9 @@ class BaseTrainer:
             self.module.train()
 
             self.train_for_epoch()
-            valid_loss = self._validate()
+            
+            with torch.no_grad():
+                valid_loss = self.module.loss(self.valid_loader).mean()
             
             # TODO: something weird is happening here
             if self.early_stopping_metric is not None and self.early_stopping_metric != 'None':
@@ -103,7 +91,6 @@ class BaseTrainer:
                         self.write_checkpoint("latest")
 
                         self.load_checkpoint("best_valid")
-                        self._test()
 
                         return
 
@@ -116,7 +103,6 @@ class BaseTrainer:
             self.write_scalar("epoch", self.epoch - 1, None)
 
         if self.bad_valid_epochs < self.max_bad_valid_epochs:
-            self._test()
             print(f"Maximum epochs reached. Training of {self.module.model_type} complete.")
 
     def train_for_epoch(self):
@@ -185,14 +171,6 @@ class BaseTrainer:
 
             imgs.clamp_(self.module.data_min, self.module.data_max)
             grid = torchvision.utils.make_grid(imgs, nrow=GRID_ROWS, pad_value=1, normalize=True, scale_each=True)
-            
-            
-            # NOTE: not sure if this is needed!
-            # grid_permuted = grid.permute((1,2,0))
-
-            # plt.figure()
-            # plt.axis("off")
-            # plt.imshow(grid_permuted.detach().cpu().numpy())
 
             self.writer.write_image("samples", grid, global_step=self.epoch)
 
@@ -221,6 +199,7 @@ class SingleTrainer(BaseTrainer):
     """Class for training single module"""
 
     def train_single_batch(self, batch):
+        
         loss_dict = self.module.train_batch(batch, max_grad_norm=self.max_grad_norm, trainer=self)
 
         if self.iteration % self._STEPS_PER_LOSS_WRITE == 0:

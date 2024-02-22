@@ -1,5 +1,7 @@
 """
 This code are the codes used for creating the dysweep and operate on a meta_configuration level to logging onto W&B.
+
+No need to understand the code here as it performs some configuration-level process to change the names of the W&B runs that we do not need to understand.
 """
 import typing as th
 from pprint import pprint
@@ -93,7 +95,8 @@ def ood_run_name_changer(conf, run_name):
     ret += f"_{run_name}"
     return ret
 
-def hp_tuning_run_name_changer(conf, run_name):
+# NOTE: obsolete!
+def extras_run_name_changer(conf, run_name):
     """
     This run changer takes a look at the configuration and sets a name for that
     run appropriately.

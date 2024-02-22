@@ -1,8 +1,8 @@
-# Training VP-SDE diffusion models on different RGB datasets 
+# Training VE-SDE diffusion models on different RGB datasets 
 
 project: training-dgms
 entity: platypus-dgm
-sweep_name: colorful_vp_sde_diffusions
+sweep_name: colorful_diffusions
 count: 10000
 delete_checkpoints: False
 
@@ -17,9 +17,14 @@ base_config:
   trainer:
     trainer_cls: model_zoo.trainers.single_trainer.SingleTrainer
     optimizer:
-      class_path: torch.optim.Adam
+      class_path: torch.optim.AdamW
       init_args:
         lr: 0.00005
+      # lr_scheduler:
+          # the class of the scheduler, an example is torch.optim.lr_scheduler.ExponentialLR
+          # class_path: torch.optim.lr_scheduler.ExponentialLR
+          # init_args: 
+          #     gamma: 0.9999
     writer:
       tag_group: diffusion
       type: wandb
@@ -27,17 +32,16 @@ base_config:
       project: training-dgms
       
 
-    sample_freq: 1 # logs the samples after every two ear
-    max_epochs: 200
-    early_stopping_metric: null
-    max_bad_valid_epochs: 200
+    sample_freq: 1 # logs the samples after every two epochs
+    max_epochs: 150
+    early_stopping_metric: loss
+    max_bad_valid_epochs: 150
     max_grad_norm: 1.0
     progress_bar: True
       
 
   # Settings from the new configurations
   model:
-    class_path: model_zoo.density_estimator.diffusions.VPSDE_Diffusion
     init_args:
       # Data transform args (they are here because they might influence log_prob)
       flatten: False
@@ -79,14 +83,23 @@ base_config:
           - UpBlock2D
           - UpBlock2D
 
-      T: 1.0
-      beta_min: 0.1
-      beta_max: 20.
-    
 
 sweep_configuration:
   data:
     dataset:
       sweep_identifier: B_dataset
       sweep: True
-      values: ['cifar10', 'svhn',  'celeba-small', 'tiny-imagenet', 'cifar100', 'celeba']
+      values: ['cifar10', 'svhn', 'celeba-small', 'tiny-imagenet', 'cifar100', 'celeba']
+
+  dy__upsert:
+    - sweep: True
+      sweep_identifier: A_model_type
+      sweep_alias: ['VPSDE_Diffusion', 'VESDE_Diffusion']
+      values:
+      - model:
+          class_path: model_zoo.density_estimator.diffusions.VPSDE_Diffusion
+      - model: 
+          class_path: model_zoo.density_estimator.diffusions.VESDE_Diffusion
+          init_args:
+            g_min: -10
+            g_max: 10

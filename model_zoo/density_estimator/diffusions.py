@@ -62,12 +62,17 @@ class ScoreBasedDiffusion(DensityEstimator):
         
         super().__init__(*args, data_shape=data_shape, **kwargs)
         
+            
         if isinstance(score_network, str):
             score_network = dy.eval(score_network)
             self.score_network = score_network(**score_network_kwargs)
         else:
             self.score_network = score_network
         
+        # set a backward hook for all the submodules in the current module
+        for module in self.modules():
+            module.register_backward_hook(lambda m, grad_input, grad_output: print("DBG HOOK", m, grad_input[0].shape))
+            
         self.x_shape = data_shape
         self.T = T
         self.beta_min = beta_min

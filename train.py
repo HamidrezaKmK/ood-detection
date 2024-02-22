@@ -14,18 +14,21 @@ from jsonargparse import ActionConfigFile
 import dypy as dy
 from model_zoo import TwoStepComponent
 from model_zoo.trainers.single_trainer import BaseTrainer
-from model_zoo import (
-   get_evaluator, Writer
-)
+from model_zoo import Writer
 from model_zoo.datasets.loaders import get_loaders
 from dataclasses import dataclass
 from pprint import pprint
 from dysweep import parse_dictionary_onto_dataclass
 import traceback
 
+
+# Needed for log_prob
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+torch.backends.cuda.enable_math_sdp(True)
+
 @dataclass
 class ModelConfig:
-    is_gae: bool = False
     class_path: th.Optional[str] = None
     init_args: th.Optional[dict] = None
 
@@ -43,11 +46,9 @@ class TrainerConfig:
     early_stopping_metric: th.Optional[str] = None
     max_bad_valid_epochs: th.Optional[int] = None
     max_grad_norm: th.Optional[float] = None
-    only_test: bool = False
     sample_freq: th.Optional[int] = None
     progress_bar: bool = False
     
-    evaluator: th.Optional[dict] = None
     
 @dataclass
 class TrainingConfig:
@@ -93,16 +94,6 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
     # Set the appropriate optimizer
     module.set_optimizer(args.trainer.optimizer)
 
-    # Set an evaluator that gets called after each epoch of the trainer
-    # for potential early stopping or evaluation
-    evaluator = get_evaluator(
-        module,
-        train_loader=train_loader, valid_loader=valid_loader, test_loader=test_loader,
-        valid_metrics=args.trainer.evaluator["valid_metrics"],
-        test_metrics=args.trainer.evaluator["test_metrics"],
-        **args.trainer.evaluator.get("metric_kwargs", {}),
-    )
-
     # create a writer with its logdir equal to the dysweep checkpoint_dir
     # if it is not None
     if checkpoint_dir is not None:
@@ -114,7 +105,7 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
     additional_args = args.trainer.additional_init_args or {}
     trainer: BaseTrainer = dy.eval(args.trainer.trainer_cls)(
         module,
-        ckpt_prefix="gae" if args.model.is_gae else "de",   
+        ckpt_prefix="de",   
         train_loader=train_loader,
         valid_loader=valid_loader,
         test_loader=test_loader,
@@ -123,8 +114,6 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
         early_stopping_metric=args.trainer.early_stopping_metric,
         max_bad_valid_epochs=args.trainer.max_bad_valid_epochs,
         max_grad_norm=args.trainer.max_grad_norm,
-        evaluator=evaluator,
-        only_test=args.trainer.only_test,
         sample_freq=args.trainer.sample_freq,
         progress_bar=args.trainer.progress_bar,
         **additional_args

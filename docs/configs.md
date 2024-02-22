@@ -32,11 +32,6 @@ data:
 # (2)   The configurations pertaining to the model being used for training
 #       This is typically a torch.nn.Module
 model:
-    # Whether the model is a generalized autoencoder or not
-    # (in the rare case where you want to train a generalized 
-    # autoencoder instead of a generative model)
-    is_gae: <bool>
-
     # The model class, all should inherit from the base class defined in
     # GeneralizedAutoEncoder or DensityEstimator
     # These models have certain properties such as a log_prob function

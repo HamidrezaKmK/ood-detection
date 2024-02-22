@@ -1,6 +1,4 @@
-# This sweep contains the training configuration of all the RGB flow models 
-# trained on a colorful image of size [3 x 32 x 32]
-# This contains the Glow models and the Neural Spline Flows
+# Base configuration used in the bash runners
 
 project: training-dgms
 entity: platypus-dgm
@@ -10,6 +8,6 @@ count: 10000
 # See the code for this for more information
 run_name_changer:
   expression: |
-    from meta_configurations import change_name 
+    from meta_configurations import * 
 
   function_of_interest: change_name

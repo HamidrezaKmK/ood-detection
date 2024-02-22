@@ -1,0 +1,3 @@
+[submodule "lid-benchmarking"]
+	path = lid-benchmarking
+	url = git@github.com:JesseCresswell/lid-benchmarking.git
