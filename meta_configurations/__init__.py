@@ -34,7 +34,8 @@ def change_name(conf, run_name):
         coupling_type = get_coupling(conf)
         return f"{coupling_type}_{conf['data']['dataset']}_{run_name}"
     elif conf['trainer']['writer']['tag_group'] == 'diffusion':
-        return f"diffusion_{conf['data']['dataset']}_{run_name}"
+        model_class = conf['model']['class_path'].split('.')[-1]
+        return f"diffusion_{model_class}_{conf['data']['dataset']}_{run_name}"
     else:
         return f"{conf['data']['dataset']}_{run_name}"
   

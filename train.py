@@ -21,12 +21,6 @@ from pprint import pprint
 from dysweep import parse_dictionary_onto_dataclass
 import traceback
 
-
-# Needed for log_prob
-torch.backends.cuda.enable_flash_sdp(False)
-torch.backends.cuda.enable_mem_efficient_sdp(False)
-torch.backends.cuda.enable_math_sdp(True)
-
 @dataclass
 class ModelConfig:
     class_path: th.Optional[str] = None

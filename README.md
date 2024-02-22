@@ -188,11 +188,17 @@ This will create a `dysweep_logs` directory in which you can access all of the s
 
 Some of the main experiment groups with their appropriate `yaml` files that are used in the paper are included in the following. Make sure to use `dysweep_create` to run these meta configurations and then use the appropriate `bash` running script as many times needed to have all your experiments logged into W&B.
 
-1. Train both neural spline flows and affine flows on all the grayscale datasets: [`meta_configurations/training/flows/grayscale_flows.yaml`](meta_configurations/training/flows/grayscale_flows.yaml).
-2. Train both neural spline flows and affine flows on all the RGB datasets: [`meta_configurations/training/flows/colorful_flows.yaml`](meta_configurations/training/flows/colorful_flows.yaml).
-3. Train VP-SDE and VE-SDE diffusion models on all the RGB datasets: [`meta_configurations/training/flows/colorful_flows.yaml`](meta_configurations/training/flows/colorful_flows.yaml).
-3. Train both neural spline flows and affine flows on all the grayscale datasets with random perturbations for Ren et al. [here](TODO).
-3. Train both neural spline flows and affine flows on all the RGB datasets with random perturbations for Ren et al. [here](TODO).
+#### Model Training (`train.py` script)
+
+1. Train both neural spline flows and affine flows on all the RGB datasets: [`meta_configurations/training/flows/colorful_flows.yaml`](meta_configurations/training/flows/colorful_flows.yaml).
+2. Train both neural spline flows and affine flows on all the grayscale datasets: [`meta_configurations/training/flows/grayscale_flows.yaml`](meta_configurations/training/flows/grayscale_flows.yaml).
+3. Train VP-SDE and VE-SDE diffusion models on all the RGB datasets: [`meta_configurations/training/diffusions/colorful_diffusions.yaml`](meta_configurations/training/flows/colorful_flows.yaml).
+4. Train VP-SDE and VE-SDE diffusion models on all the grayscale datasets: [`./meta_configurations/training/diffusions/grayscale_diffusions.yaml`](./meta_configurations/training/diffusions/grayscale_diffusions.yaml).
+5. Train both neural spline flows and affine flows on all the RGB datasets with random perturbations for Ren et al. --- i.e., background models: [./meta_configurations/training/flows/colorful_background_flows.yaml](./meta_configurations/training/flows/colorful_background_flows.yaml).
+6. Train both neural spline flows and affine flows on all the grayscale datasets with random perturbations for Ren et al. -- i.e., background models: [./meta_configurations/training/flows/grayscale_background_flows.yaml](./meta_configurations/training/flows/grayscale_background_flows.yaml).
+
+#### OOD detection (`main_ood.py` script)
+
 4. Run LID OOD-detection on flow models for grayscale [here](TODO).
 5. Run LID OOD-detection on diffusion models for RGB [here](TODO).
 6. Run likelihood ratio method for OOD detection on grayscale [here](TODO).

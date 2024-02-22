@@ -69,9 +69,6 @@ class ScoreBasedDiffusion(DensityEstimator):
         else:
             self.score_network = score_network
         
-        # set a backward hook for all the submodules in the current module
-        for module in self.modules():
-            module.register_backward_hook(lambda m, grad_input, grad_output: print("DBG HOOK", m, grad_input[0].shape))
             
         self.x_shape = data_shape
         self.T = T
@@ -250,41 +247,6 @@ class ScoreBasedDiffusion(DensityEstimator):
         return all_quadretic.mean(dim=0)
 
         
-        # if custom_score:
-        #     score_fn = functools.partial(custom_score, t=t)
-        # elif true_score:
-        #     score_fn = functools.partial(self.get_true_score, t=t)
-        # else:
-        #     score_fn = functools.partial(self._get_unnormalized_score, t=t)
-            
-        # torch.manual_seed(100)
-    
-        # all_quadretic = []
-        # if method == 'deterministic': 
-        #     d = x.numel() // x.shape[0]
-        #     sample_count = d
-        
-        # for i in range(sample_count):
-        #     if method == 'hutchinson_gaussian':
-        #         warnings.warn("The Gaussian-based hutchinson estimator is not the best! Try 'hutchinson_rademacher' instead.")
-        #         v = torch.randn_like(x)
-        #     elif method == 'hutchinson_rademacher':
-        #         v = torch.randint_like(x, low=0, high=2).float() * 2 - 1.
-        #     elif method == 'deterministic':
-        #         v = torch.zeros(d).to(x.device).float()
-        #         v[i] = math.sqrt(d)
-        #         v = v.unsqueeze(0).repeat(x.shape[0], 1).reshape(x.shape)
-        #     else:
-        #         raise ValueError(f"Method {method} for trace computation not defined!")
-            
-        #     all_quadretic.append(
-        #         torch.sum(
-        #             v * torch.func.jvp(score_fn, (x, ), tangents=(v, ))[1], 
-        #             dim=tuple(range(1, x.dim()))
-        #         )
-        #     )
-        # return torch.stack(all_quadretic).mean(dim=0)
-    
     
     def rho_t(
         self,
@@ -584,25 +546,6 @@ class VESDE_Diffusion(ScoreBasedDiffusion):
         ret = 0.5 * d * np.log(2 * np.pi)
         ret = -0.5 * torch.sum(x * x, dim=tuple(range(1, x.dim()))) / sigma2_t + ret.item()
         return ret
-
-    # The following helps with model stability but makes the samples worse
-    # def _get_unnormalized_score(self, x, t):
-    #     """ Returns the output of the network """
-    #     t = t.to(x.device).float()
-    #     _, sigma_t = self._get_sigma(t)
-    #     sigma_t = sigma_t.to(x.device).float()
-    #     return self.score_network(x / (1. + sigma_t), t.repeat(x.shape[0]))
-    
-    # def get_true_score(self, x, t):
-    #     """
-    #     Returns the true score by dividing it again with \\sigma(t) to cancel out the effect of the reparametrization.
-    #     """
-    #     # print the dtype of t and x
-    #     t = t.to(x.device).float()
-    #     _, sigma_t = self._get_sigma(t)
-    #     sigma_t = sigma_t.to(x.device).float()
-    #     return self.score_network(x / (1. + sigma_t), t.repeat(x.shape[0])) / sigma_t
-    
 
 
 class VPSDE_Diffusion(ScoreBasedDiffusion):
