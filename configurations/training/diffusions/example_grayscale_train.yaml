@@ -34,7 +34,7 @@ trainer:
 
 # Settings from the new configurations
 model:
-  class_path: model_zoo.density_estimator.diffusions.ScoreBasedDiffusion
+  class_path: model_zoo.density_estimator.diffusions.VPSDE_diffusion
   init_args:
     # Data transform args (they are here because they might influence log_prob)
     flatten: False
