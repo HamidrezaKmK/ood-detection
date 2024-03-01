@@ -11,7 +11,7 @@ import numpy as np
 from tqdm import tqdm
 from .utils import get_device_from_loader
 from abc import ABC, abstractmethod
-from ood.visualization import visualize_trends
+from ood.wandb_visualization import visualize_trends
 
 class LatentStatsCalculator(ABC):
     """

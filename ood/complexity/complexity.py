@@ -14,7 +14,7 @@ from ood.base_method import OODBaseMethod
 import torch
 import typing as th
 import numpy as np
-from ood.visualization import visualize_histogram, visualize_scatterplots
+from ..wandb_visualization import visualize_scatterplots
 from tqdm import tqdm
 import cv2
 import math

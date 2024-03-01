@@ -10,11 +10,11 @@ They name this value L and the score "S" is then equal to "- likelihood - S".
 """
 
 
-from ood.base_method import OODBaseMethod
+from ood.base import OODBaseMethod
 import torch
 import typing as th
 import numpy as np
-from ood.visualization import visualize_scatterplots
+from ood.wandb_visualization import visualize_scatterplots
 from tqdm import tqdm
 import math
 from math import inf

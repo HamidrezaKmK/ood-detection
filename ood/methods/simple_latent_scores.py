@@ -21,7 +21,7 @@ from chi2comb import chi2comb_cdf, ChiSquared
 import time
 import math
 import dypy as dy
-from ood.visualization import visualize_histogram
+from ood.wandb_visualization import visualize_histogram
 from nflows import transforms, distributions, flows, utils
 
 

@@ -1,12 +1,12 @@
 from model_zoo.density_estimator.diffusions import ScoreBasedDiffusion
-from ood.base_method import OODBaseMethod
+from ood.base import OODBaseMethod
 import typing as th
 import torch
 from ood.methods.utils import buffer_loader
 import numpy as np
 import os
 import json
-from ood.visualization import visualize_scatterplots
+from ood.wandb_visualization import visualize_scatterplots
 from tqdm import tqdm
 from notebooks.roc_analysis import get_auc, get_roc_graph, get_convex_hull
 import time
