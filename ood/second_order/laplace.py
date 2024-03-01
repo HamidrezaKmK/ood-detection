@@ -6,7 +6,7 @@ import wandb
 from tqdm import tqdm
 from math import inf
 import numpy as np
-from .local_optimization import OODLocalOptimization
+from ..local_optimization.local_optimization import OODLocalOptimization
 import matplotlib.pyplot as plt
 
 class Laplace(OODBaseMethod):
