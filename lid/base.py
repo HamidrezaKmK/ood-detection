@@ -112,11 +112,12 @@ class ModelBasedLID(LocalIntrinsicDimensionEstimator):
     """
     def __init__(
         self,
-        *args,
+        ambient_dim: int,
         model: torch.nn.Module,
         train_fn: Callable[[torch.nn.Module, torch.utils.data.Dataset], torch.nn.Module] = None,
         device: Optional[torch.device] = None,
-        **kwargs,
+        ground_truth_lid = None,
+        data: Optional[torch.utils.data.Dataset] = None,
     ):
         """
 
@@ -128,14 +129,20 @@ class ModelBasedLID(LocalIntrinsicDimensionEstimator):
             device (Optional[torch.device]):
                 The device used for computation. If None, the device will be inferred from the data.
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            data=data,
+            ambient_dim=ambient_dim,
+            ground_truth_lid=ground_truth_lid,
+        )
         # check if self.data is a torch Dataset or not
-        if not isinstance(self.data, torch.utils.data.Dataset):
+        if self.data is not None and not isinstance(self.data, torch.utils.data.Dataset):
             raise ValueError("The data input to the constructor should be a torch Dataset")
         
         self.model = model
         self.train_fn = train_fn if train_fn is not None else (lambda model, data: model)
-        self.device = device if device is not None else get_device_from_loader(self.data)
+        model_device = next(model.parameters()).device
+        self.device = device if device is not None else model_device
+        self.model = self.model.to(self.device)
     
     def fit(self):
         '''Fit the estimator to the data'''

@@ -132,26 +132,33 @@ In case you want to extend the codebase and change the model configurations that
 ### Performing OOD detection
 The methods for OOD detection can be found in the [ood](./ood/) directory. For better maintainability, all of the methods are implemented as classes that inherit [`OODBaseMethod`](./ood/base_method.py). Any likelihood-based OOD detection method that we support takes in an *in-distribution* and *out-of-distribution* dataset alongside a *model* configuration and checkpoint.
 In turn, the `main_ood.py` runs the appropriate OOD detection method and logs intermediate outputs on the W&B page.
-Similar to the training configurations, we use `yaml` files to configure our OOD detection tasks.
-For example, you can run the following script that runs the local intrinsic dimension (LID) OOD detection script based on a neural spline flow assuming fashion-mnist is the in-distribution dataset and mnist is the OOD dataset.
+
+Similar to training model, for more information on how to define your customized `yaml` configurations, please check out our [guide](./docs/configs.md) alongside the comments in the `yaml` files that we have provided.
+
+#### LID OOD as an Example
+For example, you can run the following script that runs the local intrinsic dimension (LID) OOD detection script based on a neural spline flow assuming `cifar10` is the in-distribution dataset and `svhn` is the OOD dataset. In the line after, the flip side is considered where a model is trained on `svhn` and tested on `cifar10`:
 
 ```bash
-python main_ood.py --config configurations/ood/LID_ood_example.yaml
-# TODO: complete and check this!
+# run the following for visualizing LID and likelihood estimates for both cifar10 (test) and svhn (ood) datapoints for an RQ-NSF model trained on CIFAR10 (pathological OOD)
+python main_ood.py --config configurations/ood/flows/pathological_lid_ood_1.yaml && python main_ood.py --config configurations/ood/flows/pathological_lid_ood_2.yaml
+# run the following for visualizing LID and likelihood estimates for both svhn (test) and cifar10 (ood) datapoints for an RQ-NSF model trained on SVHN (non-pathological OOD)
+python main_ood.py --config configurations/ood/flows/lid_ood_1.yaml && python main_ood.py --config configurations/ood/flows/lid_ood_2.yaml
 ```
+This will create four different runs in your W&B page, with the first two being related to the pathological OOD detection task `cifar10 vs svhn`. By looking at the scatterplot created on W&B, these two runs are labelled `cifar10_vs_svhn_in_distr` and `cifar10_vs_svhn_ood` with the first showing LID and likelihoods for in-distribution points (cifar10) and the second showing LID and likelihoods for OOD points (svhn). As you can see below, the likelihoods for the OOD points are higher than the in-distribution points, but the LID values are lower.
+On the flip side, the next two represent a non-pathological OOD detection task `svhn vs cifar10` and the scatterplots are labelled `svhn_vs_cifar10_in_distr` and `svhn_vs_cifar10_ood`. As you can see below, the likelihood values alone are a reliable metric. Therefore, the combination of LID and likelihood values is a more reliable metric for OOD detection.
 
-Similar to training, for more information on how to define your customized `yaml` configurations, please check out our [guide](./docs/configs.md) alongside the comments in the `yaml` files that we have provided.
+<p align="center">
+  <table>
+    <tr>
+      <td><img src="./figures/lid_ood_pathological.png" alt="LID OOD Subfigure 1" style="width:100%;"/></td>
+      <td><img src="./figures/lid_ood_non_pathological.png" alt="LID OOD Subfigure 2" style="width:100%;"/></td>
+    </tr>
+  </table>
+</p>
 
+**Note:** You can do a similar thing for diffusion models by running the corresponding yaml files found in: `configurations/ood/diffusions/`.
 
 Running the `main_ood.py` script will not directly produce an evaluation metric such as the area under the receiver operator characteristic curve (AUC-ROC) that we have been showing in our paper. In fact, it logs interim interpretable plots that can then be further processed to come up with these evaluation metrics. We have indeed already exported and stored the appropriate tables in the [notebooks](./notebooks/) directory for ease of use.
-
-As an example, the LID-based technique logs a scatterplot in W&B juxtaposing the likelihood and LID estimate for a large subsample of the datapoints in the `mnist` dataset. 
-You can then run the following script to log the LID and likelihood estimate for `fashion-mnist` datapoints as well:
-
-```bash
-python main_ood.py --config configurations/ood/LID_ood_example_in_distr.yaml 
-# TODO: complete and check this!
-```
 
 After doing so, you can export the scatterplot to get a set of likelihood and LID estimates for each individual point and further process it to get the (AUC-ROC) metric. For a thorough guide on how to get the exact evaluation metrics that we have considered please check the [evaluation](./notebooks/final_evaluations.ipynb) Jupyter notebook.
 

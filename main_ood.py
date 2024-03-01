@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 import os
 from tqdm import tqdm
 from math import sqrt
-
+import datetime
 
 # Needed for log_prob
 torch.backends.cuda.enable_flash_sdp(False)
@@ -136,7 +136,7 @@ def run_ood(config: dict, gpu_index: int = 0, checkpoint_dir: th.Optional[str] =
         model_root = os.environ['MODEL_DIR']
     else:
         model_root = './runs'
-
+    
     device = f"cuda:{gpu_index}" if torch.cuda.is_available() else "cpu"
     
     model = load_model_with_checkpoints(config=config['base_model'], root=model_root, device=device)
@@ -375,4 +375,16 @@ if __name__ == "__main__":
 
     wandb.init(config=conf, **args.logger)
 
-    run_ood(conf, gpu_index=args.gpu_index)
+    # set the checkpoint_dir to the dotenv variable if it exists
+    load_dotenv()
+    if 'MODEL_DIR' in os.environ:
+        checkpoint_dir = os.environ['MODEL_DIR']
+    else:
+        checkpoint_dir = './runs'
+    
+    timestamp = datetime.datetime.now().strftime('%b%d_%H-%M-%S')
+    checkpoint_dir = os.path.join(checkpoint_dir, timestamp)
+    # make the directories if they do not exist
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    
+    run_ood(conf, gpu_index=args.gpu_index, checkpoint_dir=checkpoint_dir)

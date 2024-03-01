@@ -14,7 +14,7 @@ data:
   out_of_distribution:
     dataloader_args:
       make_valid_loader: false
-      dataset: cifar10
+      dataset: svhn
       train_batch_size: 8
       valid_batch_size: 8
       test_batch_size: 8
@@ -30,37 +30,40 @@ ood:
   pick_count: 5
 
   # The OOD detection method in use
-  method: ood.methods.intrinsic_dimension.FlowIntrinsicDimensionOODDetection
+  method: ood.intrinsic_dimension.LID_OOD
   method_args:
-    # Fast-LIDL-NF
-    intrinsic_dimension_calculator_args:
-      encoding_model_class: ood.methods.intrinsic_dimension.EncodingFlow
-      encoding_model_args:
-        use_functorch: True 
-        use_forward_mode: True
+    # ----- LID estimator configuration -----
+    lid_calculator_class: lid.flows.ThresholdSVDFlowLIDEstimator
+    lid_calculator_args:
+      # --- Jacobian Flow Configuration ---
+      flow_jacobian_calculator_class: lid.flows.jacobian_calculator.FlowJacobianCalculator
+      flow_jacobian_calculator_kwargs:
         use_vmap: False
+        use_functorch: True
+        use_forward_mode: True
         chunk_size: 1
-        verbose: 2
-        # control whether the encoding model also handles the data transform
+        verbose: 1
         diff_transform: False
-      # verbosity
-      verbose: 0
-    
+      # set the lid calculator
+      verbose: 2
+      ambient_dim: 3072 # 32x32x3
+
+    # ----- OOD detection configuration -----
+    # verbosity
+    verbose: 1
+    checkpointing_buffer: 2
     # Hyper-parameters relating to the scale parameter that is being computed
-    adaptive_train_data_buffer_size: 15    
+    scale_selection_algorithm: given_from_model_free
+    scale_selection_algorithm_args:
+      model_free_dimension: 50
+      l_scale: -100
+      r_scale: 100
+      bin_search_steps: 20
 
-    # for logging args
-    verbose: 2
-    
-    adaptive_measurement: True
-    bin_search_iteration_count: 20
-
-    adaptive_setting_mode: plateau_based
-    plateau_based_search_space_count: 100
-    submethod: thresholding
+    training_buffer_size: 16
 
   
 logger:
   project: ood-detection-single-runs
   entity: platypus-dgm
-  name: flow_cifar10_vs_cifar10_thresholding
+  name: cifar10_vs_svhn_ood

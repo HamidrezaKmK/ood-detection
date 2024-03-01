@@ -15,13 +15,17 @@ import os
 import json
 import numpy as np
 from ..wandb_visualization import visualize_scatterplots
+import dypy as dy
+from tqdm import tqdm
+from lid.base import ScaleType
 
 class LID_OOD(OODBaseMethod):
     def __init__(
         self,
         likelihood_model: torch.nn.Module,
         # the LID calculator that takes in the likelihood model and constructs itself
-        lid_calculator: Callable[[torch.nn.Module], ModelBasedLID], 
+        lid_calculator_class: str,
+        lid_calculator_args: Optional[dict] = None,
         x_loader: Optional[torch.utils.data.DataLoader] = None,
         in_distr_loader: Optional[torch.utils.data.DataLoader] = None,
         # verbosity
@@ -30,7 +34,6 @@ class LID_OOD(OODBaseMethod):
         checkpoint_dir: Optional[str] = None,
         checkpointing_buffer: Optional[int] = None,
         # Hyper-parameters relating to the scale parameter that is being computed
-        base_scale: float = -20,
         scale_selection_algorithm: Literal['find_plateau', 'fixed', 'given_from_model_free'] = 'fixed',
         scale_selection_algorithm_args: Optional[dict] = None,
         training_buffer_size: int = 16,    
@@ -58,11 +61,6 @@ class LID_OOD(OODBaseMethod):
                 The constructor function of a LID calculator (you can use a partial on the LID class and pass it here)
                 this class has an estimate_lid method that takes in the datapoints and performs model-based LID computation.
                 
-            base_scale: 
-                All LID estimation techniques have a scale parameter associated with them. As we increase the scale parameter,
-                the LID estimates monotonically decrease. A base_scale is given to the LID computation algorithm to start
-                and if there is no adaptive scale selection algorithm, the LID computation algorithm will use this scale.
-                
             scale_selection_algorithm: 
                 The algorithm to select the scale parameter. All of these algorithms (except the fixed one) use a subset of 
                 the training data to represent the in-distribution data, and then play around with the scale parameter
@@ -88,7 +86,8 @@ class LID_OOD(OODBaseMethod):
         self.verbose = verbose
         
         # construct the LID calculator model and call its fit function
-        self.lid_calculator: ModelBasedLID = lid_calculator(likelihood_model).fit()
+        self.lid_calculator: ModelBasedLID = dy.eval(lid_calculator_class)(model=likelihood_model, **(lid_calculator_args or {}))
+        self.lid_calculator.fit()
         
         # No need to train the model anymore, so turn off all the gradients
         # and set it to evaluation mode for faster computation
@@ -97,7 +96,6 @@ class LID_OOD(OODBaseMethod):
             param.requires_grad = False
         
         # set the scale selection parameters
-        self.base_scale = base_scale
         self.scale_selection_algorithm = scale_selection_algorithm
         self.model_selection_algorithm_args = scale_selection_algorithm_args or {}
         self.training_buffer_size = training_buffer_size
@@ -109,8 +107,9 @@ class LID_OOD(OODBaseMethod):
     def select_scale_fixed(
         self,
         training_data_loader: torch.utils.data.DataLoader,
+        base_scale: ScaleType,
     ):
-        return self.base_scale
+        return base_scale
     
     def select_scale_find_plateau(
         self,
@@ -222,7 +221,8 @@ class LID_OOD(OODBaseMethod):
         # binary search to find the scale parameter
         l = l_scale
         r = r_scale
-        for _ in range(bin_search_steps):
+        bin_search_rng = range(bin_search_steps) if self.verbose == 0 else tqdm(range(bin_search_steps), desc="Binary search to find the best scale")
+        for _ in bin_search_rng:
             mid = (l + r) / 2
             all_lid = self.lid_calculator.compute_lid_buffer(mid)
             mean_lid = np.mean(np.concatenate([x.cpu().numpy().flatten() for x in all_lid]))
@@ -292,22 +292,22 @@ class LID_OOD(OODBaseMethod):
             
            
             if self.verbose > 0:
-                print("Computing dimensionalities ... ")
-                
+                print("Computing dimensionalities ... ", end='')
             # compute dimensionalities
             lid_estimates = self.lid_calculator.estimate_lid(inner_loader, scale=chosen_scale)
             all_buffer_dimensionalities = np.concatenate([x.cpu().numpy().flatten() for x in lid_estimates])
+            print("done!")
             
             # compute and add likelihoods
             if self.verbose > 0:
-                print("Computing likelihoods ... ")
-                
+                print("Computing likelihoods ... ", end='')
             all_buffer_likelihoods = None
             for x in inner_loader:
                 with torch.no_grad():
                     likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
                     all_buffer_likelihoods = np.concatenate([all_buffer_likelihoods, likelihoods]) if all_buffer_likelihoods is not None else likelihoods
-            
+            if self.verbose > 0:
+                print("done!")
             
             # add the likelihood and dimensionalities obtained here to all the estimates
             all_dimensionalities = np.concatenate([all_dimensionalities, all_buffer_dimensionalities]) if all_dimensionalities is not None else all_buffer_dimensionalities

@@ -128,7 +128,7 @@ class FlowJacobianCalculator:
     
         # set a progress bar if verbose > 0
         if self.verbose > 0:
-            loader_decorated = tqdm(loader)
+            loader_decorated = tqdm(loader, desc="Computing Jacobians of loader")
         else:
             loader_decorated = loader
         

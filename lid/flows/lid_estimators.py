@@ -5,7 +5,8 @@ import torch
 from ..base import LIDInputType, ScaleType
 from tqdm import tqdm
 import math
-
+import functools
+import dypy as dy
 from abc import ABC, abstractmethod
 
 
@@ -27,12 +28,13 @@ class FastFlowLIDEstimator(ModelBasedLID, ABC):
     def __init__(
         self,
         *args,
-        flow_jacobian_calculator: Callable[[torch.nn.Module], FlowJacobianCalculator],
+        flow_jacobian_calculator_class: str,
+        flow_jacobian_calculator_kwargs: dict,
         verbose: int = 0, # verbosity
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.flow_jacobian_calculator_instantiate = flow_jacobian_calculator
+        self.flow_jacobian_calculator_instantiate = functools.partial(dy.eval(flow_jacobian_calculator_class), **flow_jacobian_calculator_kwargs)
         self.verbose = verbose
         
     def fit(self):
