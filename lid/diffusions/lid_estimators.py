@@ -63,10 +63,11 @@ class NormalBundleLIDEstimator(ModelBasedLID):
         
         # Create a list of all the singular values for the score of each batch of data
         self.singular_vals = []
-        for x in self.buffered_x:
+        buffered_x_wrapper = tqdm(self.buffered_x, desc="Buffering data for LID estimation") if self.verbose > 0 else self.buffered_x
+        for x in buffered_x_wrapper:
             # if the model has data transform, perform it first
             if hasattr(self.model, '_data_transform'):
-                x = self._data_transform(x)
+                x = self.model._data_transform(x)
                 
             d = x.numel() // x.shape[0]
             batch_size = x.shape[0]
@@ -82,12 +83,12 @@ class NormalBundleLIDEstimator(ModelBasedLID):
             x_eps = self.model._get_center(x_repeated, self.noise_time) + sigma_t * noise
             
             scores = []
-            if self.verbose > 0:
-                tt = x_eps.split(self.chunk_size)
-                rng = tqdm(x_eps.split(self.chunk_size), total=len(tt), desc="Computing scores")
-            else:
-                rng = x_eps.split(self.chunk_size)
-            for batch in rng:
+            progress = 0
+            ex_eps_splitted = x_eps.split(self.chunk_size)
+            for batch in ex_eps_splitted:
+                if self.verbose > 0:
+                    progress += 1
+                    buffered_x_wrapper.set_description(f"Buffering data for LID estimation [{progress}/{len(ex_eps_splitted)}]")
                 batch = batch.to(self.device)
                 beta_eps = self.model._get_beta(self.noise_time)
                 drift = self.model._get_drift(batch, self.noise_time).cpu()
@@ -112,7 +113,7 @@ class NormalBundleLIDEstimator(ModelBasedLID):
                 normal_dim = (singular_vals[:,:-1] - singular_vals[:,1:]).argmax(dim=1) + 1
                 all_lids.append((self.ambient_dim - normal_dim).cpu())
             else:
-                all_lids.append((self.singular_vals < threshold).sum(dim=1).cpu())
+                all_lids.append((singular_vals < threshold).sum(dim=1).cpu())
             
         return all_lids if self.data_is_iterable else all_lids[0]
         

@@ -25,6 +25,8 @@ class LID_OOD(OODBaseMethod):
         likelihood_model: torch.nn.Module,
         # the LID calculator that takes in the likelihood model and constructs itself
         lid_calculator_class: str,
+        # likelihood computation args
+        likelihood_computation_args: Optional[dict] = None,
         lid_calculator_args: Optional[dict] = None,
         x_loader: Optional[torch.utils.data.DataLoader] = None,
         in_distr_loader: Optional[torch.utils.data.DataLoader] = None,
@@ -46,6 +48,9 @@ class LID_OOD(OODBaseMethod):
             
             in_distr_loader: The loader for the in-distribution data.
             
+            likelihood_computation_args:
+                The arguemnts that are given to the model.log_prob function, defaults to nothing!
+                
             checkpoint_dir: 
                 The OOD method stores LID estimates and likelihood values.
                 Sometimes the OOD dataloader is huge, therefore, the method might need to checkpoint
@@ -103,6 +108,8 @@ class LID_OOD(OODBaseMethod):
         # set the checkpointing parameters
         self.checkpoint_dir = checkpoint_dir
         self.checkpointing_buffer = checkpointing_buffer
+        
+        self.likelihood_computation_args = likelihood_computation_args or {}
     
     def select_scale_fixed(
         self,
@@ -226,10 +233,10 @@ class LID_OOD(OODBaseMethod):
             mid = (l + r) / 2
             all_lid = self.lid_calculator.compute_lid_buffer(mid)
             mean_lid = np.mean(np.concatenate([x.cpu().numpy().flatten() for x in all_lid]))
-            if mean_lid > model_free_dimension:
-                l = mid
-            else:
+            if mean_lid < model_free_dimension:
                 r = mid
+            else:
+                l = mid
         return (l + r) / 2
     
     def run(self):
@@ -296,7 +303,8 @@ class LID_OOD(OODBaseMethod):
             # compute dimensionalities
             lid_estimates = self.lid_calculator.estimate_lid(inner_loader, scale=chosen_scale)
             all_buffer_dimensionalities = np.concatenate([x.cpu().numpy().flatten() for x in lid_estimates])
-            print("done!")
+            if self.verbose > 0:
+                print("done!")
             
             # compute and add likelihoods
             if self.verbose > 0:
@@ -304,7 +312,7 @@ class LID_OOD(OODBaseMethod):
             all_buffer_likelihoods = None
             for x in inner_loader:
                 with torch.no_grad():
-                    likelihoods = self.likelihood_model.log_prob(x).cpu().numpy().flatten()
+                    likelihoods = self.likelihood_model.log_prob(x, **self.likelihood_computation_args).cpu().numpy().flatten()
                     all_buffer_likelihoods = np.concatenate([all_buffer_likelihoods, likelihoods]) if all_buffer_likelihoods is not None else likelihoods
             if self.verbose > 0:
                 print("done!")

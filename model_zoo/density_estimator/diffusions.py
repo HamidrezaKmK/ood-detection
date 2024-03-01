@@ -221,7 +221,7 @@ class ScoreBasedDiffusion(DensityEstimator):
         elif method == 'hutchinson_rademacher':
             all_v = torch.randint(size=(batch_size * sample_count, *data_shape), low=0, high=2).cpu().float() * 2 - 1.
         elif method == 'deterministic':
-            all_v = torch.eye(d).cpu().float()
+            all_v = torch.eye(d).cpu().float() * math.sqrt(d)
             all_v = all_v.repeat_interleave(batch_size, dim=0).reshape((batch_size * sample_count, *data_shape))
         else:
             raise ValueError(f"Method {method} for trace computation not defined!")
@@ -280,8 +280,10 @@ class ScoreBasedDiffusion(DensityEstimator):
         if device is None:
             device = x.device
             
+        trace_calculation_kwargs = trace_calculation_kwargs or {}
+        trace_calculation_kwargs['verbose'] = trace_calculation_kwargs.get('verbose', verbose-1)
+        
         with torch.no_grad():
-            trace_calculation_kwargs = trace_calculation_kwargs or {}
             
             x = x.to(device)
             
@@ -305,7 +307,7 @@ class ScoreBasedDiffusion(DensityEstimator):
             for s in rng:
                 beta_s = self._get_beta(s)
                 score = self.get_true_score(x, s)                
-                log_p -= delta_s * 0.5 * beta_s * self._score_jacobian_trace(x, s, **trace_calculation_kwargs, verbose=verbose-1)
+                log_p -= delta_s * 0.5 * beta_s * self._score_jacobian_trace(x, s, **trace_calculation_kwargs)
                 # NOTE: changes made here
                 x -= delta_s * beta_s * 0.5 * score - delta_s * self._get_drift(x, s)
             
@@ -375,84 +377,6 @@ class ScoreBasedDiffusion(DensityEstimator):
         )
         return self._inverse_data_transform(ret)
     
-    
-    def lid(
-        self,
-        x: torch.Tensor,
-        r: float,
-        eps: float = 1e-2,
-        device: th.Optional[torch.device] = None,
-        num_samples: th.Optional[int] = None,
-        max_batch_size: int = 128,
-        use_drift: bool = True,
-        verbose: int = 0,
-        use_cache: bool = False,
-    ):
-        """
-        For a given radius r, this function computes the LID using Stanczuk's thresholding method 
-        with some modifications to fit the VP-SDE formulation.
-        
-        https://arxiv.org/pdf/2212.12611.pdf
-        
-        The estimator is based on sampling a set of noised out points from x, computing their scores, using
-        SVD decomposition and thresholding to get the LID estimate.
-        
-        If only the input 'x' is given, this function will compute the LID for a very small timestep, or equivalently,
-        a very small negative 'r' corresponding to a small scale.
-        
-        Args:
-            x: a batch of data to compute the LID for
-            r: the scale corresponding to the LID estimate
-            t: the timestep (equivalently, one can either set the radius or the timestep for lid estimation)
-            num_samples: the number of samples to use for the estimation, by default it is set to 4 * d with d being the dimension of the data
-            verbose: Toggle showing progress bar or not.
-        Returns:
-            A Tensor of size (batch_size, ) with the i'th component indicating the LID estimate for the i'th datapoint.
-        """
-        x = self._data_transform(x)
-        d = x.numel() // x.shape[0]
-        batch_size = x.shape[0]
-        if num_samples is None:
-            num_samples = 4 * d
-            
-        if device is None:
-            device = x.device
-        x = x.to(device)
-        
-        if not isinstance(eps, torch.Tensor):
-            eps = torch.tensor(eps)
-        sigma2_t, sigma_t = self._get_sigma(eps)
-        sigma2_t, sigma_t = sigma2_t.to(device).float(), sigma_t.to(device).float()
-        # for each datapoint in the batch, get n_sample noised out points
-        # where for each point x_0, the samples are drawn from N(x_0 * sqrt(1 - sigma2_t), sigma2_t I)   
-        noise = torch.randn((batch_size*num_samples, *x.shape[1:])).to(device) 
-        x = repeat(x, 'b ... -> (b c) ...', c=num_samples)
-        x_eps = self._get_center(x, eps) + sigma_t * noise
-        
-        # Compute scores for each sampled point
-        if not use_cache:
-            scores = []
-            if verbose > 0:
-                tt = x_eps.split(max_batch_size)
-                rng = tqdm(x_eps.split(max_batch_size), total=len(tt), desc="Computing scores")
-            else:
-                rng = x_eps.split(max_batch_size)
-            for batch in rng:
-                batch = batch.to(x.device)
-                beta_eps = self._get_beta(eps)
-                drift = self._get_drift(batch, eps).cpu() if use_drift else 0.0
-                diffus = self.get_true_score(batch, eps).cpu() * beta_eps
-                scores.append((drift - diffus).detach().cpu())
-            # Get the singular values of the score to compute the normal space
-            scores = torch.cat(scores)
-            scores = scores.reshape((batch_size, num_samples, d))
-            self.singular_vals = torch.linalg.svdvals(scores.to(device)).cpu() 
-        # count the number of singular values that are more than the threshold
-        threshold = math.exp(-r)
-        lid = (self.singular_vals < threshold).sum(dim=1)
-        
-        return lid
-        
     
     
     @batch_or_dataloader(agg_func=lambda x: torch.mean(torch.Tensor(x)))
