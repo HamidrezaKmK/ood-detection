@@ -13,6 +13,7 @@ from ..utils import batch_or_dataloader
 import dypy as dy
 from diffusers import UNet2DModel
 from einops import repeat
+from typing import Union, List
 
 class ScoreBasedDiffusion(DensityEstimator):
     """
@@ -103,6 +104,61 @@ class ScoreBasedDiffusion(DensityEstimator):
     
 
     
+    def degrade_denoise(
+        self,
+        x: torch.Tensor,
+        all_t: Union[float, torch.Tensor],
+        all_steps: Union[int, List[int], torch.IntTensor] = 10,
+        return_degraded: bool = False,
+        verbose: int = 0,
+    ):
+        """
+        Degrade the input 'x' at all the timesteps in 'all_t' and then denoise it using the reverse mapping.
+        
+        Then return the denoised points.
+        
+        Args:
+            x: The input data
+            all_t: The timesteps at which to degrade the data
+            all_steps: The number of steps to take for the reverse mapping
+        Returns:
+            A list of tensors, each of which is the denoised version of the input at the corresponding timestep.
+        """
+        x = self._data_transform(x)
+        if not isinstance(all_t, torch.Tensor):
+            all_t = torch.tensor(all_t).float()
+        all_t = all_t.to(x.device)
+        
+        sigma_lst = 0
+        if isinstance(all_steps, int):
+            all_steps = [all_steps for _ in range(len(all_t))]
+        
+        denoised = []
+        degraded = []
+        
+        sigma2_lst = 0.
+        noise_lst = 0.
+        steps_accum = 0
+        if verbose > 0:
+            iterator = tqdm(zip(all_steps, all_t), total=len(all_steps), desc="Degrading and denoising")
+        else:
+            iterator = zip(all_steps, all_t)
+            
+        for steps, t in iterator:
+            eps = torch.randn_like(x) # Take random noise of the same shape as the input
+            sigma2_t, _ = self._get_sigma(t)
+            sigma2_t = sigma2_t.reshape(-1, *[1 for _ in range(x.dim()-1)])
+            noise_new = torch.sqrt((sigma2_t - sigma2_lst)) * eps
+            noise = noise_new + noise_lst
+            x_degraded = self._get_center(x, t) + noise
+            sigma2_lst = sigma2_t
+            noise_lst = noise
+            steps_accum += steps
+            degraded.append(x_degraded.detach().cpu().clone())
+            x_reconstructed = self.reverse_mapping(x_degraded, t_end=t, steps=steps_accum)
+            denoised.append(x_reconstructed.detach().cpu().clone())
+            
+        return denoised, degraded if return_degraded else denoised
     
     def _get_sigma(self, t):
         """ Return both \\sigma^2(t) and \\sigma(t) """
@@ -124,11 +180,13 @@ class ScoreBasedDiffusion(DensityEstimator):
         sigma_t = sigma_t.to(x.device).float()
         return self.score_network(x, t.repeat(x.shape[0])) / sigma_t
     
+
     def reverse_mapping(
         self,
         z: torch.Tensor,
         eps: float = 1e-5,
         steps: int = 1000,
+        t_end: th.Optional[th.Union[float, torch.Tensor]] = None,
     ):
         """
         This function starts off with a noise z and performs either the reverse probability flow ODE
@@ -145,10 +203,12 @@ class ScoreBasedDiffusion(DensityEstimator):
         Returns:
             x: (Tensor of shape [batch_size, x_shape])
         """
+        if t_end is None:
+            t_end = self.T
         device = z.device
         with torch.no_grad():
-            ts = torch.linspace(self.T, eps, steps=steps).to(device)
-            delta_t = (self.T - eps) / (steps - 1)
+            ts = torch.linspace(t_end, eps, steps=steps).to(device)
+            delta_t = (t_end - eps) / (steps - 1)
             for t in ts:
                 score = self.get_true_score(z, t)
                 beta = self._get_beta(t)

@@ -130,7 +130,7 @@ def run_ood(config: dict, gpu_index: int = 0, checkpoint_dir: th.Optional[str] =
     ###################
     # (1) Model setup #
     ###################
-    load_dotenv()
+    load_dotenv(override=True)
     
     if 'MODEL_DIR' in os.environ:
         model_root = os.environ['MODEL_DIR']
@@ -376,7 +376,7 @@ if __name__ == "__main__":
     wandb.init(config=conf, **args.logger)
 
     # set the checkpoint_dir to the dotenv variable if it exists
-    load_dotenv()
+    load_dotenv(override=True)
     if 'MODEL_DIR' in os.environ:
         checkpoint_dir = os.environ['MODEL_DIR']
     else:

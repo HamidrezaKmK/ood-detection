@@ -16,7 +16,7 @@ def read_csv(
     """
     file_path = f"{file_name}.csv" if not file_name.endswith('.csv') else file_name
     
-    load_dotenv()
+    load_dotenv(override=True)
     if 'TABLES_DIR' in os.environ:
         file_path = os.path.join(os.environ['TABLES_DIR'], file_path)
     

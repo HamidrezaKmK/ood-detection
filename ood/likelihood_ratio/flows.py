@@ -54,7 +54,7 @@ class LikelihoodRatio(OODBaseMethod):
         # disable all the parameters in the model
         self.likelihood_model.eval()
   
-        load_dotenv()
+        load_dotenv(override=True)
         
         if 'MODEL_DIR' in os.environ:
             model_root = os.environ['MODEL_DIR']

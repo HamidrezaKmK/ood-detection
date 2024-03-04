@@ -42,7 +42,7 @@ class DGMGeneratedDataset(SupervisedDataset):
     ):
         self.data_path = os.path.join(data_root, identifier)
         if model_root is None:
-            load_dotenv()
+            load_dotenv(override=True)
             model_root = os.environ.get("MODEL_DIR", './runs/')
         
         self.data_type = data_type

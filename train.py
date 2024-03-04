@@ -56,7 +56,7 @@ def run(args, checkpoint_dir=None, gpu_index: int = -1):
     This is the dictionary obtained after parsing the YAML file using jsonargparse.
     """
     # Load the environment variables
-    load_dotenv()
+    load_dotenv(override=True)
     
     # Set the data directory if it is specified in the environment
     # variables, otherwise, set to './data'

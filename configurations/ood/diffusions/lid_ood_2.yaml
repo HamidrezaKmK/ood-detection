@@ -68,4 +68,4 @@ ood:
 logger:
   project: ood-detection-single-runs
   entity: platypus-dgm
-  name: svhn_vs_svhn_ood
+  name: svhn_vs_cifar10_ood

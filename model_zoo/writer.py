@@ -60,7 +60,7 @@ class Writer:
         **kwargs
     ):
         # add model_dir as a prefix to logdir if it is available
-        load_dotenv()
+        load_dotenv(override=True)
         if os.getenv("MODEL_DIR") is not None:
             _pref = os.getenv("MODEL_DIR")
             logdir = _pref if logdir is None else os.path.join(_pref, logdir)
