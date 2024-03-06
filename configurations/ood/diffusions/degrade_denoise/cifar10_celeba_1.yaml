@@ -14,7 +14,7 @@ data:
   out_of_distribution:
     dataloader_args:
       make_valid_loader: false
-      dataset: cifar10
+      dataset: celeba
       train_batch_size: 8
       valid_batch_size: 8
       test_batch_size: 8
@@ -43,4 +43,4 @@ ood:
 logger:
   project: ood-detection-single-runs
   entity: platypus-dgm
-  name: cifar10_vs_svhn_ood_degrade_denoise_in_distr
+  name: cifar10_vs_celeba_small_ood_degrade_denoise_ood
