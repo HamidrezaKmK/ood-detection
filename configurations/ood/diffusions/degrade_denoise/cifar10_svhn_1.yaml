@@ -32,8 +32,8 @@ ood:
   # The OOD detection method in use
   method: ood.reconstruction.DegradeDenoise
   method_args:
-    num_time_steps: 10
-    steps: 100
+    num_time_steps: 100
+    steps: 10
     validation_size: 1
     methods_to_include: ['l2', 'lpips']
     verbose: 2

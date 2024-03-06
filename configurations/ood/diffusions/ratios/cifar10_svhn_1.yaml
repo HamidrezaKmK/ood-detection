@@ -14,7 +14,7 @@ data:
   out_of_distribution:
     dataloader_args:
       make_valid_loader: false
-      dataset: cifar10
+      dataset: svhn
       train_batch_size: 8
       valid_batch_size: 8
       test_batch_size: 8
@@ -30,17 +30,15 @@ ood:
   pick_count: 1
 
   # The OOD detection method in use
-  method: ood.reconstruction.DegradeDenoise
+  method: ood.likelihood_ratio.DiffusionCCLR
   method_args:
-    num_time_steps: 10
-    steps: 100
-    validation_size: 1
-    methods_to_include: ['l2', 'lpips']
+    t_frac: 1.
     verbose: 2
-    gamma: 3
+    num_samples: 1024
+    chunk_size: 128
 
   
 logger:
   project: ood-detection-single-runs
   entity: platypus-dgm
-  name: cifar10_vs_svhn_ood_degrade_denoise_in_distr
+  name: cifar10_vs_svhn_diffusion_ratio_ood

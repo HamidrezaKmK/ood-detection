@@ -1,23 +1,23 @@
 base_model:
-  config_dir: checkpoints-znod8v3z/diffusion_cifar10_distinctions_aep6z5pr_final/run_config.json
-  checkpoint_dir: checkpoints-znod8v3z/diffusion_cifar10_distinctions_aep6z5pr_final/checkpoints/de_score-based-VP-diffusion_best_valid.pt
+  config_dir: checkpoints-znod8v3z/diffusion_svhn_regretless_ixiwzx2l_final/run_config.json
+  checkpoint_dir: checkpoints-znod8v3z/diffusion_svhn_regretless_ixiwzx2l_final/checkpoints/de_score-based-VP-diffusion_latest.pt
 data:
   # specify the datasets and dataloader configurations for the in and out of distribution data.
   in_distribution:
     dataloader_args:
       make_valid_loader: false
-      dataset: cifar10
-      train_batch_size: 8
-      valid_batch_size: 8
-      test_batch_size: 8
+      dataset: svhn
+      train_batch_size: 32
+      valid_batch_size: 32
+      test_batch_size: 32
     pick_loader: train
   out_of_distribution:
     dataloader_args:
       make_valid_loader: false
-      dataset: cifar10
-      train_batch_size: 8
-      valid_batch_size: 8
-      test_batch_size: 8
+      dataset: svhn
+      train_batch_size: 32
+      valid_batch_size: 32
+      test_batch_size: 32
     pick_loader: test
 ood:
   # bypass the entire visualization process since there is no need to plot the histograms that take time!
@@ -30,17 +30,15 @@ ood:
   pick_count: 1
 
   # The OOD detection method in use
-  method: ood.reconstruction.DegradeDenoise
+  method: ood.likelihood_ratio.AvgLossTrend
   method_args:
-    num_time_steps: 10
-    steps: 100
-    validation_size: 1
-    methods_to_include: ['l2', 'lpips']
     verbose: 2
-    gamma: 3
-
+    num_samples: 1024
+    chunk_size: 128
+    t_frac_count: 10
+    t_frac_gamma: 3.
   
 logger:
   project: ood-detection-single-runs
   entity: platypus-dgm
-  name: cifar10_vs_svhn_ood_degrade_denoise_in_distr
+  name: svhn_vs_cifar10_diffusion_ratio_in_distr

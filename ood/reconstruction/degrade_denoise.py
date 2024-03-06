@@ -4,7 +4,7 @@ from ..utils import buffer_loader
 from model_zoo.density_estimator.diffusions import ScoreBasedDiffusion
 import torch
 from ood.wandb_visualization import visualize_histogram
-from typing import List, Optional
+from typing import List, Optional, Literal
 import torchvision
 import wandb
 from tqdm import tqdm
@@ -26,8 +26,6 @@ class DegradeDenoise(OODBaseMethod):
     Then, for every datapoint, they compute the z-score of that distance metric as a score for OOD detection.
     """
     
-    # TODO: add LPIPS
-    
     def __init__(
         self,
         *args,
@@ -35,6 +33,8 @@ class DegradeDenoise(OODBaseMethod):
         steps: int = 100,
         validation_size: int = 16,
         methods_to_include: Optional[List[str]] = None,
+        T: float = 1.0,
+        gamma: float = 1.0,
         verbose: int = 0,
         **kwargs,
     ):
@@ -58,12 +58,16 @@ class DegradeDenoise(OODBaseMethod):
                 
                 - 'l2': the L2 norm of the difference between the original and denoised point
                 - 'lpips': the LPIPS distance between the original and denoised point
+
+            T: the final time step for the diffusion process
+            
+            gamma: The larger the gamma, the scheduling will become more and more exponential-like
                 
             verbose: the verbosity level
         """
         super().__init__(*args, **kwargs)
         self.validation_size = validation_size
-        self.all_t = torch.linspace(0, 1, num_time_steps + 1)[1:]
+        self.all_t = T * torch.linspace(0, 1, num_time_steps + 1)[1:] ** gamma
         self.likelihood_model: ScoreBasedDiffusion
         if not isinstance(self.likelihood_model, ScoreBasedDiffusion):
             raise ValueError("The likelihood model should be a ScoreBasedDiffusion model")
@@ -105,22 +109,21 @@ class DegradeDenoise(OODBaseMethod):
     
     def _inner_visualize(self, x, all_x_reconstructed, all_x_degraded, lbl):
          
-        if self.verbose > 1:
-            # fit all the images in x in a 3 by 3 grid using torchvision
-            x_grid = torchvision.utils.make_grid(x[:min(len(x), 9)], nrow=3)
+        # fit all the images in x in a 3 by 3 grid using torchvision
+        x_grid = torchvision.utils.make_grid(x[:min(len(x), 9)], nrow=3)
+        wandb.log({
+            f"{lbl}_images/origin": wandb.Image(x_grid),
+        })
+        for i, x_reconstructed in enumerate(all_x_reconstructed):
+            x_reconstructed_grid = torchvision.utils.make_grid(x_reconstructed[:min(len(x), 9)], nrow=3)
+            x_degraded_grid = torchvision.utils.make_grid(all_x_degraded[i][:min(len(x), 9)], nrow=3)
             wandb.log({
-                f"{lbl}_images/origin": wandb.Image(x_grid),
+                f"{lbl}_reconstructed_images/{i+1}": wandb.Image(x_reconstructed_grid)
             })
-            for i, x_reconstructed in enumerate(all_x_reconstructed):
-                x_reconstructed_grid = torchvision.utils.make_grid(x_reconstructed[:min(len(x), 9)], nrow=3)
-                x_degraded_grid = torchvision.utils.make_grid(all_x_degraded[i][:min(len(x), 9)], nrow=3)
-                wandb.log({
-                    f"{lbl}_reconstructed_images/{i+1}": wandb.Image(x_reconstructed_grid)
-                })
-                wandb.log({
-                    f"{lbl}_degraded/{i+1}": wandb.Image(x_degraded_grid)
-                })      
-                
+            wandb.log({
+                f"{lbl}_degraded/{i+1}": wandb.Image(x_degraded_grid)
+            })      
+            
     
     def run(self):
         """
@@ -153,7 +156,7 @@ class DegradeDenoise(OODBaseMethod):
                     return_degraded=True,
                     verbose=self.verbose - 1,
                 )    
-                if self.verbose > 0 and buffer_idx == 1:
+                if self.verbose > 2 and buffer_idx == 1:
                     self._inner_visualize(x, all_x_reconstructed, all_x_degraded, f'validation_{buffer_idx}')
                 
                 all_reconstruction_scores_along_timesteps = []
@@ -176,7 +179,9 @@ class DegradeDenoise(OODBaseMethod):
                 x_loader_wrapper = tqdm(self.x_loader, total=len(self.x_loader), desc="Computing z-scores for OOD samples")
             else:
                 x_loader_wrapper = self.x_loader
+            idx = 0
             for x in x_loader_wrapper:
+                idx += 1
                 all_x_reconstructed, all_x_degraded = self.likelihood_model.degrade_denoise(
                     x, 
                     all_t=self.all_t,
@@ -184,7 +189,7 @@ class DegradeDenoise(OODBaseMethod):
                     return_degraded=True,
                     verbose=self.verbose - 1,
                 )   
-                if self.verbose > 0:
+                if self.verbose > 2 and idx == 1:
                     self._inner_visualize(x, all_x_reconstructed, all_x_degraded, 'ood')
                 all_z_scores_along_timesteps = [] 
                 for idx, x_reconstructed in enumerate(all_x_reconstructed):
@@ -206,5 +211,5 @@ class DegradeDenoise(OODBaseMethod):
             # compute the pdf of the z-scores
             visualize_histogram(
                 scores=norm.pdf(all_z_scores),
-                x_label='average z-score pdf',
+                x_label='p_value',
             )

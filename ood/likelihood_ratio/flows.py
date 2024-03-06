@@ -19,7 +19,7 @@ from tqdm import tqdm
 import math
 from math import inf
 from model_zoo.utils import load_model_with_checkpoints
-from ood.methods.intrinsic_dimension.utils import get_device_from_loader
+from lid.utils import get_device_from_loader
 
 import os
 from dotenv import load_dotenv

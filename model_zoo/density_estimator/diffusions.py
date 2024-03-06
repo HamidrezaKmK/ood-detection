@@ -440,7 +440,16 @@ class ScoreBasedDiffusion(DensityEstimator):
     
     
     @batch_or_dataloader(agg_func=lambda x: torch.mean(torch.Tensor(x)))
-    def loss(self, x):
+    def loss(
+        self, 
+        x, 
+        t_low: float = 0.0,
+        t_high: float = 1.0,
+        weighting_scheme: th.Literal['likelihood', 'custom'] = 'likelihood',
+        weighting_fn: th.Optional[th.Callable[[torch.Tensor], torch.Tensor]] = None,
+        return_aggregated: bool = True,
+        distance_type: th.Literal['l1', 'l2'] = 'l2',
+    ):
         """
         The score matching loss used for training the diffusion model.
         
@@ -449,18 +458,39 @@ class ScoreBasedDiffusion(DensityEstimator):
         which corresponds to the denoising score matching loss.
         """
         x = self._data_transform(x)
-        t = self.T * torch.rand(x.shape[0], device=x.device) # Take a random timestep between [0, T]
+        t = t_low + (t_high - t_low) * self.T * torch.rand(x.shape[0], device=x.device) # Take a random timestep between [0, T]
         
         eps = torch.randn_like(x) # Take random noise of the same shape as the input
         sigma2_t, sigma_t = self._get_sigma(t)
         sigma2_t = sigma2_t.reshape(-1, *[1 for _ in range(x.dim()-1)])
         sigma_t = sigma_t.reshape(-1, *[1 for _ in range(x.dim()-1)])
         x_input = self._get_center(x, t) + sigma_t * eps
+        
         unnormalized_score = self.score_network(x_input, t)
-        sq_error = torch.square(unnormalized_score + eps)
-        loss = torch.sum(sq_error.flatten(start_dim=1), dim=1)
-        return loss.mean()
-
+        
+        if distance_type == 'l2':
+            unnormalized_error = torch.square(unnormalized_score + eps)
+        elif distance_type == 'l1':
+            unnormalized_error = torch.abs(unnormalized_score + eps)
+        else:
+            raise ValueError(f"Distance type {distance_type} not defined!")
+        
+        if weighting_scheme == 'likelihood':
+            error = unnormalized_error
+        elif weighting_scheme == 'custom':
+            if weighting_fn is None:
+                raise ValueError("For custom weighting, a `weighting_fn` must be provided!")
+            weights = weighting_fn(t).reshape(-1, *[1 for _ in range(x.dim()-1)])
+            normalization_factor = sigma2_t if distance_type == 'l2' else sigma_t
+            error = unnormalized_error / normalization_factor * weights
+        else:
+            raise ValueError(f"Weighting scheme {weighting_scheme} not defined!")
+        loss = torch.sum(error.flatten(start_dim=1), dim=1)
+        if return_aggregated: # TODO: is this needed?
+            return loss.mean()
+        else:
+            return loss
+        
 class VESDE_Diffusion(ScoreBasedDiffusion):
     
     model_type = "VESDE_Diffusion"

@@ -6,6 +6,22 @@ actual evaluation metrics in the paper.
 import numpy as np
 import typing as th
 import wandb
+import decimal
+
+# create a new context for this task
+ctx = decimal.Context()
+
+# 20 digits should be enough for everyone :D
+ctx.prec = 20
+
+def float_to_str(f):
+    """
+    Convert the given float to a string,
+    without resorting to scientific notation
+    """
+    global ctx
+    d1 = ctx.create_decimal(repr(f))
+    return format(d1, 'f')
 
 def visualize_scatterplots(
     scores: np.ndarray,
@@ -72,7 +88,7 @@ def visualize_trends(
     
     def _convert_float(t):
         try:
-            a, b = str(t).split('.')
+            a, b = float_to_str(t).split('.')
             a = int(a)
         except Exception as e:
             b = 0
