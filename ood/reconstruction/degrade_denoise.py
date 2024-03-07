@@ -205,6 +205,8 @@ class DegradeDenoise(OODBaseMethod):
                 all_z_scores.append(avg_z_scores)
             all_z_scores = torch.cat(all_z_scores, dim=0).detach().cpu().numpy()
             
+            # NOTE: z_score is a strange terminology used by the paper!
+            # z_score in fact is a form of standardized dissimilarity measure between the reconstructions of OOD data and the data itself.
             visualize_histogram(
                 scores=all_z_scores,
                 x_label='z_scores',
