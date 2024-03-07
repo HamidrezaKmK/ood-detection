@@ -7,9 +7,9 @@ data:
     dataloader_args:
       make_valid_loader: false
       dataset: fashion-mnist
-      train_batch_size: 8
-      valid_batch_size: 8
-      test_batch_size: 8
+      train_batch_size: 128
+      valid_batch_size: 128
+      test_batch_size: 128
       additional_dataset_args:
         resize_image: [32, 32]
     pick_loader: train
@@ -17,9 +17,9 @@ data:
     dataloader_args:
       make_valid_loader: false
       dataset: mnist
-      train_batch_size: 8
-      valid_batch_size: 8
-      test_batch_size: 8
+      train_batch_size: 128
+      valid_batch_size: 128
+      test_batch_size: 128
       additional_dataset_args:
         resize_image: [32, 32]
     pick_loader: test
@@ -40,10 +40,10 @@ ood:
     steps: 100
     validation_size: 1
     methods_to_include: ['l2', 'lpips']
-    verbose: 2
+    verbose: 3
 
   
 logger:
   project: ood-detection-single-runs
   entity: platypus-dgm
-  name: fmnist_vs_mnist_ood_degrade_denoise_ood
+  name: fmnist_vs_mnist_degrade_denoise_ood

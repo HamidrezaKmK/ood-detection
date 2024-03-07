@@ -205,11 +205,7 @@ class DegradeDenoise(OODBaseMethod):
                 all_z_scores.append(avg_z_scores)
             all_z_scores = torch.cat(all_z_scores, dim=0).detach().cpu().numpy()
             
-            # compute the p_value for all_z_scores
-            p_values = norm.sf(np.abs(all_z_scores)) # one sided
-            
-            # compute the pdf of the z-scores
             visualize_histogram(
-                scores=norm.pdf(all_z_scores),
-                x_label='p_value',
+                scores=all_z_scores,
+                x_label='z_scores',
             )
