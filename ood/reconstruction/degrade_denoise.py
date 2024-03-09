@@ -208,6 +208,6 @@ class DegradeDenoise(OODBaseMethod):
             # NOTE: z_score is a strange terminology used by the paper!
             # z_score in fact is a form of standardized dissimilarity measure between the reconstructions of OOD data and the data itself.
             visualize_histogram(
-                scores=all_z_scores,
-                x_label='z_scores',
+                scores=-all_z_scores,
+                x_label='negative z_scores',
             )

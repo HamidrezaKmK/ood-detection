@@ -156,7 +156,7 @@ class ScoreBasedDiffusion(DensityEstimator):
             steps_accum += steps
             degraded.append(x_degraded.detach().cpu().clone())
             x_reconstructed = self.reverse_mapping(x_degraded, t_end=t, steps=steps_accum)
-            denoised.append(x_reconstructed.detach().cpu().clone())
+            denoised.append(self._inverse_data_transform(x_reconstructed).detach().cpu().clone())
             
         return denoised, degraded if return_degraded else denoised
     
