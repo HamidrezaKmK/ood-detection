@@ -222,7 +222,6 @@ def plot_trends(
     labels: th.List[str],
     colors: th.List,
     std_values: th.Optional[th.List[np.array]] = None,
-    file_name: th.Optional[str] = None,
     y_label: th.Optional[str] = None,
     figsize: th.Optional[tuple] = (10, 6),
     with_std: bool = False,
