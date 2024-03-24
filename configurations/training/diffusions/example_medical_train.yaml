@@ -16,20 +16,18 @@ trainer:
   optimizer:
     class_path: torch.optim.AdamW
     init_args:
-      lr: 0.001
-
-  # W&B settings
+      lr: 0.00005
   writer:
-    make_subdir: True
-    tag_group: flow
+    tag_group: diffusion
     type: wandb
     entity: platypus-dgm
     project: training-dgms
+    
 
   sample_freq: 1 # logs the samples after every two epochs
-  max_epochs: 400
+  max_epochs: 150
   early_stopping_metric: loss
-  max_bad_valid_epochs: 30
+  max_bad_valid_epochs: 150
   max_grad_norm: 1.0
   progress_bar: True
 
