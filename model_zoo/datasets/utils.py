@@ -20,6 +20,7 @@ SUPPORTED_IMAGE_DATASETS = [
     "emnist-minus-mnist",
     "emnist",
     "tiny-imagenet",
+    "medmnist",
 ]
 
 # NOTE: random_image is of generated type, maybe best to move it.

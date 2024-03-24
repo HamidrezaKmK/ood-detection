@@ -14,7 +14,10 @@ import typing as th
 from math import inf
 from tqdm import tqdm
 from .image_embeddings import EmbeddingWrapper
-    
+from typing import Literal
+import medmnist
+from medmnist import PneumoniaMNIST
+
 class CelebACropped(Dataset):
     """
     Dataset taken from 
@@ -466,6 +469,49 @@ class MNIST(SupervisedDataset):
         
         self.to(device)
 
+class MedMNIST(SupervisedDataset):
+    
+    def __init__(
+        self, 
+        root, 
+        subclass: Literal['ChestMNIST', 'PneumoniaMNIST', 'OrganAMNIST', 'OrganCMNIST', 'OrganSMNIST'],
+        role, 
+        valid_fraction, 
+        seed: int = 0, 
+        device: str = "cpu",
+        resize_image: th.Optional[Tuple[int, int]] = None,
+    ):
+        
+        self.resize_image = resize_image if resize_image is not None else (28, 28)
+        # import the argument 'subclass' from 'medmnist' using import_module
+        # if root doesn't exist create it
+        if not os.path.exists(root):
+            os.makedirs(root)
+        self._dataset = getattr(medmnist, subclass)(root=root, split="val" if role == "valid" else role, download=True)
+        
+        np.random.seed(seed)
+        perm = np.random.permutation(np.arange(len(self._dataset)))
+        valid_size = int(valid_fraction * len(self._dataset))
+        
+        if role == 'train':
+            indices = perm[valid_size:]
+        elif role == 'valid':
+            indices = perm[:valid_size]
+        elif role == 'test':
+            indices = perm
+        
+        
+        images = torch.stack([transforms.ToTensor()(self._dataset[i][0]) for i in indices]) * 255
+        labels = torch.tensor([self._dataset[i][1][0] for i in indices])
+           
+        images = images.to(dtype=torch.get_default_dtype())
+        labels = labels.long()
+        
+        super().__init__(f"medmnist-{subclass}", role, x=transforms.Resize(self.resize_image, antialias=True)(images), y=labels)
+
+        self.to(device)
+        
+
 class FMNIST(SupervisedDataset):
     
     def __init__(
@@ -723,6 +769,7 @@ def get_image_datasets_by_class(
         'cifar10': CIFAR10,
         'cifar100': CIFAR100,
         'svhn': SVHN,
+        'medmnist': MedMNIST,
     }[dataset_name]
 
     
