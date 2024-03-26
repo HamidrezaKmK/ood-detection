@@ -62,7 +62,8 @@ class DGMGeneratedDataset(SupervisedDataset):
             for i in rng:
                 r = min(i + generation_batch_size, length)
                 data = model.sample(r - i).detach().cpu()
-                
+                # cap data at 0 and 255
+                data = torch.clamp(data, 0, 255)
                 if self.data_type == 'image':
                     data = data.permute(0, 2, 3, 1).numpy()
                     for j, sample in enumerate(data):
