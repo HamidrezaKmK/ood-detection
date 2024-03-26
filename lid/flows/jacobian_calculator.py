@@ -167,7 +167,8 @@ class FlowJacobianCalculator:
                 # check if z_s contains any NaN values
                 if torch.isnan(z_s).any():
                     warnings.warn(f">> NaN values detected in the latent representation. Skipping batch {l}:{r} of the data.")
-                    continue
+                    # replace the nans with 0.0
+                    z_s = torch.where(torch.isnan(z_s), torch.zeros_like(z_s), z_s)
                 
                 # Calculate the jacobian of the decode function
                 if self.use_functorch:
