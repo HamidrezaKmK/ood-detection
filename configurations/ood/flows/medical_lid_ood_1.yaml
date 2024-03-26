@@ -26,7 +26,9 @@ data:
 ood:
   # bypass the entire visualization process since there is no need to plot the histograms that take time!
   bypass_visualization: False
-  
+  samples_visualization: 1
+  histogram_limit: 30
+
   # for reproducibility
   seed: 100
 
