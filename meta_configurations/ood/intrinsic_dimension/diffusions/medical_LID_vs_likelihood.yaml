@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: medical_flows_LID_vs_likelihood
+sweep_name: medical_diffusions_LID_vs_likelihood
 entity: platypus-dgm
 count: 10000
 method: grid
@@ -43,24 +43,28 @@ base_config:
     
     # The OOD detection method in use
       # The OOD detection method in use
+    
+    # The OOD detection method in use
     method: ood.intrinsic_dimension.LID_OOD
     method_args:
       # ----- LID estimator configuration -----
-      lid_calculator_class: lid.flows.ThresholdSVDFlowLIDEstimator
+      lid_calculator_class: lid.diffusions.NormalBundleLIDEstimator
       lid_calculator_args:
-        # --- Jacobian Flow Configuration ---
-        flow_jacobian_calculator_class: lid.flows.jacobian_calculator.FlowJacobianCalculator
-        flow_jacobian_calculator_kwargs:
-          use_vmap: False
-          use_functorch: True
-          use_forward_mode: True
-          chunk_size: 1
+          noise_time: 0.01
+          num_scores: null # use 4D
+          chunk_size: 128
+          verbose: 2
+          ambient_dim: 1024 # 1x32x32
+      # ----- Likelihood Estimator Configuration -----
+      likelihood_computation_args:
+          eps: 0.01
+          steps: 25
+          trace_calculation_kwargs:
+              method: hutchinson_rademacher 
+              sample_count: 25
+              parallel_batch_size: 128
+              verbose: 0
           verbose: 1
-          diff_transform: False
-        # set the lid calculator
-        verbose: 2
-        ambient_dim: 784 # 28x28x1
-
       # ----- OOD detection configuration -----
       # verbosity
       verbose: 1
@@ -70,7 +74,7 @@ base_config:
       scale_selection_algorithm_args:
         l_scale: -100
         r_scale: 100
-        bin_search_steps: 20
+        bin_search_steps: 100
 
       training_buffer_size: 1
       
@@ -99,17 +103,19 @@ sweep_configuration:
         - chest_vs_itself
       values:
         - base_model:
-            config_dir: checkpoints-b6fog8jn/chest_xray_aligned_r23uyf2y/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/chest_xray_aligned_r23uyf2y/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/chest_xray_aligned_j11alw9w/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/chest_xray_aligned_j11alw9w/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: True
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: True
           ood:
@@ -117,49 +123,55 @@ sweep_configuration:
               scale_selection_algorithm_args:
                 model_free_dimension: 64 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/chest_xray_aligned_r23uyf2y/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/chest_xray_aligned_r23uyf2y/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/chest_xray_aligned_j11alw9w/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/chest_xray_aligned_j11alw9w/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: True
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: PneumoniaMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 64 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/pneumonia_chest_xray_d5jdzl6l/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/pneumonia_chest_xray_d5jdzl6l/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/pneumonia_chest_xray_v2lg5j0w/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/pneumonia_chest_xray_v2lg5j0w/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: PneumoniaMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: PneumoniaMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 98 # Obtained by LPCA with threshold 0.001 
         - base_model:
-            config_dir: checkpoints-b6fog8jn/pneumonia_chest_xray_d5jdzl6l/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/pneumonia_chest_xray_d5jdzl6l/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/pneumonia_chest_xray_v2lg5j0w/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/pneumonia_chest_xray_v2lg5j0w/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: PneumoniaMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: True
           ood:
@@ -167,177 +179,199 @@ sweep_configuration:
               scale_selection_algorithm_args:
                 model_free_dimension: 98 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_a_abdominal_az671wwi/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_a_abdominal_az671wwi/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_a_abdominal_og8vr850/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_a_abdominal_og8vr850/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganAMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganAMNIST        
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 239 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_a_abdominal_az671wwi/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_a_abdominal_az671wwi/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_a_abdominal_og8vr850/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_a_abdominal_og8vr850/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganAMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganSMNIST          
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 239 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_a_abdominal_az671wwi/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_a_abdominal_az671wwi/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_a_abdominal_og8vr850/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_a_abdominal_og8vr850/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganAMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganCMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 239 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_s_abdomin_4z3npi95/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_s_abdomin_4z3npi95/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_s_abdominal_lnnasywe/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_s_abdominal_lnnasywe/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganSMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganSMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 224 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_s_abdomin_4z3npi95/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_s_abdomin_4z3npi95/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_s_abdominal_lnnasywe/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_s_abdominal_lnnasywe/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganSMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganCMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 224 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_s_abdomin_4z3npi95/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_s_abdomin_4z3npi95/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_s_abdominal_lnnasywe/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_s_abdominal_lnnasywe/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganSMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganAMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 224 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_c_abdominal_gs7hkjut/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_c_abdominal_gs7hkjut/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_c_abdominal_4oll9enw/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_c_abdominal_4oll9enw/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganCMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganCMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 267 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_c_abdominal_gs7hkjut/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_c_abdominal_gs7hkjut/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_c_abdominal_4oll9enw/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_c_abdominal_4oll9enw/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganCMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganAMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 267 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/organ_c_abdominal_gs7hkjut/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/organ_c_abdominal_gs7hkjut/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/organ_c_abdominal_4oll9enw/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/organ_c_abdominal_4oll9enw/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganCMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: OrganSMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 267 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/chest_x_ray_zv2vecmy/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/chest_x_ray_zv2vecmy/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/chest_xray_mvioxhbl/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/chest_xray_mvioxhbl/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: False
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: PneumoniaMNIST
           ood:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 90 # Obtained by LPCA with threshold 0.001
         - base_model:
-            config_dir: checkpoints-b6fog8jn/pneumonia_chest_xray_d5jdzl6l/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/pneumonia_chest_xray_d5jdzl6l/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/pneumonia_chest_xray_v2lg5j0w/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/pneumonia_chest_xray_v2lg5j0w/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: PneumoniaMNIST
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: False
           ood:
@@ -345,17 +379,19 @@ sweep_configuration:
               scale_selection_algorithm_args:
                 model_free_dimension: 98 # Obtained by LPCA with threshold 0.001      
         - base_model:
-            config_dir: checkpoints-b6fog8jn/chest_x_ray_zv2vecmy/run_config.json
-            checkpoint_dir: checkpoints-b6fog8jn/chest_x_ray_zv2vecmy/checkpoints/de_nf_best_valid.pt
+            config_dir: checkpoints-jjohg4sc/chest_xray_mvioxhbl/run_config.json
+            checkpoint_dir: checkpoints-jjohg4sc/chest_xray_mvioxhbl/checkpoints/de_VPSDE_Diffusion_latest.pt
           data:
             in_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: False
             out_of_distribution:
               dataloader_args:
                 additional_dataset_args:
+                  resize_image: [32, 32]
                   subclass: ChestMNIST
                   align: False
           ood:

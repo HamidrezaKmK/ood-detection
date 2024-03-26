@@ -89,9 +89,15 @@ def ood_run_name_changer(conf, run_name):
     run appropriately.
     The scheme here is [trained_dataset]_vs_[ood_dataset]_[test_or_train_split]
     """
-    ret = conf['data']['in_distribution']['dataloader_args']['dataset']
+    first = conf['data']['in_distribution']['dataloader_args']['dataset']
+    if first == 'medmnist': # TODO: fix this!
+        first = f"{conf['data']['in_distribution']['dataloader_args']['additional_dataset_args']['subclass']}-{'align' if conf['data']['in_distribution']['dataloader_args']['additional_dataset_args'].get('align', True) else 'noalign'}"
+    ret = first
     ret += '_vs_'
-    ret += conf['data']['out_of_distribution']['dataloader_args']['dataset']
+    second = conf['data']['out_of_distribution']['dataloader_args']['dataset']
+    if second == 'medmnist': # TODO: fix this!
+        second = f"{conf['data']['out_of_distribution']['dataloader_args']['additional_dataset_args']['subclass']}-{'align' if conf['data']['out_of_distribution']['dataloader_args']['additional_dataset_args'].get('align', True) else 'noalign'}"
+    ret += second
     ret += f"_{conf['data']['out_of_distribution']['pick_loader']}"
     ret += f"_{run_name}"
     return ret
