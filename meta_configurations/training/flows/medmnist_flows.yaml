@@ -234,6 +234,7 @@ sweep_configuration:
     - sweep: True
       sweep_identifier: data_type
       sweep_alias:
+        - chest_xray_aligned
         - pneumonia_chest_xray
         - chest_xray
         - organ_a_abdominal_ct
@@ -242,10 +243,15 @@ sweep_configuration:
       values:
         - data:
             additional_dataset_args:
+              subclass: ChestMNIST
+              align: True
+        - data:
+            additional_dataset_args:
               subclass: PneumoniaMNIST
         - data:
             additional_dataset_args:
               subclass: ChestMNIST
+              align: False
         - data:
             additional_dataset_args:
               subclass: OrganAMNIST

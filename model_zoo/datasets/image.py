@@ -480,6 +480,7 @@ class MedMNIST(SupervisedDataset):
         seed: int = 0, 
         device: str = "cpu",
         resize_image: th.Optional[Tuple[int, int]] = None,
+        align: bool = True,
     ):
         
         self.resize_image = resize_image if resize_image is not None else (28, 28)
@@ -505,6 +506,8 @@ class MedMNIST(SupervisedDataset):
         labels = torch.tensor([self._dataset[i][1][0] for i in indices])
            
         images = images.to(dtype=torch.get_default_dtype())
+        if align and subclass == 'ChestMNIST':
+            images = transforms.CenterCrop((27, 18))(images) # center crop the chest x-ray images to align with the PneumoniaMNIST images
         labels = labels.long()
         
         super().__init__(f"medmnist-{subclass}", role, x=transforms.Resize(self.resize_image, antialias=True)(images), y=labels)
