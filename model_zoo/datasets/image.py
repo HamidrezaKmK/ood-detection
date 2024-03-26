@@ -501,15 +501,17 @@ class MedMNIST(SupervisedDataset):
         elif role == 'test':
             indices = perm
         
+        if len(indices) == 0:
+            indices = torch.IntTensor([perm[0]])
         
         images = torch.stack([transforms.ToTensor()(self._dataset[i][0]) for i in indices]) * 255
         labels = torch.tensor([self._dataset[i][1][0] for i in indices])
-           
+        
         images = images.to(dtype=torch.get_default_dtype())
         if align and subclass == 'ChestMNIST':
             images = transforms.CenterCrop((27, 18))(images) # center crop the chest x-ray images to align with the PneumoniaMNIST images
         labels = labels.long()
-        
+    
         super().__init__(f"medmnist-{subclass}", role, x=transforms.Resize(self.resize_image, antialias=True)(images), y=labels)
 
         self.to(device)
