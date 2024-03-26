@@ -37,7 +37,7 @@ ood:
     validation_size: 1
     methods_to_include: ['l2', 'lpips']
     verbose: 3
-    gamma: 3
+    gamma: 1
 
   
 logger:

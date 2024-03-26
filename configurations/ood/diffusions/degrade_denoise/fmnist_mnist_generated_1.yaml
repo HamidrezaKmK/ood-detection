@@ -16,17 +16,22 @@ data:
   out_of_distribution:
     dataloader_args:
       make_valid_loader: false
-      dataset: mnist
       train_batch_size: 128
       valid_batch_size: 128
       test_batch_size: 128
-      additional_dataset_args:
-        resize_image: [32, 32]
+      dataset: dgm-generated
+      dgm_args:
+        model_loading_config:
+          config_dir: checkpoints-hg9x5r0n/diffusion_fashion-mnist_interparental_bxnuw7zk_final/run_config.json
+          checkpoint_dir: checkpoints-hg9x5r0n/diffusion_fashion-mnist_interparental_bxnuw7zk_final/checkpoints/de_score-based-VP-diffusion_best_valid.pt
+        seed: 10
+        length: 1000
     pick_loader: test
 ood:
   # bypass the entire visualization process since there is no need to plot the histograms that take time!
   bypass_visualization: True
-  
+  histogram_limit: 0
+
   # for reproducibility
   seed: 100
 
