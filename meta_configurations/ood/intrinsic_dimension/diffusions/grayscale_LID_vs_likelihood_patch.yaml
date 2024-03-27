@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: grayscale_LID_vs_likelihood_diffusion
+sweep_name: grayscale_LID_vs_likelihood_diffusion_patch
 entity: platypus-dgm
 count: 10000
 method: grid
@@ -20,18 +20,18 @@ base_config:
     in_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 128
-        valid_batch_size: 128
-        test_batch_size: 128
+        train_batch_size: 32
+        valid_batch_size: 32
+        test_batch_size: 32
         additional_dataset_args:
           resize_image: [32, 32]
       pick_loader: train
     out_of_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 128
-        valid_batch_size: 128
-        test_batch_size: 128
+        train_batch_size: 32
+        valid_batch_size: 32
+        test_batch_size: 32
       pick_loader: test
   ood:
     # bypass the entire visualization process since there is no need to plot the histograms that take time!
@@ -82,22 +82,9 @@ sweep_configuration:
       sweep_identifier: B_in_distribution_model
       sweep_alias:
         # grayscale diffusions (Glow and RQ_NSF)
-        - VPSDE_omniglot
         - VPSDE_mnist
         - VPSDE_fmnist
-        - VPSDE_emnist
       values:
-        - base_model:
-            config_dir: checkpoints-hg9x5r0n/diffusion_omniglot_polacre_txgcp3yt_final/run_config.json
-            checkpoint_dir: checkpoints-hg9x5r0n/diffusion_omniglot_polacre_txgcp3yt_final/checkpoints/de_score-based-VP-diffusion_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: omniglot
-          ood:
-            method_args:
-              scale_selection_algorithm_args:
-                model_free_dimension: 409 # Obtained by LPCA with threshold 0.001
         - base_model:
             config_dir: checkpoints-hg9x5r0n/diffusion_mnist_tweeting_1ou4vbuo_final/run_config.json
             checkpoint_dir: checkpoints-hg9x5r0n/diffusion_mnist_tweeting_1ou4vbuo_final/checkpoints/de_score-based-VP-diffusion_best_valid.pt
@@ -121,18 +108,6 @@ sweep_configuration:
               scale_selection_algorithm_args:
                 model_free_dimension: 245 # Obtained by LPCA with threshold 0.001
 
-        - base_model:
-            config_dir: checkpoints-hg9x5r0n/diffusion_emnist_iridomyrmex_7wnmityc_final/run_config.json
-            checkpoint_dir: checkpoints-hg9x5r0n/diffusion_emnist_iridomyrmex_7wnmityc_final/checkpoints/de_score-based-VP-diffusion_best_valid.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: emnist
-          ood:
-            method_args:
-              scale_selection_algorithm_args:
-                model_free_dimension: 245 # Obtained by LPCA with threshold 0.001
-
     - sweep: True
       sweep_identifier: C_ood_picker
       sweep_alias:
@@ -140,7 +115,6 @@ sweep_configuration:
       - mnist
       - fmnist
       - omniglot
-      - emnist
       values:
       - data:
           out_of_distribution:
@@ -171,13 +145,6 @@ sweep_configuration:
           out_of_distribution:
             dataloader_args:
               dataset: omniglot
-              
-              additional_dataset_args:
-                resize_image: [32, 32]
-      - data:
-          out_of_distribution:
-            dataloader_args:
-              dataset: emnist
               
               additional_dataset_args:
                 resize_image: [32, 32]

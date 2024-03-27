@@ -1,7 +1,7 @@
 # This sweep compares the likelihood values of in and out of distribution
 # for all the dataset pairs, containing the DGM generated ones
 project: final-report
-sweep_name: rgb_LID_vs_likelihood_diffusion
+sweep_name: rgb_LID_vs_likelihood_diffusion_patch
 entity: platypus-dgm
 count: 10000
 method: grid
@@ -20,16 +20,16 @@ base_config:
     in_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 128
-        valid_batch_size: 128
-        test_batch_size: 128
+        train_batch_size: 32
+        valid_batch_size: 32
+        test_batch_size: 32
       pick_loader: train
     out_of_distribution:
       dataloader_args:
         make_valid_loader: false
-        train_batch_size: 128
-        valid_batch_size: 128
-        test_batch_size: 128
+        train_batch_size: 32
+        valid_batch_size: 32
+        test_batch_size: 32
       pick_loader: test
   ood:
     # bypass the entire visualization process since there is no need to plot the histograms that take time!
@@ -47,7 +47,7 @@ base_config:
       lid_calculator_args:
           noise_time: 0.01
           num_scores: null # use 4D
-          chunk_size: 128
+          chunk_size: 32
           verbose: 2
           ambient_dim: 3072 # 3x32x32
       # ----- Likelihood Estimator Configuration -----
@@ -57,7 +57,7 @@ base_config:
           trace_calculation_kwargs:
               method: hutchinson_rademacher 
               sample_count: 25
-              parallel_batch_size: 128
+              parallel_batch_size: 32
               verbose: 0
           verbose: 1
       # ----- OOD detection configuration -----
@@ -82,9 +82,6 @@ sweep_configuration:
         # colorful diffusions
         - VPSDE_cifar10
         - VPSDE_svhn
-        - VPSDE_cifar100
-        - VPSDE_tiny
-        - VPSDE_celeba_small
       values:
         - base_model:
             config_dir: checkpoints-znod8v3z/diffusion_cifar10_distinctions_aep6z5pr_final/run_config.json
@@ -108,40 +105,6 @@ sweep_configuration:
             method_args:
               scale_selection_algorithm_args:
                 model_free_dimension: 60 # Obtained by LPCA with threshold 0.001
-        - base_model:
-            config_dir: checkpoints-znod8v3z/diffusion_cifar100_acemetic_avmihhcs_final/run_config.json
-            checkpoint_dir: checkpoints-znod8v3z/diffusion_cifar100_acemetic_avmihhcs_final/checkpoints/de_score-based-VP-diffusion_latest.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: cifar100
-          ood:
-            method_args:
-              scale_selection_algorithm_args:
-                model_free_dimension: 165 # Obtained by LPCA with threshold 0.001
-        - base_model:
-            config_dir: checkpoints-znod8v3z/diffusion_tiny-imagenet_autolavage_84hvhvrz_final/run_config.json
-            checkpoint_dir: checkpoints-znod8v3z/diffusion_tiny-imagenet_autolavage_84hvhvrz_final/checkpoints/de_score-based-VP-diffusion_latest.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: tiny-imagenet
-          ood:
-            method_args:
-              scale_selection_algorithm_args:
-                model_free_dimension: 207 # Obtained by LPCA with threshold 0.001
-        
-        - base_model:
-            config_dir: checkpoints-znod8v3z/diffusion_celeba-small_petroleum_uhtqybca_final/run_config.json
-            checkpoint_dir: checkpoints-znod8v3z/diffusion_celeba-small_petroleum_uhtqybca_final/checkpoints/de_score-based-VP-diffusion_latest.pt
-          data:
-            in_distribution:
-              dataloader_args:
-                dataset: celeba-small
-          ood:
-            method_args:
-              scale_selection_algorithm_args:
-                model_free_dimension: 169 # Obtained by LPCA with threshold 0.001
 
     - sweep: True
       sweep_identifier: C_ood_picker
@@ -150,9 +113,6 @@ sweep_configuration:
       - svhn
       - cifar10
       - celeba-small
-      - celeba
-      - tiny-imagenet
-      - cifar100
       values:
         - data:
             out_of_distribution:
@@ -178,18 +138,6 @@ sweep_configuration:
             out_of_distribution:
               dataloader_args:
                 dataset: celeba-small
-        - data:
-            out_of_distribution:
-              dataloader_args:
-                dataset: celeba
-        - data:
-            out_of_distribution:
-              dataloader_args:
-                dataset: tiny-imagenet
-        - data:
-            out_of_distribution:
-              dataloader_args:
-                dataset: cifar100
     - sweep: True
       sweep_identifier: A_subsample_size # run on different subsample sizes to tradeoff speed for accuracy!
       sweep_alias:
